@@ -1,10 +1,10 @@
 package shadowsocks
 
 import (
-	"bytes"
 	"io"
-
+	"sing/common/buf"
 	"sing/common/exceptions"
+	"sing/common/list"
 )
 
 type Cipher interface {
@@ -12,26 +12,33 @@ type Cipher interface {
 	IVSize() int
 	NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (io.Writer, error)
 	NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (io.Reader, error)
-	EncodePacket(key []byte, buffer *bytes.Buffer) error
-	DecodePacket(key []byte, buffer *bytes.Buffer) error
+	EncodePacket(key []byte, buffer *buf.Buffer) error
+	DecodePacket(key []byte, buffer *buf.Buffer) error
 }
 
 type CipherCreator func() Cipher
 
-var cipherList map[string]CipherCreator
+var cipherList *list.List[string]
+var cipherMap map[string]CipherCreator
 
 func init() {
-	cipherList = make(map[string]CipherCreator)
+	cipherList = new(list.List[string])
+	cipherMap = make(map[string]CipherCreator)
 }
 
 func RegisterCipher(method string, creator CipherCreator) {
-	cipherList[method] = creator
+	cipherList.PushBack(method)
+	cipherMap[method] = creator
 }
 
 func CreateCipher(method string) (Cipher, error) {
-	creator := cipherList[method]
+	creator := cipherMap[method]
 	if creator != nil {
 		return creator(), nil
 	}
 	return nil, exceptions.New("unsupported method: ", method)
+}
+
+func ListCiphers() []string {
+	return cipherList.Array()
 }

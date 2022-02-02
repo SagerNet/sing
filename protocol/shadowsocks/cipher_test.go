@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"sing/common/rw"
 	"strings"
 	"sync"
 	"testing"
@@ -18,19 +19,19 @@ import (
 	"sing/common/crypto"
 	"sing/common/socksaddr"
 	"sing/protocol/shadowsocks"
+	_ "sing/protocol/shadowsocks/shadowstream"
 )
 
-func TestShadowsocksTCP(t *testing.T) {
+func TestShadowsocks(t *testing.T) {
 	for index := 1; index <= int(vs.CipherType_XCHACHA20); index++ {
-		if index == 0 {
-			continue
-		}
 		cipherType := vs.CipherType(index)
 		cipher := strings.ReplaceAll(strings.ToLower(cipherType.String()), "_", "-")
 		t.Log("Test", cipher, "server")
 		testShadowsocksServerTCPWithCipher(t, cipherType, cipher)
 		t.Log("Test", cipher, "client")
 		testShadowsocksClientTCPWithCipher(t, cipherType, cipher)
+		t.Log("Test", cipher, "udp")
+		testShadowsocksUDPWithCipher(t, cipherType, cipher)
 	}
 }
 
@@ -43,7 +44,9 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	}
 	key := shadowsocks.Key([]byte(password), cipher.KeySize())
 	address := socksaddr.AddrFromFqdn("internal.sagernet.org")
-	data := crypto.RandomBytes(1024)
+	data := buf.New()
+	defer data.Release()
+	data.WriteRandom(1024)
 
 	protoAccount := &vs.Account{
 		Password:   password,
@@ -84,10 +87,7 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 			return
 		}
 		conn := vb.NewConnection(vb.ConnectionOutputMulti(reader), vb.ConnectionInputMulti(writer))
-		buffer := vb.New()
-		defer buffer.Release()
-		buffer.Write(data)
-		_, err = conn.Write(buffer.Bytes())
+		_, err = conn.Write(data.ToOwned().Bytes())
 		if err != nil {
 			t.Error(err)
 			return
@@ -98,7 +98,7 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 			t.Error(err)
 			return
 		}
-		if bytes.Compare(clientRead, data) > 0 {
+		if bytes.Compare(clientRead, data.Bytes()) > 0 {
 			t.Error("bad response data")
 			return
 		}
@@ -117,6 +117,7 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer common.Close(reader)
 
 	addr, port, err := shadowsocks.AddressSerializer.ReadAddressAndPort(reader)
 	if err != nil {
@@ -144,7 +145,7 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 		t.Fatal(err)
 	}
 
-	if bytes.Compare(serverRead, data) > 0 {
+	if bytes.Compare(serverRead, data.Bytes()) > 0 {
 		t.Fatal("bad request data")
 	}
 
@@ -152,15 +153,49 @@ func testShadowsocksServerTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	buffer := buf.New()
-	defer buf.Release(buffer)
-	buffer.Write(data)
-	_, err = writer.Write(buffer.Bytes())
+	writer = rw.GetWriter(writer)
+	defer common.Close(writer)
+	_, err = writer.Write(data.ToOwned().Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	wg.Wait()
+}
+
+func BenchmarkShadowsocks(b *testing.B) {
+	b.ReportAllocs()
+	for _, cipher := range shadowsocks.ListCiphers() {
+		b.Run(cipher, func(b *testing.B) {
+			benchmarkShadowsocksCipher(b, cipher, 14*1024)
+		})
+	}
+}
+
+func benchmarkShadowsocksCipher(b *testing.B, method string, data int) {
+	b.StopTimer()
+	b.ResetTimer()
+	b.SetBytes(int64(data))
+	cipher, _ := shadowsocks.CreateCipher(method)
+	iv := buf.New()
+	defer iv.Release()
+	iv.WriteRandom(cipher.IVSize())
+	writer, _ := cipher.NewEncryptionWriter(shadowsocks.Key([]byte("test"), cipher.KeySize()), iv.Bytes(), io.Discard)
+	defer common.Close(writer)
+
+	buffer := buf.New()
+	defer buffer.Release()
+	buffer.Extend(data)
+
+	b.StartTimer()
+	if output, ok := writer.(rw.OutputStream); ok {
+		for i := 0; i < b.N; i++ {
+			output.Process(buffer.Bytes())
+		}
+	} else {
+		writer.Write(buffer.Bytes())
+	}
+
 }
 
 func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, cipherName string) {
@@ -172,7 +207,9 @@ func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	}
 	key := shadowsocks.Key([]byte(password), cipher.KeySize())
 	address := socksaddr.AddrFromFqdn("internal.sagernet.org")
-	data := crypto.RandomBytes(1024)
+	data := buf.New()
+	data.WriteRandom(1024)
+	defer data.Release()
 
 	protoAccount := &vs.Account{
 		Password:   password,
@@ -214,10 +251,7 @@ func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 			return
 		}
 		conn := vb.NewConnection(vb.ConnectionOutputMulti(reader), vb.ConnectionInputMulti(writer))
-		buffer := vb.New()
-		defer buffer.Release()
-		buffer.Write(data)
-		_, err = conn.Write(buffer.Bytes())
+		_, err = conn.Write(data.Bytes())
 		if err != nil {
 			t.Error(err)
 			return
@@ -228,7 +262,7 @@ func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 			t.Error(err)
 			return
 		}
-		if bytes.Compare(serverRead, data) > 0 {
+		if bytes.Compare(serverRead, data.Bytes()) > 0 {
 			t.Error("bad request data")
 			return
 		}
@@ -245,15 +279,13 @@ func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer common.Close(ew)
 	bw := bufio.NewWriter(ew)
 	err = shadowsocks.AddressSerializer.WriteAddressAndPort(bw, address, 443)
 	if err != nil {
 		t.Fatal(err)
 	}
-	buffer := buf.New()
-	defer buf.Release(buffer)
-	buffer.Write(data)
-	_, err = bw.Write(buffer.Bytes())
+	_, err = bw.Write(data.ToOwned().Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,15 +306,70 @@ func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, 
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer common.Close(input)
 	clientRead := make([]byte, 1024)
 	_, err = io.ReadFull(input, clientRead)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Compare(clientRead, data) > 0 {
+	if bytes.Compare(clientRead, data.Bytes()) > 0 {
 		t.Fatal("bad response data")
 	}
 
 	client.Close()
 	wg.Wait()
+}
+
+func testShadowsocksUDPWithCipher(t *testing.T, cipherType vs.CipherType, cipherName string) {
+	password := "fuck me till the daylight"
+	cipher, err := shadowsocks.CreateCipher(cipherName)
+	if err != nil {
+		t.Log("Skip unsupported method: ", cipherName)
+		return
+	}
+	key := shadowsocks.Key([]byte(password), cipher.KeySize())
+	address := socksaddr.AddrFromFqdn("internal.sagernet.org")
+	data := buf.New()
+	defer data.Release()
+	data.WriteRandom(1024)
+
+	protoAccount := &vs.Account{
+		Password:   password,
+		CipherType: cipherType,
+	}
+	memoryAccount, err := protoAccount.AsAccount()
+	common.Must(err)
+	memoryUser := &vp.MemoryUser{
+		Account: memoryAccount,
+	}
+
+	req := &vp.RequestHeader{
+		Version: vs.Version,
+		Command: vp.RequestCommandUDP,
+		Address: vn.DomainAddress(address.Fqdn()),
+		Port:    443,
+		User:    memoryUser,
+	}
+	packet, err := vs.EncodeUDPPacket(req, data.Bytes(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buffer := buf.New()
+	defer buffer.Release()
+	buffer.Write(packet.BytesTo(int32(cipher.IVSize())))
+	err = shadowsocks.AddressSerializer.WriteAddressAndPort(buffer, address, 443)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer.Write(data.Bytes())
+
+	err = cipher.EncodePacket(key, buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Compare(packet.Bytes(), buffer.Bytes()) > 0 {
+		t.Fatal("bad request data\n", packet.Bytes(), "\n", buffer.Bytes())
+	}
 }

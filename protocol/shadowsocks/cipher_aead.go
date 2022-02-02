@@ -1,7 +1,6 @@
 package shadowsocks
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
@@ -13,6 +12,8 @@ import (
 	"sing/common/exceptions"
 	"sing/common/rw"
 )
+
+const PacketLengthBufferSize = 2
 
 func init() {
 	RegisterCipher("aes-128-gcm", func() Cipher {
@@ -94,31 +95,29 @@ func (c *AEADCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader
 	return NewAEADReader(reader, c.Constructor(Kdf(key, iv, c.KeyLength))), nil
 }
 
-func (c *AEADCipher) EncodePacket(key []byte, buffer *bytes.Buffer) error {
-	aead := c.Constructor(Kdf(key, buffer.Bytes()[:c.IVLength], c.KeyLength))
-	end := buffer.Len()
-	buffer.Grow(aead.Overhead())
-	aead.Seal(buffer.Bytes()[:c.IVLength], rw.ZeroBytes[:aead.NonceSize()], buffer.Bytes()[c.IVLength:end], nil)
+func (c *AEADCipher) EncodePacket(key []byte, buffer *buf.Buffer) error {
+	aead := c.Constructor(Kdf(key, buffer.To(c.IVLength), c.KeyLength))
+	aead.Seal(buffer.From(c.IVLength)[:0], rw.ZeroBytes[:aead.NonceSize()], buffer.From(c.IVLength), nil)
+	buffer.Extend(aead.Overhead())
 	return nil
 }
 
-func (c *AEADCipher) DecodePacket(key []byte, buffer *bytes.Buffer) error {
+func (c *AEADCipher) DecodePacket(key []byte, buffer *buf.Buffer) error {
 	if buffer.Len() < c.IVLength {
 		return exceptions.New("bad packet")
 	}
-	aead := c.Constructor(Kdf(key, buffer.Bytes()[:c.IVLength], c.KeyLength))
-	_, err := aead.Open(buffer.Bytes()[:c.IVLength], rw.ZeroBytes[:aead.NonceSize()], buffer.Bytes()[c.IVLength:], nil)
+	aead := c.Constructor(Kdf(key, buffer.To(c.IVLength), c.KeyLength))
+	packet, err := aead.Open(buffer.Index(0), rw.ZeroBytes[:aead.NonceSize()], buffer.From(c.IVLength), nil)
 	if err != nil {
 		return err
 	}
-	buffer.Truncate(aead.Overhead())
+	buffer.Truncate(len(packet))
 	return nil
 }
 
 type AEADReader struct {
 	upstream io.Reader
 	cipher   cipher.AEAD
-	buffer   *bytes.Buffer
 	data     []byte
 	nonce    []byte
 	index    int
@@ -126,15 +125,16 @@ type AEADReader struct {
 }
 
 func NewAEADReader(upstream io.Reader, cipher cipher.AEAD) *AEADReader {
-	buffer := buf.New()
-	buffer.Grow(MaxPacketSize)
 	return &AEADReader{
 		upstream: upstream,
 		cipher:   cipher,
-		buffer:   buffer,
-		data:     buffer.Bytes(),
+		data:     buf.GetBytes(),
 		nonce:    make([]byte, cipher.NonceSize()),
 	}
+}
+
+func (r *AEADReader) Upstream() io.Reader {
+	return r.upstream
 }
 
 func (r *AEADReader) Read(b []byte) (n int, err error) {
@@ -187,34 +187,67 @@ func (r *AEADReader) Read(b []byte) (n int, err error) {
 }
 
 func (r *AEADReader) Close() error {
-	buf.Release(r.buffer)
+	if r.data != nil {
+		buf.PutBytes(r.data)
+		r.data = nil
+	}
 	return nil
 }
 
 type AEADWriter struct {
-	upstream io.Writer
-	cipher   cipher.AEAD
-	buffer   *bytes.Buffer
-	data     []byte
-	nonce    []byte
+	upstream    io.Writer
+	cipher      cipher.AEAD
+	data        []byte
+	nonce       []byte
+	maxDataSize int
 }
 
 func NewAEADWriter(upstream io.Writer, cipher cipher.AEAD) *AEADWriter {
-	buffer := buf.New()
-	buffer.Grow(MaxPacketSize)
 	return &AEADWriter{
-		upstream: upstream,
-		cipher:   cipher,
-		buffer:   buffer,
-		data:     buffer.Bytes(),
-		nonce:    make([]byte, cipher.NonceSize()),
+		upstream:    upstream,
+		cipher:      cipher,
+		data:        buf.GetBytes(),
+		nonce:       make([]byte, cipher.NonceSize()),
+		maxDataSize: MaxPacketSize - PacketLengthBufferSize - cipher.Overhead()*2,
 	}
 }
 
-func (w *AEADWriter) Write(p []byte) (n int, err error) {
-	maxDataSize := MaxPacketSize - PacketLengthBufferSize - w.cipher.Overhead()*2
+func (w *AEADWriter) Upstream() io.Writer {
+	return w.upstream
+}
 
-	for _, data := range buf.ForeachN(p, maxDataSize) {
+func (w *AEADWriter) Process(p []byte) (n int, buffer *buf.Buffer, flush bool, err error) {
+	if len(p) > w.maxDataSize {
+		n, err = w.Write(p)
+		err = &rw.DirectException{
+			Suppressed: err,
+		}
+		return
+	}
+
+	binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(len(p)))
+	encryptedLength := w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
+	increaseNonce(w.nonce)
+	start := len(encryptedLength)
+
+	/*
+		no usage
+		if cap(p) > len(p)+PacketLengthBufferSize+2*w.cipher.Overhead() {
+			packet := w.cipher.Seal(p[:start], w.nonce, p, nil)
+			increaseNonce(w.nonce)
+			copy(p[:start], encryptedLength)
+			n = start + len(packet)
+			return
+		}
+	*/
+
+	packet := w.cipher.Seal(w.data[:start], w.nonce, p, nil)
+	increaseNonce(w.nonce)
+	return 0, buf.As(packet), false, err
+}
+
+func (w *AEADWriter) Write(p []byte) (n int, err error) {
+	for _, data := range buf.ForeachN(p, w.maxDataSize) {
 
 		binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(len(data)))
 		w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
@@ -235,7 +268,10 @@ func (w *AEADWriter) Write(p []byte) (n int, err error) {
 }
 
 func (w *AEADWriter) Close() error {
-	buf.Release(w.buffer)
+	if w.data != nil {
+		buf.PutBytes(w.data)
+		w.data = nil
+	}
 	return nil
 }
 

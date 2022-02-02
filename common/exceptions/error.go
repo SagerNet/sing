@@ -10,6 +10,11 @@ type Exception interface {
 	Cause() error
 }
 
+type SuppressedException interface {
+	error
+	Suppressed() error
+}
+
 type exception struct {
 	message string
 	cause   error

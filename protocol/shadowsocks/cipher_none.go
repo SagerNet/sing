@@ -1,8 +1,9 @@
 package shadowsocks
 
 import (
-	"bytes"
 	"io"
+
+	"sing/common/buf"
 )
 
 func init() {
@@ -29,10 +30,10 @@ func (c *NoneCipher) NewDecryptionReader(_ []byte, _ []byte, reader io.Reader) (
 	return reader, nil
 }
 
-func (c *NoneCipher) EncodePacket([]byte, *bytes.Buffer) error {
+func (c *NoneCipher) EncodePacket([]byte, *buf.Buffer) error {
 	return nil
 }
 
-func (c *NoneCipher) DecodePacket([]byte, *bytes.Buffer) error {
+func (c *NoneCipher) DecodePacket([]byte, *buf.Buffer) error {
 	return nil
 }

@@ -1,30 +1,23 @@
 package buf
 
-import (
-	"bytes"
-	"sync"
+import "sync"
+
+const (
+	ReversedHeader = 1024
+	BufferSize     = 20 * 1024
 )
 
-const BufferSize = 20 * 1024
-
-var bufferPool = sync.Pool{
+var pool = sync.Pool{
 	New: func() any {
-		var data [BufferSize]byte
-		return bytes.NewBuffer(data[:0])
+		var buffer [BufferSize]byte
+		return buffer[:]
 	},
 }
 
-func New() *bytes.Buffer {
-	return bufferPool.Get().(*bytes.Buffer)
+func GetBytes() []byte {
+	return pool.Get().([]byte)
 }
 
-func Extend(buffer *bytes.Buffer, size int) []byte {
-	l := buffer.Len()
-	buffer.Grow(size)
-	return buffer.Bytes()[l : l+size]
-}
-
-func Release(buffer *bytes.Buffer) {
-	buffer.Reset()
-	bufferPool.Put(buffer)
+func PutBytes(buffer []byte) {
+	pool.Put(buffer)
 }

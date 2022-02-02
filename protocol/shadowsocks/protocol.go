@@ -3,17 +3,16 @@ package shadowsocks
 import (
 	"crypto/md5"
 	"crypto/sha1"
+	"hash/crc32"
 	"io"
+	"math/rand"
 
 	"golang.org/x/crypto/hkdf"
 	"sing/common"
 	"sing/common/socksaddr"
 )
 
-const (
-	MaxPacketSize          = 16*1024 - 1
-	PacketLengthBufferSize = 2
-)
+const MaxPacketSize = 16*1024 - 1
 
 func Kdf(key, iv []byte, keyLength int) []byte {
 	subKey := make([]byte, keyLength)
@@ -42,6 +41,14 @@ func Key(password []byte, keySize int) []byte {
 		copy(m[start:], sum[:])
 	}
 	return m[:keySize]
+}
+
+func RemapToPrintable(input []byte) {
+	const charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\\\""
+	seed := rand.New(rand.NewSource(int64(crc32.ChecksumIEEE(input))))
+	for i := range input {
+		input[i] = charSet[seed.Intn(len(charSet))]
+	}
 }
 
 var AddressSerializer = socksaddr.NewSerializer(

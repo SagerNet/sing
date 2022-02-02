@@ -1,15 +1,16 @@
-//go:build !no_shadowsocks_stream && (arm64 || ppc64le || s390x)
+//go:build arm64 || ppc64le || s390x
 
-package shadowsocks
+package shadowstream
 
 import (
 	"crypto/cipher"
 
 	"golang.org/x/crypto/chacha20"
+	"sing/protocol/shadowsocks"
 )
 
 func init() {
-	RegisterCipher("chacha20", func() Cipher {
+	shadowsocks.RegisterCipher("chacha20", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength: chacha20.KeySize,
 			IVLength:  chacha20.NonceSize,
@@ -21,7 +22,7 @@ func init() {
 			},
 		}
 	})
-	RegisterCipher("xchacha20", func() Cipher {
+	shadowsocks.RegisterCipher("xchacha20", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength: chacha20.KeySize,
 			IVLength:  chacha20.NonceSizeX,

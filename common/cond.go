@@ -84,11 +84,20 @@ func Must1(_ any, err error) {
 	}
 }
 
-func Close(closers ...io.Closer) {
+func Close(closers ...any) {
 	for _, closer := range closers {
 		if closer == nil {
 			continue
 		}
-		closer.Close()
+		switch c := closer.(type) {
+		case io.Closer:
+			c.Close()
+		}
+		switch c := closer.(type) {
+		case ReaderWithUpstream:
+			Close(c.Upstream())
+		case WriterWithUpstream:
+			Close(c.Upstream())
+		}
 	}
 }

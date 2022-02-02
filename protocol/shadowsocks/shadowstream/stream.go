@@ -1,9 +1,6 @@
-//go:build !no_shadowsocks_stream
-
-package shadowsocks
+package shadowstream
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
@@ -21,12 +18,14 @@ import (
 	"github.com/kierdavis/cfb8"
 	"golang.org/x/crypto/blowfish"
 	"golang.org/x/crypto/cast5"
+	"sing/common/buf"
 	"sing/common/crypto"
 	"sing/common/exceptions"
+	"sing/protocol/shadowsocks"
 )
 
 func init() {
-	RegisterCipher("aes-128-ctr", func() Cipher {
+	shadowsocks.RegisterCipher("aes-128-ctr", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           aes.BlockSize,
@@ -34,7 +33,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewCTR),
 		}
 	})
-	RegisterCipher("aes-192-ctr", func() Cipher {
+	shadowsocks.RegisterCipher("aes-192-ctr", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           aes.BlockSize,
@@ -42,7 +41,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewCTR),
 		}
 	})
-	RegisterCipher("aes-256-ctr", func() Cipher {
+	shadowsocks.RegisterCipher("aes-256-ctr", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           aes.BlockSize,
@@ -51,7 +50,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("aes-128-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-128-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           aes.BlockSize,
@@ -59,7 +58,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("aes-192-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-192-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           aes.BlockSize,
@@ -67,7 +66,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("aes-256-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-256-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           aes.BlockSize,
@@ -76,7 +75,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("aes-128-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("aes-128-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           aes.BlockSize,
@@ -84,7 +83,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cfb8.NewDecrypter),
 		}
 	})
-	RegisterCipher("aes-192-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("aes-192-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           aes.BlockSize,
@@ -92,7 +91,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cfb8.NewDecrypter),
 		}
 	})
-	RegisterCipher("aes-256-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("aes-256-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           aes.BlockSize,
@@ -101,7 +100,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("aes-128-ofb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-128-ofb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           aes.BlockSize,
@@ -109,7 +108,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewOFB),
 		}
 	})
-	RegisterCipher("aes-192-ofb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-192-ofb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           aes.BlockSize,
@@ -117,7 +116,7 @@ func init() {
 			DecryptConstructor: blockStream(aes.NewCipher, cipher.NewOFB),
 		}
 	})
-	RegisterCipher("aes-256-ofb", func() Cipher {
+	shadowsocks.RegisterCipher("aes-256-ofb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           aes.BlockSize,
@@ -126,7 +125,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("rc4", func() Cipher {
+	shadowsocks.RegisterCipher("rc4", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength: 16,
 			IVLength:  16,
@@ -138,7 +137,7 @@ func init() {
 			},
 		}
 	})
-	RegisterCipher("rc4-md5", func() Cipher {
+	shadowsocks.RegisterCipher("rc4-md5", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength: 16,
 			IVLength:  16,
@@ -157,7 +156,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("bf-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("bf-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           blowfish.BlockSize,
@@ -165,7 +164,7 @@ func init() {
 			DecryptConstructor: blockStream(func(key []byte) (cipher.Block, error) { return blowfish.NewCipher(key) }, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("cast5-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("cast5-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           cast5.BlockSize,
@@ -173,7 +172,7 @@ func init() {
 			DecryptConstructor: blockStream(func(key []byte) (cipher.Block, error) { return cast5.NewCipher(key) }, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("des-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("des-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          8,
 			IVLength:           des.BlockSize,
@@ -181,7 +180,7 @@ func init() {
 			DecryptConstructor: blockStream(des.NewCipher, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("idea-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("idea-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           8,
@@ -189,7 +188,7 @@ func init() {
 			DecryptConstructor: blockStream(idea.NewCipher, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("rc2-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("rc2-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           rc2.BlockSize,
@@ -197,7 +196,7 @@ func init() {
 			DecryptConstructor: blockStream(func(key []byte) (cipher.Block, error) { return rc2.New(key, 16) }, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("seed-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("seed-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           seed.BlockSize,
@@ -206,7 +205,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("camellia-128-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-128-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           camellia.BlockSize,
@@ -214,7 +213,7 @@ func init() {
 			DecryptConstructor: blockStream(camellia.New, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("camellia-192-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-192-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           camellia.BlockSize,
@@ -222,7 +221,7 @@ func init() {
 			DecryptConstructor: blockStream(camellia.New, cipher.NewCFBDecrypter),
 		}
 	})
-	RegisterCipher("camellia-256-cfb", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-256-cfb", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           camellia.BlockSize,
@@ -231,7 +230,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("camellia-128-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-128-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          16,
 			IVLength:           camellia.BlockSize,
@@ -239,7 +238,7 @@ func init() {
 			DecryptConstructor: blockStream(camellia.New, cfb8.NewDecrypter),
 		}
 	})
-	RegisterCipher("camellia-192-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-192-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          24,
 			IVLength:           camellia.BlockSize,
@@ -247,7 +246,7 @@ func init() {
 			DecryptConstructor: blockStream(camellia.New, cfb8.NewDecrypter),
 		}
 	})
-	RegisterCipher("camellia-256-cfb8", func() Cipher {
+	shadowsocks.RegisterCipher("camellia-256-cfb8", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           camellia.BlockSize,
@@ -256,7 +255,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("salsa20", func() Cipher {
+	shadowsocks.RegisterCipher("salsa20", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength:          32,
 			IVLength:           8,
@@ -265,7 +264,7 @@ func init() {
 		}
 	})
 
-	RegisterCipher("chacha20-ietf", func() Cipher {
+	shadowsocks.RegisterCipher("chacha20-ietf", func() shadowsocks.Cipher {
 		return &StreamCipher{
 			KeyLength: chacha.KeySize,
 			IVLength:  chacha.INonceSize,
@@ -321,22 +320,22 @@ func (s *StreamCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Read
 	return &StreamReader{reader, streamCipher}, nil
 }
 
-func (s *StreamCipher) EncodePacket(key []byte, buffer *bytes.Buffer) error {
-	iv := buffer.Bytes()[:s.IVLength]
+func (s *StreamCipher) EncodePacket(key []byte, buffer *buf.Buffer) error {
+	iv := buffer.To(s.IVLength)
 	streamCipher, err := s.EncryptConstructor(key, iv)
 	if err != nil {
 		return err
 	}
-	data := buffer.Bytes()[s.IVLength:]
+	data := buffer.From(s.IVLength)
 	streamCipher.XORKeyStream(data, data)
 	return nil
 }
 
-func (s *StreamCipher) DecodePacket(key []byte, buffer *bytes.Buffer) error {
+func (s *StreamCipher) DecodePacket(key []byte, buffer *buf.Buffer) error {
 	if buffer.Len() <= s.IVLength {
 		return exceptions.New("insufficient data: ", buffer.Len())
 	}
-	iv := buffer.Bytes()[:s.IVLength]
+	iv := buffer.From(s.IVLength)
 	streamCipher, err := s.DecryptConstructor(key, iv)
 	if err != nil {
 		return err
@@ -350,6 +349,18 @@ func (s *StreamCipher) DecodePacket(key []byte, buffer *bytes.Buffer) error {
 type StreamReader struct {
 	upstream io.Reader
 	cipher   cipher.Stream
+}
+
+func (r *StreamReader) Upstream() io.Reader {
+	return r.upstream
+}
+
+func (r *StreamReader) Process(p []byte, readN int) (n int, err error) {
+	n = readN
+	if n > 0 {
+		r.cipher.XORKeyStream(p[:n], p[:n])
+	}
+	return
 }
 
 func (r *StreamReader) Read(p []byte) (n int, err error) {
@@ -366,6 +377,16 @@ func (r *StreamReader) Read(p []byte) (n int, err error) {
 type StreamWriter struct {
 	upstream io.Writer
 	cipher   cipher.Stream
+}
+
+func (w *StreamWriter) Upstream() io.Writer {
+	return w.upstream
+}
+
+func (w *StreamWriter) Process(p []byte) (n int, buffer *buf.Buffer, flush bool, err error) {
+	w.cipher.XORKeyStream(p, p)
+	n = len(p)
+	return
 }
 
 func (w *StreamWriter) Write(p []byte) (n int, err error) {
