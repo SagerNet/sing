@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"sing/common"
+	"sing/common/buf"
 	"sing/common/exceptions"
 	"sing/common/rw"
 	"sing/common/socksaddr"
@@ -316,28 +317,12 @@ type AssociatePacket struct {
 	Data     []byte
 }
 
-func WriteAssociatePacket(writer io.Writer, packet *AssociatePacket) error {
-	err := rw.WriteZeroN(writer, 2)
-	if err != nil {
-		return err
-	}
-	err = rw.WriteByte(writer, packet.Fragment)
-	if err != nil {
-		return err
-	}
-	err = AddressSerializer.WriteAddressAndPort(writer, packet.Addr, packet.Port)
-	if err != nil {
-		return err
-	}
-	return rw.WriteBytes(writer, packet.Data)
-}
-
-func DecodeAssociatePacket(buffer []byte) (*AssociatePacket, error) {
-	if len(buffer) < 5 {
+func DecodeAssociatePacket(buffer *buf.Buffer) (*AssociatePacket, error) {
+	if buffer.Len() < 5 {
 		return nil, exceptions.New("insufficient length")
 	}
-	fragment := buffer[2]
-	reader := bytes.NewReader(buffer)
+	fragment := buffer.Byte(2)
+	reader := bytes.NewReader(buffer.Bytes())
 	err := common.Error(reader.Seek(3, io.SeekStart))
 	if err != nil {
 		return nil, err
@@ -346,39 +331,29 @@ func DecodeAssociatePacket(buffer []byte) (*AssociatePacket, error) {
 	if err != nil {
 		return nil, err
 	}
-	index := len(buffer) - reader.Len()
-	data := buffer[index:]
+	buffer.Advance(reader.Len())
 	packet := &AssociatePacket{
 		Fragment: fragment,
 		Addr:     addr,
 		Port:     port,
-		Data:     data,
+		Data:     buffer.Bytes(),
 	}
 	return packet, nil
 }
 
-func ReadAssociatePacket(reader io.Reader) (*AssociatePacket, error) {
-	err := rw.SkipN(reader, 2)
+func EncodeAssociatePacket(packet *AssociatePacket, buffer *buf.Buffer) error {
+	err := rw.WriteZeroN(buffer, 2)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	fragment, err := rw.ReadByte(reader)
+	err = rw.WriteByte(buffer, packet.Fragment)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	addr, port, err := AddressSerializer.ReadAddressAndPort(reader)
+	err = AddressSerializer.WriteAddressAndPort(buffer, packet.Addr, packet.Port)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	packet := &AssociatePacket{
-		Fragment: fragment,
-		Addr:     addr,
-		Port:     port,
-		Data:     data,
-	}
-	return packet, nil
+	_, err = buffer.Write(packet.Data)
+	return err
 }

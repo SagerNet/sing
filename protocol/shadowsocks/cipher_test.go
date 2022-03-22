@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"io"
 	"net"
-	"sing/common/rw"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"sing/common"
 	"sing/common/buf"
 	"sing/common/crypto"
+	"sing/common/rw"
 	"sing/common/socksaddr"
 	"sing/protocol/shadowsocks"
 	_ "sing/protocol/shadowsocks/shadowstream"
@@ -195,7 +195,6 @@ func benchmarkShadowsocksCipher(b *testing.B, method string, data int) {
 	} else {
 		writer.Write(buffer.Bytes())
 	}
-
 }
 
 func testShadowsocksClientTCPWithCipher(t *testing.T, cipherType vs.CipherType, cipherName string) {

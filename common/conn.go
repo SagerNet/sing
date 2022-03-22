@@ -6,15 +6,13 @@ import (
 	"time"
 )
 
-type ReadOnlyException struct {
-}
+type ReadOnlyException struct{}
 
 func (e *ReadOnlyException) Error() string {
 	return "read only connection"
 }
 
-type WriteOnlyException struct {
-}
+type WriteOnlyException struct{}
 
 func (e *WriteOnlyException) Error() string {
 	return "write only connection"

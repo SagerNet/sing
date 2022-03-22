@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"sing/common/list"
 
 	"sing/common"
+	"sing/common/list"
 )
 
 type Buffer struct {
@@ -21,6 +21,13 @@ func New() *Buffer {
 		data:    GetBytes(),
 		start:   ReversedHeader,
 		end:     ReversedHeader,
+		managed: true,
+	}
+}
+
+func FullNew() *Buffer {
+	return &Buffer{
+		data:    GetBytes(),
 		managed: true,
 	}
 }
@@ -224,6 +231,11 @@ func (b *Buffer) Resize(start, end int) {
 func (b *Buffer) Reset() {
 	b.start = ReversedHeader
 	b.end = ReversedHeader
+}
+
+func (b *Buffer) FullReset() {
+	b.start = 0
+	b.end = 0
 }
 
 func (b *Buffer) Release() {

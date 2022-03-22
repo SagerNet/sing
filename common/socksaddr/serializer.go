@@ -3,6 +3,7 @@ package socksaddr
 import (
 	"encoding/binary"
 	"io"
+
 	"sing/common"
 	"sing/common/exceptions"
 	"sing/common/rw"

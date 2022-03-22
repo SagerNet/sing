@@ -2,6 +2,7 @@ package shadowsocks
 
 import (
 	"io"
+
 	"sing/common/buf"
 	"sing/common/exceptions"
 	"sing/common/list"
@@ -18,8 +19,10 @@ type Cipher interface {
 
 type CipherCreator func() Cipher
 
-var cipherList *list.List[string]
-var cipherMap map[string]CipherCreator
+var (
+	cipherList *list.List[string]
+	cipherMap  map[string]CipherCreator
+)
 
 func init() {
 	cipherList = new(list.List[string])

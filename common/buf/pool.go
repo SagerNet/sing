@@ -5,6 +5,7 @@ import "sync"
 const (
 	ReversedHeader = 1024
 	BufferSize     = 20 * 1024
+	UDPBufferSize  = 16 * 1024
 )
 
 var pool = sync.Pool{

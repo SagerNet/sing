@@ -8,14 +8,14 @@ import (
 	"log"
 	"net"
 	"os"
+
+	cObfs "github.com/Dreamacro/clash/transport/ssr/obfs"
+	cProtocol "github.com/Dreamacro/clash/transport/ssr/protocol"
 	"sing/common"
 	"sing/common/buf"
 	"sing/common/socksaddr"
 	"sing/protocol/shadowsocks"
 	_ "sing/protocol/shadowsocks/shadowstream"
-
-	cObfs "github.com/Dreamacro/clash/transport/ssr/obfs"
-	cProtocol "github.com/Dreamacro/clash/transport/ssr/protocol"
 )
 
 var (
@@ -67,9 +67,9 @@ func main() {
 
 	key := shadowsocks.Key([]byte(password), cipher.KeySize())
 
-	if _, isAEAD := cipher.(*shadowsocks.AEADCipher); isAEAD {
+	/*if _, isAEAD := cipher.(*shadowsocks.AEADCipher); isAEAD {
 		log.Fatal("not a stream cipher: ", method)
-	}
+	}*/
 
 	ipAddr, err := net.ResolveIPAddr("ip", address)
 	if err != nil {

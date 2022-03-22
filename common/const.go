@@ -2,8 +2,7 @@ package common
 
 const EmptyString = ""
 
-type DummyAddr struct {
-}
+type DummyAddr struct{}
 
 func (d *DummyAddr) Network() string {
 	return "dummy"
