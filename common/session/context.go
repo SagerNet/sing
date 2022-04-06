@@ -4,8 +4,8 @@ import (
 	"net"
 	"strconv"
 
-	"sing/common/buf"
-	"sing/common/socksaddr"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/socksaddr"
 )
 
 type Network int

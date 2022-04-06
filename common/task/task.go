@@ -4,8 +4,18 @@ import (
 	"context"
 	"sync"
 
-	"sing/common"
+	"github.com/sagernet/sing/common"
 )
+
+func After(task func() error, after func() error) func() error {
+	return func() error {
+		err := task()
+		if err != nil {
+			return err
+		}
+		return after()
+	}
+}
 
 func Run(ctx context.Context, tasks ...func() error) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -29,8 +39,5 @@ func Run(ctx context.Context, tasks ...func() error) error {
 		cancel()
 	}()
 	<-ctx.Done()
-	if retErr != nil {
-		return retErr
-	}
-	return ctx.Err()
+	return retErr
 }

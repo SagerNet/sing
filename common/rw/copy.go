@@ -5,9 +5,9 @@ import (
 	"io"
 	"net"
 
-	"sing/common"
-	"sing/common/buf"
-	"sing/common/task"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/task"
 )
 
 func CopyConn(ctx context.Context, conn net.Conn, outConn net.Conn) error {

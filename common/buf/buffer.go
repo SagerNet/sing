@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"sing/common"
-	"sing/common/list"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/list"
 )
 
 type Buffer struct {
@@ -72,11 +72,6 @@ func (b *Buffer) SetByte(index int, value byte) {
 }
 
 func (b *Buffer) Extend(n int) []byte {
-	if b.start == b.end {
-		b.start = 0
-		b.end = n
-		return b.data[:n]
-	}
 	end := b.end + n
 	ext := b.data[b.end:end]
 	b.end = end
@@ -100,18 +95,43 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 	return
 }
 
+func (b *Buffer) ExtendHeader(size int) []byte {
+	if b.start >= size {
+		b.start -= size
+		return b.data[b.start-size : b.start]
+	} else {
+		offset := size - b.start
+		end := b.end + size
+		copy(b.data[offset:end], b.data[b.start:b.end])
+		b.end = end
+		return b.data[:offset]
+	}
+}
+
+func (b *Buffer) WriteBufferAtFirst(buffer *Buffer) *Buffer {
+	size := buffer.Len()
+	if b.start >= size {
+		n := copy(b.data[b.start-size:b.start], buffer.Bytes())
+		b.start -= n
+		buffer.Release()
+		return b
+	}
+	common.Must1(buffer.Write(b.Bytes()))
+	b.Release()
+	return buffer
+}
+
 func (b *Buffer) WriteAtFirst(data []byte) (n int, err error) {
 	size := len(data)
 	if b.start >= size {
 		n = copy(b.data[b.start-size:b.start], data)
 		b.start -= n
-		return
+	} else {
+		copy(b.data[size:], b.data[b.start:b.end])
+		n = copy(b.data[:size], data)
+		b.end += size - b.start
+		b.start = 0
 	}
-
-	offset := size - b.start
-	copy(b.data[offset:], b.data[b.start:b.end])
-	n = copy(b.data[:offset], data)
-	b.end += offset
 	return
 }
 
@@ -133,6 +153,21 @@ func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
 		return 0, io.ErrShortBuffer
 	}
 	n, err := r.Read(b.FreeBytes())
+	if err != nil {
+		return 0, err
+	}
+	b.end += n
+	return int64(n), nil
+}
+
+func (b *Buffer) ReadAtLeastFrom(r io.Reader, min int) (int64, error) {
+	if min <= 0 {
+		return b.ReadFrom(r)
+	}
+	if b.IsFull() {
+		return 0, io.ErrShortBuffer
+	}
+	n, err := io.ReadAtLeast(r, b.FreeBytes(), min)
 	if err != nil {
 		return 0, err
 	}

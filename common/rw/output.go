@@ -3,9 +3,9 @@ package rw
 import (
 	"io"
 
-	"sing/common"
-	"sing/common/buf"
-	"sing/common/list"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/list"
 )
 
 type OutputStream interface {

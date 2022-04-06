@@ -7,9 +7,9 @@ import (
 	"io"
 	"math/rand"
 
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/socksaddr"
 	"golang.org/x/crypto/hkdf"
-	"sing/common"
-	"sing/common/socksaddr"
 )
 
 const MaxPacketSize = 16*1024 - 1

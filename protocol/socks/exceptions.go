@@ -10,14 +10,6 @@ func (e UnsupportedVersionException) Error() string {
 	return fmt.Sprint("unsupported version: ", e.Version)
 }
 
-type UnsupportedAuthTypeException struct {
-	Method byte
-}
-
-func (e UnsupportedAuthTypeException) Error() string {
-	return fmt.Sprint("unsupported auth type: ", e.Method)
-}
-
 type UnsupportedCommandException struct {
 	Command byte
 }

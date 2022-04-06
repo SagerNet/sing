@@ -24,7 +24,7 @@ func (e exception) Error() string {
 	if e.cause == nil {
 		return e.message
 	}
-	return e.message + ":" + e.cause.Error()
+	return e.message + ": " + e.cause.Error()
 }
 
 func (e exception) Cause() error {

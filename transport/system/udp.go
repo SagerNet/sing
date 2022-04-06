@@ -2,13 +2,13 @@ package system
 
 import (
 	"net"
-
 	"net/netip"
-	"sing/common/buf"
+
+	"github.com/sagernet/sing/common/buf"
 )
 
 type UDPHandler interface {
-	HandleUDP(buffer *buf.Buffer, sourceAddr net.Addr) error
+	HandleUDP(listener *UDPListener, buffer *buf.Buffer, sourceAddr net.Addr) error
 	OnError(err error)
 }
 
@@ -52,7 +52,7 @@ func (l *UDPListener) loop() {
 		}
 		buffer.Truncate(n)
 		go func() {
-			err := l.Handler.HandleUDP(buffer, addr)
+			err := l.Handler.HandleUDP(l, buffer, addr)
 			if err != nil {
 				buffer.Release()
 				l.Handler.OnError(err)

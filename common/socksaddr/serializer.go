@@ -4,9 +4,9 @@ import (
 	"encoding/binary"
 	"io"
 
-	"sing/common"
-	"sing/common/exceptions"
-	"sing/common/rw"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/rw"
 )
 
 type SerializerOption func(*Serializer)

@@ -2,7 +2,6 @@ package socksaddr
 
 import (
 	"net"
-
 	"net/netip"
 )
 

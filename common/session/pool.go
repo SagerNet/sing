@@ -4,7 +4,7 @@ import (
 	"container/list"
 	"sync"
 
-	"sing/common"
+	"github.com/sagernet/sing/common"
 )
 
 var (

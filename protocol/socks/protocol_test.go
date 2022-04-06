@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"sing/common/socksaddr"
-	"sing/protocol/socks"
+	"github.com/sagernet/sing/common/socksaddr"
+	"github.com/sagernet/sing/protocol/socks"
 )
 
 func TestHandshake(t *testing.T) {

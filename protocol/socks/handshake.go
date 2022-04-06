@@ -3,9 +3,9 @@ package socks
 import (
 	"io"
 
-	"sing/common"
-	"sing/common/exceptions"
-	"sing/common/socksaddr"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/socksaddr"
 )
 
 func ClientHandshake(conn io.ReadWriter, version byte, command byte, addr socksaddr.Addr, port uint16, username string, password string) (*Response, error) {

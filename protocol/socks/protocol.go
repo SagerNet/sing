@@ -3,12 +3,13 @@ package socks
 import (
 	"bytes"
 	"io"
+	"net"
 
-	"sing/common"
-	"sing/common/buf"
-	"sing/common/exceptions"
-	"sing/common/rw"
-	"sing/common/socksaddr"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/socksaddr"
 )
 
 //+----+----------+----------+
@@ -50,11 +51,6 @@ func ReadAuthRequest(reader io.Reader) (*AuthRequest, error) {
 	if err != nil {
 		return nil, exceptions.Cause(err, "read socks auth methods, length ", methodLen)
 	}
-	for _, method := range methods {
-		if !(method == AuthTypeNotRequired || method == AuthTypeUsernamePassword) {
-			return nil, &UnsupportedAuthTypeException{method}
-		}
-	}
 	request := &AuthRequest{
 		version,
 		methods,
@@ -92,9 +88,6 @@ func ReadAuthResponse(reader io.Reader) (*AuthResponse, error) {
 	method, err := rw.ReadByte(reader)
 	if err != nil {
 		return nil, err
-	}
-	if !(method == AuthTypeNotRequired || method == AuthTypeUsernamePassword || method == AuthTypeNoAcceptedMethods) {
-		return nil, &UnsupportedAuthTypeException{method}
 	}
 	response := &AuthResponse{
 		Version: version,
@@ -271,6 +264,9 @@ func WriteResponse(writer io.Writer, response *Response) error {
 	err = rw.WriteZero(writer)
 	if err != nil {
 		return err
+	}
+	if response.BindAddr == nil {
+		return AddressSerializer.WriteAddressAndPort(writer, socksaddr.AddrFromIP(net.IPv4zero), response.BindPort)
 	}
 	return AddressSerializer.WriteAddressAndPort(writer, response.BindAddr, response.BindPort)
 }

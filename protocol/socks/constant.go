@@ -3,7 +3,7 @@ package socks
 import (
 	"strconv"
 
-	"sing/common/socksaddr"
+	"github.com/sagernet/sing/common/socksaddr"
 )
 
 const (
@@ -13,6 +13,7 @@ const (
 
 const (
 	AuthTypeNotRequired       byte = 0x00
+	AuthTypeGSSAPI            byte = 0x01
 	AuthTypeUsernamePassword  byte = 0x02
 	AuthTypeNoAcceptedMethods byte = 0xFF
 )

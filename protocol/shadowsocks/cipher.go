@@ -3,16 +3,16 @@ package shadowsocks
 import (
 	"io"
 
-	"sing/common/buf"
-	"sing/common/exceptions"
-	"sing/common/list"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/list"
 )
 
 type Cipher interface {
 	KeySize() int
-	IVSize() int
-	NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (io.Writer, error)
-	NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (io.Reader, error)
+	SaltSize() int
+	CreateReader(key []byte, iv []byte, reader io.Reader) io.Reader
+	CreateWriter(key []byte, iv []byte, writer io.Writer) (io.Writer, int)
 	EncodePacket(key []byte, buffer *buf.Buffer) error
 	DecodePacket(key []byte, buffer *buf.Buffer) error
 }
