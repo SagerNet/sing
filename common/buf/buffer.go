@@ -25,6 +25,20 @@ func New() *Buffer {
 	}
 }
 
+func NewSize(size int) *Buffer {
+	if size <= 128 || size > BufferSize {
+		return &Buffer{
+			data: make([]byte, size),
+		}
+	}
+	return &Buffer{
+		data:    GetBytes(),
+		start:   ReversedHeader,
+		end:     ReversedHeader,
+		managed: true,
+	}
+}
+
 func FullNew() *Buffer {
 	return &Buffer{
 		data:    GetBytes(),
@@ -54,6 +68,20 @@ func As(data []byte) *Buffer {
 	return &Buffer{
 		data: data,
 		end:  size,
+	}
+}
+
+func Or(data []byte, size int) *Buffer {
+	max := cap(data)
+	if size != max {
+		data = data[:max]
+	}
+	if cap(data) >= size {
+		return &Buffer{
+			data: data,
+		}
+	} else {
+		return NewSize(size)
 	}
 }
 
@@ -346,7 +374,7 @@ func (b Buffer) Copy() []byte {
 func ReleaseMulti(mb *list.List[*Buffer]) {
 	for entry := mb.Front(); entry != nil; entry = entry.Next() {
 		// TODO: remove cast
-		var buffer *Buffer = entry.Value
+		buffer := entry.Value
 		buffer.Release()
 	}
 }

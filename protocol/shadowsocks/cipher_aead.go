@@ -92,9 +92,9 @@ func (c *AEADCipher) CreateReader(key []byte, salt []byte, reader io.Reader) io.
 	return NewAEADReader(reader, c.Constructor(Kdf(key, salt, c.KeyLength)))
 }
 
-func (c *AEADCipher) CreateWriter(key []byte, salt []byte, writer io.Writer) (io.Writer, int) {
+func (c *AEADCipher) CreateWriter(key []byte, salt []byte, writer io.Writer) io.Writer {
 	protocolWriter := NewAEADWriter(writer, c.Constructor(Kdf(key, salt, c.KeyLength)))
-	return protocolWriter, protocolWriter.maxDataSize
+	return protocolWriter
 }
 
 func (c *AEADCipher) EncodePacket(key []byte, buffer *buf.Buffer) error {
@@ -132,12 +132,6 @@ func (c *AEADConn) Write(p []byte) (n int, err error) {
 	return c.Writer.Write(p)
 }
 
-func (c *AEADConn) Close() error {
-	c.Reader.Close()
-	c.Writer.Close()
-	return c.Conn.Close()
-}
-
 type AEADReader struct {
 	upstream io.Reader
 	cipher   cipher.AEAD
@@ -151,13 +145,59 @@ func NewAEADReader(upstream io.Reader, cipher cipher.AEAD) *AEADReader {
 	return &AEADReader{
 		upstream: upstream,
 		cipher:   cipher,
-		data:     buf.GetBytes(),
+		data:     make([]byte, MaxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
 		nonce:    make([]byte, cipher.NonceSize()),
 	}
 }
 
 func (r *AEADReader) Upstream() io.Reader {
 	return r.upstream
+}
+
+func (r *AEADReader) Replaceable() bool {
+	return false
+}
+
+func (r *AEADReader) SetUpstream(reader io.Reader) {
+	r.upstream = reader
+}
+
+func (r *AEADReader) WriteTo(writer io.Writer) (n int64, err error) {
+	if r.cached > 0 {
+		writeN, writeErr := writer.Write(r.data[r.index : r.index+r.cached])
+		if writeErr != nil {
+			return int64(writeN), writeErr
+		}
+		n += int64(writeN)
+	}
+	for {
+		start := PacketLengthBufferSize + r.cipher.Overhead()
+		_, err = io.ReadFull(r.upstream, r.data[:start])
+		if err != nil {
+			return
+		}
+		_, err = r.cipher.Open(r.data[:0], r.nonce, r.data[:start], nil)
+		if err != nil {
+			return
+		}
+		increaseNonce(r.nonce)
+		length := int(binary.BigEndian.Uint16(r.data[:PacketLengthBufferSize]))
+		end := length + r.cipher.Overhead()
+		_, err = io.ReadFull(r.upstream, r.data[:end])
+		if err != nil {
+			return
+		}
+		_, err = r.cipher.Open(r.data[:0], r.nonce, r.data[:end], nil)
+		if err != nil {
+			return
+		}
+		increaseNonce(r.nonce)
+		writeN, writeErr := writer.Write(r.data[:length])
+		if writeErr != nil {
+			return int64(writeN), writeErr
+		}
+		n += int64(writeN)
+	}
 }
 
 func (r *AEADReader) Read(b []byte) (n int, err error) {
@@ -209,29 +249,19 @@ func (r *AEADReader) Read(b []byte) (n int, err error) {
 	}
 }
 
-func (r *AEADReader) Close() error {
-	if r.data != nil {
-		buf.PutBytes(r.data)
-		r.data = nil
-	}
-	return nil
-}
-
 type AEADWriter struct {
-	upstream    io.Writer
-	cipher      cipher.AEAD
-	data        []byte
-	nonce       []byte
-	maxDataSize int
+	upstream io.Writer
+	cipher   cipher.AEAD
+	data     []byte
+	nonce    []byte
 }
 
 func NewAEADWriter(upstream io.Writer, cipher cipher.AEAD) *AEADWriter {
 	return &AEADWriter{
-		upstream:    upstream,
-		cipher:      cipher,
-		data:        buf.GetBytes(),
-		nonce:       make([]byte, cipher.NonceSize()),
-		maxDataSize: MaxPacketSize - PacketLengthBufferSize - cipher.Overhead()*2,
+		upstream: upstream,
+		cipher:   cipher,
+		data:     make([]byte, MaxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
+		nonce:    make([]byte, cipher.NonceSize()),
 	}
 }
 
@@ -239,47 +269,47 @@ func (w *AEADWriter) Upstream() io.Writer {
 	return w.upstream
 }
 
-func (w *AEADWriter) Process(p []byte) (n int, buffer *buf.Buffer, flush bool, err error) {
-	if len(p) > w.maxDataSize {
-		n, err = w.Write(p)
-		err = &rw.DirectException{
-			Suppressed: err,
+func (w *AEADWriter) Replaceable() bool {
+	return false
+}
+
+func (w *AEADWriter) SetWriter(writer io.Writer) {
+	w.upstream = writer
+}
+
+func (w *AEADWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	for {
+		offset := w.cipher.Overhead() + PacketLengthBufferSize
+		readN, readErr := r.Read(w.data[offset : offset+MaxPacketSize])
+		if readErr != nil {
+			return 0, readErr
 		}
-		return
-	}
-
-	binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(len(p)))
-	encryptedLength := w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
-	increaseNonce(w.nonce)
-	start := len(encryptedLength)
-
-	/*
-		no usage
-		if cap(p) > len(p)+PacketLengthBufferSize+2*w.cipher.Overhead() {
-			packet := w.cipher.Seal(p[:start], w.nonce, p, nil)
-			increaseNonce(w.nonce)
-			copy(p[:start], encryptedLength)
-			n = start + len(packet)
+		binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(readN))
+		w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
+		increaseNonce(w.nonce)
+		packet := w.cipher.Seal(w.data[offset:offset], w.nonce, w.data[offset:offset+readN], nil)
+		increaseNonce(w.nonce)
+		_, err = w.upstream.Write(w.data[:offset+len(packet)])
+		if err != nil {
 			return
 		}
-	*/
-
-	packet := w.cipher.Seal(w.data[:start], w.nonce, p, nil)
-	increaseNonce(w.nonce)
-	return 0, buf.As(packet), false, err
+		err = common.FlushVar(&w.upstream)
+		if err != nil {
+			return
+		}
+		n += int64(readN)
+	}
 }
 
 func (w *AEADWriter) Write(p []byte) (n int, err error) {
-	for _, data := range buf.ForeachN(p, w.maxDataSize) {
+	for _, data := range buf.ForeachN(p, MaxPacketSize) {
 		binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(len(data)))
 		w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
 		increaseNonce(w.nonce)
-
-		start := w.cipher.Overhead() + PacketLengthBufferSize
-		packet := w.cipher.Seal(w.data[:start], w.nonce, data, nil)
+		offset := w.cipher.Overhead() + PacketLengthBufferSize
+		packet := w.cipher.Seal(w.data[offset:offset], w.nonce, data, nil)
 		increaseNonce(w.nonce)
-
-		_, err = w.upstream.Write(packet)
+		_, err = w.upstream.Write(w.data[:offset+len(packet)])
 		if err != nil {
 			return
 		}
@@ -287,14 +317,6 @@ func (w *AEADWriter) Write(p []byte) (n int, err error) {
 	}
 
 	return
-}
-
-func (w *AEADWriter) Close() error {
-	if w.data != nil {
-		buf.PutBytes(w.data)
-		w.data = nil
-	}
-	return nil
 }
 
 func increaseNonce(nonce []byte) {

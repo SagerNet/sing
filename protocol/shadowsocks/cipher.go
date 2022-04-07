@@ -11,8 +11,8 @@ import (
 type Cipher interface {
 	KeySize() int
 	SaltSize() int
-	CreateReader(key []byte, iv []byte, reader io.Reader) io.Reader
-	CreateWriter(key []byte, iv []byte, writer io.Writer) (io.Writer, int)
+	CreateReader(key []byte, salt []byte, reader io.Reader) io.Reader
+	CreateWriter(key []byte, salt []byte, writer io.Writer) io.Writer
 	EncodePacket(key []byte, buffer *buf.Buffer) error
 	DecodePacket(key []byte, buffer *buf.Buffer) error
 }

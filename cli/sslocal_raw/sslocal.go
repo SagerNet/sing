@@ -1,15 +1,18 @@
-package sslocal
+package main
 
 import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/netip"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,13 +30,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func main() {
+	err := MainCmd().Execute()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+}
+
 type Flags struct {
-	Server     string
-	ServerPort uint16
-	LocalPort  uint16
-	Password   string
-	Key        string
-	Method     string
+	Server      string `json:"server"`
+	ServerPort  uint16 `json:"server_port"`
+	LocalPort   uint16 `json:"local_port"`
+	Password    string `json:"password"`
+	Key         string `json:"key"`
+	Method      string `json:"method"`
+	Timeout     uint16 `json:"timeout"`
+	TCPFastOpen bool   `json:"fast_open"`
+	Verbose     bool   `json:"verbose"`
+	ConfigFile  string
 }
 
 func MainCmd() *cobra.Command {
@@ -65,13 +79,10 @@ chacha20-ietf-poly1305
 xchacha20-ietf-poly1305
 
 The default cipher is chacha20-ietf-poly1305.`)
-	// cmd.Flags().Uint16VarP(&flags.Timeout, "timeout", "t", 60, "Set the socket timeout in seconds.")
-	// cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Use a configuration file.")
-	// cmd.Flags().Uint16VarP(&flags.MaxFD, "max-open-files", "n", 0, `Specify max number of open files.
-	// Only available on Linux.`)
-	// cmd.Flags().StringVarP(&flags.Interface, "interface", "i", "", `Send traffic through specific network interface.
-	// For example, there are three interfaces in your device, which is lo (127.0.0.1), eth0 (192.168.0.1) and eth1 (192.168.0.2). Meanwhile, you configure ss-local to listen on 0.0.0.0:8388 and bind to eth1. That results the traffic go out through eth1, but not lo nor eth0. This option is useful to control traffic in multi-interface environment.`)
-	// cmd.Flags().StringVarP(&flags.LocalAddress, "local-address", "b", "", "Specify the local address to use while this client is making outbound connections to the server.")
+	cmd.Flags().BoolVar(&flags.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
+Only available with Linux kernel > 3.7.0.`)
+	cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Use a configuration file.")
+	cmd.Flags().BoolVarP(&flags.Verbose, "verbose", "v", false, "Enable verbose mode.")
 
 	return cmd
 }
@@ -81,10 +92,27 @@ type LocalClient struct {
 	serverAddr netip.AddrPort
 	cipher     shadowsocks.Cipher
 	key        []byte
+	dialer     net.Dialer
 }
 
 func NewLocalClient(flags *Flags) (*LocalClient, error) {
-	client := new(LocalClient)
+	if flags.ConfigFile != "" {
+		configFile, err := os.Open(flags.ConfigFile)
+		if err != nil {
+			return nil, exceptions.CauseF(err, "unable to open config file ", flags.ConfigFile)
+		}
+		config, err := ioutil.ReadAll(configFile)
+		configFile.Close()
+		if err != nil {
+			return nil, err
+		}
+		err = json.Unmarshal(config, &flags)
+		if err != nil {
+			return nil, exceptions.Cause(err, "failed to decode config file")
+		}
+	}
+
+	client := &LocalClient{}
 	client.tcpIn = system.NewTCPListener(netip.AddrPortFrom(netip.IPv4Unspecified(), flags.LocalPort), client)
 
 	if flags.Server == "" {
@@ -120,6 +148,32 @@ func NewLocalClient(flags *Flags) (*LocalClient, error) {
 		return nil, exceptions.New("password not specified")
 	}
 
+	if flags.Timeout > 0 {
+		client.dialer.Timeout = time.Duration(flags.Timeout) * time.Second
+	}
+
+	if flags.TCPFastOpen {
+		client.dialer.Control = func(network, address string, c syscall.RawConn) error {
+			if strings.HasPrefix(network, "tcp") {
+				var rawFd uintptr
+				if err = c.Control(func(fd uintptr) {
+					rawFd = fd
+				}); err != nil {
+					return err
+				}
+				err = system.TCPFastOpen(rawFd)
+				if err != nil {
+					return exceptions.Cause(err, "set tcp fast open")
+				}
+			}
+			return nil
+		}
+	}
+
+	if flags.Verbose {
+		logrus.SetLevel(logrus.TraceLevel)
+	}
+
 	return client, nil
 }
 
@@ -142,7 +196,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 
 	authRequest, err := socks.ReadAuthRequest(conn)
 	if err != nil {
-		return err
+		return exceptions.Cause(err, "read socks auth request")
 	}
 
 	if !common.Contains(authRequest.Methods, socks.AuthTypeNotRequired) {
@@ -151,7 +205,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			Method:  socks.AuthTypeNoAcceptedMethods,
 		})
 		if err != nil {
-			return err
+			return exceptions.Cause(err, "write socks auth response")
 		}
 	}
 
@@ -160,12 +214,12 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 		Method:  socks.AuthTypeNotRequired,
 	})
 	if err != nil {
-		return err
+		return exceptions.Cause(err, "write socks auth response")
 	}
 
 	request, err := socks.ReadRequest(conn)
 	if err != nil {
-		return err
+		return exceptions.Cause(err, "read socks request")
 	}
 
 	ctx := context.Background()
@@ -181,7 +235,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 	case socks.CommandConnect:
 		logrus.Info("CONNECT ", request.Addr, ":", request.Port)
 
-		serverConn, dialErr := system.Dial(ctx, "tcp", c.serverAddr.String())
+		serverConn, dialErr := c.dialer.DialContext(ctx, "tcp", c.serverAddr.String())
 		if dialErr != nil {
 			failure()
 			return exceptions.Cause(dialErr, "connect to server")
@@ -196,12 +250,12 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			Writer: serverConn,
 			Buffer: saltBuffer,
 		}
-		writer, _ := c.cipher.CreateWriter(c.key, saltBuffer.Bytes(), serverWriter)
+		writer := c.cipher.CreateWriter(c.key, saltBuffer.Bytes(), serverWriter)
 
-		header := buf.New()
-		defer header.Release()
+		requestBuffer := buf.New()
+		defer requestBuffer.Release()
 
-		err = shadowsocks.AddressSerializer.WriteAddressAndPort(header, request.Addr, request.Port)
+		err = shadowsocks.AddressSerializer.WriteAddressAndPort(requestBuffer, request.Addr, request.Port)
 		if err != nil {
 			failure()
 			return err
@@ -215,7 +269,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			BindPort:  serverPort,
 		})
 		if err != nil {
-			return exceptions.Cause(err, "write response for ", request.Addr, "/", request.Port)
+			return exceptions.Cause(err, "write socks response")
 		}
 
 		return task.Run(ctx, func() error {
@@ -226,7 +280,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			if err != nil {
 				return err
 			}
-			_, err = header.ReadFrom(conn)
+			_, err = requestBuffer.ReadFrom(conn)
 			if err != nil {
 				if errors.Is(err, os.ErrDeadlineExceeded) {
 				} else {
@@ -237,7 +291,7 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			if err != nil {
 				return err
 			}
-			_, err = writer.Write(header.Bytes())
+			_, err = writer.Write(requestBuffer.Bytes())
 			if err != nil {
 				return err
 			}
@@ -245,7 +299,8 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			if err != nil {
 				return exceptions.Cause(err, "flush request")
 			}
-			_, err = io.Copy(writer, conn)
+			requestBuffer.FullReset()
+			_, err = io.CopyBuffer(writer, conn, requestBuffer.FreeBytes())
 			if err != nil {
 				return exceptions.Cause(err, "upload")
 			}
@@ -275,10 +330,10 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 			return nil
 		})
 	case socks.CommandUDPAssociate:
-		serverConn, dialErr := system.Dial(ctx, "udp", c.serverAddr.String())
+		serverConn, dialErr := c.dialer.DialContext(ctx, "udp", c.serverAddr.String())
 		if dialErr != nil {
 			failure()
-			return exceptions.Cause(err, "connect to server")
+			return exceptions.Cause(dialErr, "connect to server")
 		}
 		handler := &udpHandler{
 			LocalClient:  c,
@@ -300,9 +355,12 @@ func (c *LocalClient) HandleTCP(conn net.Conn) error {
 		}
 		go handler.loopInput()
 		return common.Error(io.Copy(io.Discard, conn))
+	default:
+		return socks.WriteResponse(conn, &socks.Response{
+			Version:   request.Version,
+			ReplyCode: socks.ReplyCodeUnsupported,
+		})
 	}
-
-	return nil
 }
 
 type udpHandler struct {
@@ -313,7 +371,7 @@ type udpHandler struct {
 	sourceAddr   net.Addr
 }
 
-func (c *udpHandler) HandleUDP(listener *system.UDPListener, buffer *buf.Buffer, sourceAddr net.Addr) error {
+func (c *udpHandler) HandleUDP(buffer *buf.Buffer, sourceAddr net.Addr) error {
 	c.sourceAddr = sourceAddr
 	buffer.Advance(3)
 	if c.cipher.SaltSize() > 0 {
@@ -369,5 +427,8 @@ func (c *udpHandler) Close() error {
 }
 
 func (c *LocalClient) OnError(err error) {
+	if exceptions.IsClosed(err) {
+		return
+	}
 	logrus.Warn(err)
 }

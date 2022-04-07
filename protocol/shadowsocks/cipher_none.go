@@ -26,8 +26,8 @@ func (c *NoneCipher) CreateReader(_ []byte, _ []byte, reader io.Reader) io.Reade
 	return reader
 }
 
-func (c *NoneCipher) CreateWriter(_ []byte, _ []byte, writer io.Writer) (io.Writer, int) {
-	return writer, 0
+func (c *NoneCipher) CreateWriter(key []byte, iv []byte, writer io.Writer) io.Writer {
+	return writer
 }
 
 func (c *NoneCipher) EncodePacket([]byte, *buf.Buffer) error {

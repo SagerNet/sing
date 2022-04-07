@@ -4,18 +4,40 @@ import (
 	"context"
 	"io"
 	"net"
+	"os"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/task"
 )
 
-func CopyConn(ctx context.Context, conn net.Conn, outConn net.Conn) error {
-	return task.Run(ctx, func() error {
-		return common.Error(io.Copy(conn, outConn))
-	}, func() error {
-		return common.Error(io.Copy(outConn, conn))
-	})
+func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
+	writer := *writerVar
+	writerBack := writer
+	for {
+		if w, ok := writer.(io.ReaderFrom); ok {
+			return w.ReadFrom(reader)
+		}
+		if f, ok := writer.(common.Flusher); ok {
+			err := f.Flush()
+			if err != nil {
+				return 0, err
+			}
+		}
+		if u, ok := writer.(common.WriterWithUpstream); ok {
+			if u.Replaceable() && writerBack == writer {
+				writer = u.Upstream()
+				writerBack = writer
+				writerVar = &writer
+				continue
+			}
+			writer = u.Upstream()
+			writerBack = writer
+		} else {
+			break
+		}
+	}
+	return 0, os.ErrInvalid
 }
 
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {

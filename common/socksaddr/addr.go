@@ -3,6 +3,7 @@ package socksaddr
 import (
 	"net"
 	"net/netip"
+	"strconv"
 )
 
 type Addr interface {
@@ -12,8 +13,36 @@ type Addr interface {
 	String() string
 }
 
+func ParseAddr(address string) Addr {
+	addr, err := netip.ParseAddr(address)
+	if err == nil {
+		return AddrFromAddr(addr)
+	}
+	return AddrFromFqdn(address)
+}
+
+func ParseAddrPort(address string) (Addr, uint16, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, 0, err
+	}
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, 0, err
+	}
+	return ParseAddr(host), uint16(portInt), nil
+}
+
 func AddrFromIP(ip net.IP) Addr {
 	addr, _ := netip.AddrFromSlice(ip)
+	if addr.Is4() {
+		return Addr4(addr.As4())
+	} else {
+		return Addr16(addr.As16())
+	}
+}
+
+func AddrFromAddr(addr netip.Addr) Addr {
 	if addr.Is4() {
 		return Addr4(addr.As4())
 	} else {
@@ -36,6 +65,10 @@ func AddressFromNetAddr(netAddr net.Addr) (addr Addr, port uint16) {
 
 func AddrFromFqdn(fqdn string) Addr {
 	return AddrFqdn(fqdn)
+}
+
+func JoinHostPort(addr Addr, port uint16) string {
+	return net.JoinHostPort(addr.String(), strconv.Itoa(int(port)))
 }
 
 type Addr4 [4]byte

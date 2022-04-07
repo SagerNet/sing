@@ -8,7 +8,7 @@ import (
 )
 
 type UDPHandler interface {
-	HandleUDP(listener *UDPListener, buffer *buf.Buffer, sourceAddr net.Addr) error
+	HandleUDP(buffer *buf.Buffer, sourceAddr net.Addr) error
 	OnError(err error)
 }
 
@@ -52,7 +52,7 @@ func (l *UDPListener) loop() {
 		}
 		buffer.Truncate(n)
 		go func() {
-			err := l.Handler.HandleUDP(l, buffer, addr)
+			err := l.Handler.HandleUDP(buffer, addr)
 			if err != nil {
 				buffer.Release()
 				l.Handler.OnError(err)

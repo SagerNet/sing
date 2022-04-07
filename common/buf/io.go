@@ -2,6 +2,8 @@ package buf
 
 import (
 	"io"
+
+	"github.com/sagernet/sing/common"
 )
 
 type BufferedReader struct {
@@ -16,13 +18,18 @@ func (r *BufferedReader) Upstream() io.Reader {
 	return r.Reader
 }
 
+func (r *BufferedReader) Replaceable() bool {
+	return r.Buffer == nil
+}
+
 func (r *BufferedReader) Read(p []byte) (n int, err error) {
 	if r.Buffer != nil {
 		n, err = r.Buffer.Read(p)
-		if err == nil {
-			return
+		if r.Buffer.IsEmpty() {
+			r.Buffer.Release()
+			r.Buffer = nil
 		}
-		r.Buffer = nil
+		return
 	}
 	return r.Reader.Read(p)
 }
@@ -33,10 +40,11 @@ type BufferedWriter struct {
 }
 
 func (w *BufferedWriter) Upstream() io.Writer {
-	if w.Buffer != nil {
-		return nil
-	}
 	return w.Writer
+}
+
+func (w *BufferedWriter) Replaceable() bool {
+	return w.Buffer == nil
 }
 
 func (w *BufferedWriter) Write(p []byte) (n int, err error) {
@@ -47,13 +55,7 @@ func (w *BufferedWriter) Write(p []byte) (n int, err error) {
 	if err == nil {
 		return
 	}
-	n, err = w.Writer.Write(w.Buffer.Bytes())
-	if err != nil {
-		return 0, err
-	}
-	w.Buffer.Release()
-	w.Buffer = nil
-	return w.Writer.Write(p)
+	return len(p), w.Flush()
 }
 
 func (w *BufferedWriter) Flush() error {
@@ -66,6 +68,5 @@ func (w *BufferedWriter) Flush() error {
 	if buffer.IsEmpty() {
 		return nil
 	}
-	_, err := w.Writer.Write(buffer.Bytes())
-	return err
+	return common.Error(w.Writer.Write(buffer.Bytes()))
 }
