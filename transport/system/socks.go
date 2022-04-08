@@ -90,7 +90,7 @@ func (l *SocksListener) HandleTCP(conn net.Conn) error {
 	}
 	switch request.Command {
 	case socks.CommandConnect:
-		localAddr, localPort := socksaddr.AddressFromNetAddr(l.TCPListener.TCPListener.Addr())
+		localAddr, localPort := socksaddr.AddrFromNetAddr(l.TCPListener.TCPListener.Addr())
 		err = socks.WriteResponse(conn, &socks.Response{
 			Version:   request.Version,
 			ReplyCode: socks.ReplyCodeSuccess,
@@ -107,7 +107,7 @@ func (l *SocksListener) HandleTCP(conn net.Conn) error {
 			return err
 		}
 		defer udpConn.Close()
-		localAddr, localPort := socksaddr.AddressFromNetAddr(udpConn.LocalAddr())
+		localAddr, localPort := socksaddr.AddrFromNetAddr(udpConn.LocalAddr())
 		err = socks.WriteResponse(conn, &socks.Response{
 			Version:   request.Version,
 			ReplyCode: socks.ReplyCodeSuccess,

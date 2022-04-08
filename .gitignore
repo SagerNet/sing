@@ -1,3 +1,5 @@
 /.idea/
 /sing_*
 /*.json
+/Country.mmdb
+/geosite.dat

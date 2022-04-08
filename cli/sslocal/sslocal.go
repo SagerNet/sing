@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/sagernet/sing/common/geoip"
+	"github.com/sagernet/sing/common/geosite"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/netip"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 
@@ -42,6 +45,9 @@ type Flags struct {
 	Method      string `json:"method"`
 	TCPFastOpen bool   `json:"fast_open"`
 	Verbose     bool   `json:"verbose"`
+	Redirect    string `json:"redir"`
+	FWMark      int    `json:"fwmark"`
+	Bypass      string `json:"bypass"`
 	ConfigFile  string
 }
 
@@ -76,6 +82,9 @@ xchacha20-ietf-poly1305
 The default cipher is chacha20-ietf-poly1305.`)
 	cmd.Flags().BoolVar(&flags.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
 Only available with Linux kernel > 3.7.0.`)
+	cmd.Flags().StringVar(&flags.Redirect, "redir", "", "Enable transparent proxy support. [possible values: redirect, tproxy]")
+	cmd.Flags().IntVar(&flags.FWMark, "fwmark", 0, "Set outbound socket mark.")
+	cmd.Flags().StringVar(&flags.Bypass, "bypass", "", "Set bypass country.")
 	cmd.Flags().StringVarP(&flags.ConfigFile, "config", "c", "", "Use a configuration file.")
 	cmd.Flags().BoolVarP(&flags.Verbose, "verbose", "v", false, "Enable verbose mode.")
 
@@ -85,6 +94,9 @@ Only available with Linux kernel > 3.7.0.`)
 type LocalClient struct {
 	*system.MixedListener
 	*shadowsocks.Client
+	*geosite.Matcher
+	redirect bool
+	bypass   string
 }
 
 func NewLocalClient(flags *Flags) (*LocalClient, error) {
@@ -115,6 +127,9 @@ func NewLocalClient(flags *Flags) (*LocalClient, error) {
 		}
 		if flagsNew.Method != "" && flags.Method == "" {
 			flags.Method = flagsNew.Method
+		}
+		if flagsNew.Redirect != "" && flags.Redirect == "" {
+			flags.Redirect = flagsNew.Redirect
 		}
 		if flagsNew.TCPFastOpen {
 			flags.TCPFastOpen = true
@@ -147,17 +162,27 @@ func NewLocalClient(flags *Flags) (*LocalClient, error) {
 
 	dialer := new(net.Dialer)
 
-	if flags.TCPFastOpen {
-		dialer.Control = func(network, address string, c syscall.RawConn) error {
-			var rawFd uintptr
-			err := c.Control(func(fd uintptr) {
-				rawFd = fd
-			})
+	dialer.Control = func(network, address string, c syscall.RawConn) error {
+		var rawFd uintptr
+		err := c.Control(func(fd uintptr) {
+			rawFd = fd
+		})
+		if err != nil {
+			return err
+		}
+		if flags.FWMark > 0 {
+			err = syscall.SetsockoptInt(int(rawFd), syscall.SOL_SOCKET, syscall.SO_MARK, flags.FWMark)
 			if err != nil {
 				return err
 			}
-			return system.TCPFastOpen(rawFd)
 		}
+		if flags.TCPFastOpen {
+			err = system.TCPFastOpen(rawFd)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	shadowClient, err := shadowsocks.NewClient(dialer, clientConfig)
@@ -168,7 +193,32 @@ func NewLocalClient(flags *Flags) (*LocalClient, error) {
 	client := &LocalClient{
 		Client: shadowClient,
 	}
-	client.MixedListener = system.NewMixedListener(netip.AddrPortFrom(netip.AddrFrom4([4]byte{127, 0, 0, 1}), flags.LocalPort), &system.SocksConfig{}, client)
+	client.MixedListener = system.NewMixedListener(netip.AddrPortFrom(netip.IPv6Unspecified(), flags.LocalPort), &system.MixedConfig{
+		Redirect: flags.Redirect == "redirect",
+		TProxy:   flags.Redirect == "tproxy",
+	}, client)
+
+	if flags.Bypass != "" {
+		client.bypass = flags.Bypass
+
+		err = geoip.LoadMMDB("Country.mmdb")
+		if err != nil {
+			return nil, exceptions.Cause(err, "load Country.mmdb")
+		}
+
+		geodata, err := os.Open("geosite.dat")
+		if err != nil {
+			return nil, exceptions.Cause(err, "geosite.dat not found")
+		}
+
+		geositeMatcher, err := geosite.LoadGeositeMatcher(geodata, flags.Bypass)
+		if err != nil {
+			return nil, err
+		}
+		client.Matcher = geositeMatcher
+		debug.FreeOSMemory()
+	}
+
 	return client, nil
 }
 
@@ -181,8 +231,37 @@ func (c *LocalClient) Start() error {
 	return nil
 }
 
+func bypass(addr socksaddr.Addr, port uint16, conn net.Conn) error {
+	logrus.Info("BYPASS ", conn.RemoteAddr(), " ==> ", net.JoinHostPort(addr.String(), strconv.Itoa(int(port))))
+	serverConn, err := net.Dial("tcp", socksaddr.JoinHostPort(addr, port))
+	if err != nil {
+		return err
+	}
+	return task.Run(context.Background(), func() error {
+		defer rw.CloseRead(conn)
+		defer rw.CloseWrite(serverConn)
+		return common.Error(io.Copy(serverConn, conn))
+	}, func() error {
+		defer rw.CloseRead(serverConn)
+		defer rw.CloseWrite(conn)
+		return common.Error(io.Copy(conn, serverConn))
+	})
+}
+
 func (c *LocalClient) NewConnection(addr socksaddr.Addr, port uint16, conn net.Conn) error {
-	logrus.Info("TCP ", conn.RemoteAddr(), " ==> ", net.JoinHostPort(addr.String(), strconv.Itoa(int(port))))
+	if c.bypass != "" {
+		if addr.Family().IsFqdn() {
+			if c.Match(addr.Fqdn()) {
+				return bypass(addr, port, conn)
+			}
+		} else {
+			if geoip.Match(c.bypass, addr.Addr().AsSlice()) {
+				return bypass(addr, port, conn)
+			}
+		}
+	}
+
+	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", net.JoinHostPort(addr.String(), strconv.Itoa(int(port))))
 
 	ctx := context.Background()
 	serverConn, err := c.DialContextTCP(ctx, addr, port)

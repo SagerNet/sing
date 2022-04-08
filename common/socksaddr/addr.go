@@ -50,7 +50,7 @@ func AddrFromAddr(addr netip.Addr) Addr {
 	}
 }
 
-func AddressFromNetAddr(netAddr net.Addr) (addr Addr, port uint16) {
+func AddrFromNetAddr(netAddr net.Addr) (addr Addr, port uint16) {
 	var ip net.IP
 	switch addr := netAddr.(type) {
 	case *net.TCPAddr:

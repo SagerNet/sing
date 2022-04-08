@@ -9,25 +9,55 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/socksaddr"
 	"github.com/sagernet/sing/protocol/socks"
 )
 
 type MixedListener struct {
 	*SocksListener
+	UDPListener *UDPListener
+	mcfg        *MixedConfig
+	laddr       *net.TCPAddr
 }
 
-func NewMixedListener(bind netip.AddrPort, config *SocksConfig, handler SocksHandler) *MixedListener {
-	listener := &MixedListener{NewSocksListener(bind, config, handler)}
+type MixedConfig struct {
+	SocksConfig
+	Redirect bool
+	TProxy   bool
+}
+
+func NewMixedListener(bind netip.AddrPort, config *MixedConfig, handler SocksHandler) *MixedListener {
+	listener := &MixedListener{SocksListener: NewSocksListener(bind, &config.SocksConfig, handler), mcfg: config}
 	listener.TCPListener.Handler = listener
+	if config.TProxy {
+		listener.UDPListener = NewUDPListener(bind, listener)
+	}
 	return listener
 }
 
 func (l *MixedListener) HandleTCP(conn net.Conn) error {
+	if l.mcfg.Redirect {
+		var destination netip.AddrPort
+		destination, err := redir.GetOriginalDestination(conn)
+		if err == nil {
+			return l.Handler.NewConnection(socksaddr.AddrFromAddr(destination.Addr()), destination.Port(), conn)
+		}
+	} else if l.mcfg.TProxy {
+		lAddr := conn.LocalAddr().(*net.TCPAddr)
+		rAddr := conn.RemoteAddr().(*net.TCPAddr)
+
+		if lAddr.Port != l.laddr.Port || !lAddr.IP.Equal(rAddr.IP) && !lAddr.IP.IsLoopback() && !lAddr.IP.IsPrivate() {
+			addr, port := socksaddr.AddrFromNetAddr(lAddr)
+			return l.Handler.NewConnection(addr, port, conn)
+		}
+	}
+
 	bufConn := buf.NewBufferedConn(conn)
 	hdr, err := bufConn.ReadByte()
 	if err != nil {
@@ -159,6 +189,10 @@ func (l *MixedListener) HandleTCP(conn net.Conn) error {
 	}
 }
 
+func (l *MixedListener) HandleUDP(buffer *buf.Buffer, sourceAddr net.Addr) error {
+	return nil
+}
+
 // removeHopByHopHeaders remove hop-by-hop header
 func removeHopByHopHeaders(header http.Header) {
 	// Strip hop-by-hop header based on RFC:
@@ -211,7 +245,31 @@ func responseWith(request *http.Request, statusCode int) *http.Response {
 }
 
 func (l *MixedListener) Start() error {
-	return l.TCPListener.Start()
+	err := l.TCPListener.Start()
+	if err != nil {
+		return err
+	}
+	if l.mcfg.TProxy {
+		rawConn, err := l.TCPListener.TCPListener.SyscallConn()
+		if err != nil {
+			return err
+		}
+		var rawFd uintptr
+		err = rawConn.Control(func(fd uintptr) {
+			rawFd = fd
+		})
+		if err != nil {
+			return err
+		}
+		err = syscall.SetsockoptInt(int(rawFd), syscall.SOL_IP, syscall.IP_TRANSPARENT, 1)
+		if err != nil {
+			return exceptions.Cause(err, "failed to configure TCP tproxy")
+		}
+	}
+	if l.mcfg.TProxy {
+		l.laddr = l.TCPListener.Addr().(*net.TCPAddr)
+	}
+	return nil
 }
 
 func (l *MixedListener) Close() error {
