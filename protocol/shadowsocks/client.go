@@ -2,7 +2,6 @@ package shadowsocks
 
 import (
 	"context"
-	"github.com/sagernet/sing/protocol/socks"
 	"io"
 	"net"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/socksaddr"
+	"github.com/sagernet/sing/protocol/socks"
 )
 
 var (
@@ -35,6 +35,16 @@ type Client struct {
 }
 
 func NewClient(dialer *net.Dialer, config *ClientConfig) (*Client, error) {
+	if config.Server == "" {
+		return nil, exceptions.New("missing server address")
+	}
+	if config.ServerPort == 0 {
+		return nil, exceptions.New("missing server port")
+	}
+	if config.Method == "" {
+		return nil, exceptions.New("missing server method")
+	}
+
 	cipher, err := CreateCipher(config.Method)
 	if err != nil {
 		return nil, err

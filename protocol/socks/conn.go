@@ -1,11 +1,12 @@
 package socks
 
 import (
+	"net"
+	"time"
+
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/socksaddr"
-	"net"
-	"time"
 )
 
 type PacketConn interface {

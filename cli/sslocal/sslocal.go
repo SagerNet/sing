@@ -53,7 +53,7 @@ func MainCmd() *cobra.Command {
 		Short:   "shadowsocks client as socks5 proxy, sing port",
 		Version: sing.Version,
 		Run: func(cmd *cobra.Command, args []string) {
-			Run(flags)
+			Run(cmd, flags)
 		},
 	}
 
@@ -162,7 +162,7 @@ func NewLocalClient(flags *Flags) (*LocalClient, error) {
 
 	shadowClient, err := shadowsocks.NewClient(dialer, clientConfig)
 	if err != nil {
-		return nil, exceptions.Cause(err, "create shadowsocks")
+		return nil, err
 	}
 
 	client := &LocalClient{
@@ -220,10 +220,12 @@ func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, addr socksaddr.
 	})
 }
 
-func Run(flags *Flags) {
+func Run(cmd *cobra.Command, flags *Flags) {
 	client, err := NewLocalClient(flags)
 	if err != nil {
-		logrus.Fatal(err)
+		logrus.StandardLogger().Log(logrus.FatalLevel, err, "\n\n")
+		cmd.Help()
+		os.Exit(1)
 	}
 	err = client.Start()
 	if err != nil {

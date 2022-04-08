@@ -1,13 +1,14 @@
 package system
 
 import (
+	"io"
+	"net"
+	"net/netip"
+
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/socksaddr"
 	"github.com/sagernet/sing/protocol/socks"
-	"io"
-	"net"
-	"net/netip"
 )
 
 type SocksHandler interface {
