@@ -40,6 +40,18 @@ func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
 	return 0, os.ErrInvalid
 }
 
+func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
+	return task.Run(context.Background(), func() error {
+		defer CloseRead(conn)
+		defer CloseWrite(dest)
+		return common.Error(io.Copy(dest, conn))
+	}, func() error {
+		defer CloseRead(dest)
+		defer CloseWrite(conn)
+		return common.Error(io.Copy(conn, dest))
+	})
+}
+
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {
 	return task.Run(ctx, func() error {
 		buffer := buf.FullNew()

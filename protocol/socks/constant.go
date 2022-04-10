@@ -3,7 +3,7 @@ package socks
 import (
 	"strconv"
 
-	"github.com/sagernet/sing/common/socksaddr"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 const (
@@ -69,8 +69,8 @@ func (code ReplyCode) String() string {
 	}
 }
 
-var AddressSerializer = socksaddr.NewSerializer(
-	socksaddr.AddressFamilyByte(0x01, socksaddr.AddressFamilyIPv4),
-	socksaddr.AddressFamilyByte(0x04, socksaddr.AddressFamilyIPv6),
-	socksaddr.AddressFamilyByte(0x03, socksaddr.AddressFamilyFqdn),
+var AddressSerializer = M.NewSerializer(
+	M.AddressFamilyByte(0x01, M.AddressFamilyIPv4),
+	M.AddressFamilyByte(0x04, M.AddressFamilyIPv6),
+	M.AddressFamilyByte(0x03, M.AddressFamilyFqdn),
 )

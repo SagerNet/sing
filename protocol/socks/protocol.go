@@ -7,9 +7,9 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/exceptions"
+	E "github.com/sagernet/sing/common/exceptions"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/common/socksaddr"
 )
 
 //+----+----------+----------+
@@ -45,11 +45,11 @@ func ReadAuthRequest(reader io.Reader) (*AuthRequest, error) {
 	}
 	methodLen, err := rw.ReadByte(reader)
 	if err != nil {
-		return nil, exceptions.Cause(err, "read socks auth methods length")
+		return nil, E.Cause(err, "read socks auth methods length")
 	}
 	methods, err := rw.ReadBytes(reader, int(methodLen))
 	if err != nil {
-		return nil, exceptions.CauseF(err, "read socks auth methods, length ", methodLen)
+		return nil, E.CauseF(err, "read socks auth methods, length ", methodLen)
 	}
 	request := &AuthRequest{
 		version,
@@ -112,11 +112,11 @@ func WriteUsernamePasswordAuthRequest(writer io.Writer, request *UsernamePasswor
 	if err != nil {
 		return err
 	}
-	err = socksaddr.WriteString(writer, "username", request.Username)
+	err = M.WriteString(writer, "username", request.Username)
 	if err != nil {
 		return err
 	}
-	return socksaddr.WriteString(writer, "password", request.Password)
+	return M.WriteString(writer, "password", request.Password)
 }
 
 func ReadUsernamePasswordAuthRequest(reader io.Reader) (*UsernamePasswordAuthRequest, error) {
@@ -127,11 +127,11 @@ func ReadUsernamePasswordAuthRequest(reader io.Reader) (*UsernamePasswordAuthReq
 	if version != UsernamePasswordVersion1 {
 		return nil, &UnsupportedVersionException{version}
 	}
-	username, err := socksaddr.ReadString(reader)
+	username, err := M.ReadString(reader)
 	if err != nil {
 		return nil, err
 	}
-	password, err := socksaddr.ReadString(reader)
+	password, err := M.ReadString(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -185,10 +185,9 @@ func ReadUsernamePasswordAuthResponse(reader io.Reader) (*UsernamePasswordAuthRe
 //+----+-----+-------+------+----------+----------+
 
 type Request struct {
-	Version byte
-	Command byte
-	Addr    socksaddr.Addr
-	Port    uint16
+	Version     byte
+	Command     byte
+	Destination *M.AddrPort
 }
 
 func WriteRequest(writer io.Writer, request *Request) error {
@@ -204,7 +203,7 @@ func WriteRequest(writer io.Writer, request *Request) error {
 	if err != nil {
 		return err
 	}
-	return AddressSerializer.WriteAddressAndPort(writer, request.Addr, request.Port)
+	return AddressSerializer.WriteAddrPort(writer, request.Destination)
 }
 
 func ReadRequest(reader io.Reader) (*Request, error) {
@@ -226,15 +225,14 @@ func ReadRequest(reader io.Reader) (*Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	addr, port, err := AddressSerializer.ReadAddressAndPort(reader)
+	addrPort, err := AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return nil, err
 	}
 	request := &Request{
-		Version: version,
-		Command: command,
-		Addr:    addr,
-		Port:    port,
+		Version:     version,
+		Command:     command,
+		Destination: addrPort,
 	}
 	return request, nil
 }
@@ -248,8 +246,7 @@ func ReadRequest(reader io.Reader) (*Request, error) {
 type Response struct {
 	Version   byte
 	ReplyCode ReplyCode
-	BindAddr  socksaddr.Addr
-	BindPort  uint16
+	Bind      *M.AddrPort
 }
 
 func WriteResponse(writer io.Writer, response *Response) error {
@@ -265,10 +262,10 @@ func WriteResponse(writer io.Writer, response *Response) error {
 	if err != nil {
 		return err
 	}
-	if response.BindAddr == nil {
-		return AddressSerializer.WriteAddressAndPort(writer, socksaddr.AddrFromIP(net.IPv4zero), response.BindPort)
+	if response.Bind == nil {
+		return AddressSerializer.WriteAddrPort(writer, M.AddrPortFrom(M.AddrFromIP(net.IPv4zero), 0))
 	}
-	return AddressSerializer.WriteAddressAndPort(writer, response.BindAddr, response.BindPort)
+	return AddressSerializer.WriteAddrPort(writer, response.Bind)
 }
 
 func ReadResponse(reader io.Reader) (*Response, error) {
@@ -287,15 +284,14 @@ func ReadResponse(reader io.Reader) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	addr, port, err := AddressSerializer.ReadAddressAndPort(reader)
+	addrPort, err := AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return nil, err
 	}
 	response := &Response{
 		Version:   version,
 		ReplyCode: ReplyCode(replyCode),
-		BindAddr:  addr,
-		BindPort:  port,
+		Bind:      addrPort,
 	}
 	return response, nil
 }
@@ -307,15 +303,14 @@ func ReadResponse(reader io.Reader) (*Response, error) {
 //+----+------+------+----------+----------+----------+
 
 type AssociatePacket struct {
-	Fragment byte
-	Addr     socksaddr.Addr
-	Port     uint16
-	Data     []byte
+	Fragment    byte
+	Destination *M.AddrPort
+	Data        []byte
 }
 
 func DecodeAssociatePacket(buffer *buf.Buffer) (*AssociatePacket, error) {
 	if buffer.Len() < 5 {
-		return nil, exceptions.New("insufficient length")
+		return nil, E.New("insufficient length")
 	}
 	fragment := buffer.Byte(2)
 	reader := bytes.NewReader(buffer.Bytes())
@@ -323,16 +318,15 @@ func DecodeAssociatePacket(buffer *buf.Buffer) (*AssociatePacket, error) {
 	if err != nil {
 		return nil, err
 	}
-	addr, port, err := AddressSerializer.ReadAddressAndPort(reader)
+	addrPort, err := AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return nil, err
 	}
 	buffer.Advance(reader.Len())
 	packet := &AssociatePacket{
-		Fragment: fragment,
-		Addr:     addr,
-		Port:     port,
-		Data:     buffer.Bytes(),
+		Fragment:    fragment,
+		Destination: addrPort,
+		Data:        buffer.Bytes(),
 	}
 	return packet, nil
 }
@@ -346,7 +340,7 @@ func EncodeAssociatePacket(packet *AssociatePacket, buffer *buf.Buffer) error {
 	if err != nil {
 		return err
 	}
-	err = AddressSerializer.WriteAddressAndPort(buffer, packet.Addr, packet.Port)
+	err = AddressSerializer.WriteAddrPort(buffer, packet.Destination)
 	if err != nil {
 		return err
 	}

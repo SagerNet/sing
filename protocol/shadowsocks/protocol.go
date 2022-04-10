@@ -2,23 +2,26 @@ package shadowsocks
 
 import (
 	"crypto/md5"
-	"crypto/sha1"
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/replay"
+	"github.com/sagernet/sing/protocol/socks"
 	"hash/crc32"
 	"io"
 	"math/rand"
-
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/socksaddr"
-	"golang.org/x/crypto/hkdf"
+	"net"
 )
 
-const MaxPacketSize = 16*1024 - 1
+type Session interface {
+	Key() []byte
+	ReplayFilter() replay.Filter
+}
 
-func Kdf(key, iv []byte, keyLength int) []byte {
-	subKey := make([]byte, keyLength)
-	kdf := hkdf.New(sha1.New, key, iv, []byte("ss-subkey"))
-	common.Must1(io.ReadFull(kdf, subKey))
-	return subKey
+type Method interface {
+	Name() string
+	KeyLength() int
+	DialConn(session Session, conn net.Conn, destination *M.AddrPort) (net.Conn, error)
+	DialEarlyConn(session Session, conn net.Conn, destination *M.AddrPort) net.Conn
+	DialPacketConn(session Session, conn net.Conn) socks.PacketConn
 }
 
 func Key(password []byte, keySize int) []byte {
@@ -43,19 +46,18 @@ func Key(password []byte, keySize int) []byte {
 	return m[:keySize]
 }
 
-func RemapToPrintable(input []byte) {
-	const charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\\\""
-	seed := rand.New(rand.NewSource(int64(crc32.ChecksumIEEE(input))))
-	for i := range input {
-		input[i] = charSet[seed.Intn(len(charSet))]
-	}
+type ReducedEntropyReader struct {
+	io.Reader
 }
 
-var AddressSerializer = socksaddr.NewSerializer(
-	socksaddr.AddressFamilyByte(0x01, socksaddr.AddressFamilyIPv4),
-	socksaddr.AddressFamilyByte(0x04, socksaddr.AddressFamilyIPv6),
-	socksaddr.AddressFamilyByte(0x03, socksaddr.AddressFamilyFqdn),
-	socksaddr.WithFamilyParser(func(b byte) byte {
-		return b & 0x0F
-	}),
-)
+func (r *ReducedEntropyReader) Read(p []byte) (n int, err error) {
+	n, err = r.Reader.Read(p)
+	if n > 6 {
+		const charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\\\""
+		seed := rand.New(rand.NewSource(int64(crc32.ChecksumIEEE(p[:6]))))
+		for i := range p[:6] {
+			p[i] = charSet[seed.Intn(len(charSet))]
+		}
+	}
+	return
+}

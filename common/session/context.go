@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/socksaddr"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 type Network int
@@ -20,8 +20,8 @@ type InstanceContext struct{}
 type Context struct {
 	InstanceContext
 	Network         Network
-	Source          socksaddr.Addr
-	Destination     socksaddr.Addr
+	Source          M.Addr
+	Destination     M.Addr
 	SourcePort      uint16
 	DestinationPort uint16
 }
@@ -30,7 +30,7 @@ func (c Context) DestinationNetAddr() string {
 	return net.JoinHostPort(c.Destination.String(), strconv.Itoa(int(c.DestinationPort)))
 }
 
-func AddressFromNetAddr(netAddr net.Addr) (addr socksaddr.Addr, port uint16) {
+func AddressFromNetAddr(netAddr net.Addr) (addr M.Addr, port uint16) {
 	var ip net.IP
 	switch addr := netAddr.(type) {
 	case *net.TCPAddr:
@@ -40,7 +40,7 @@ func AddressFromNetAddr(netAddr net.Addr) (addr socksaddr.Addr, port uint16) {
 		ip = addr.IP
 		port = uint16(addr.Port)
 	}
-	return socksaddr.AddrFromIP(ip), port
+	return M.AddrFromIP(ip), port
 }
 
 type Conn struct {

@@ -2,8 +2,9 @@ package rw
 
 import (
 	"encoding/binary"
-	"github.com/sagernet/sing/common"
 	"io"
+
+	"github.com/sagernet/sing/common"
 )
 
 type InputStream interface {

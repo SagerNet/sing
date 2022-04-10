@@ -43,6 +43,16 @@ func Filter[T any](arr []T, block func(it T) bool) []T {
 	return retArr
 }
 
+func FilterIsInstance[T any, N any](arr []T, block func(it T) (N, bool)) []N {
+	var retArr []N
+	for _, it := range arr {
+		if n, isN := block(it); isN {
+			retArr = append(retArr, n)
+		}
+	}
+	return retArr
+}
+
 func Done(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():

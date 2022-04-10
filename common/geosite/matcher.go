@@ -3,12 +3,13 @@ package geosite
 import (
 	"bufio"
 	"encoding/binary"
-	"github.com/klauspost/compress/zstd"
-	"github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/common/trieset"
 	"io"
 	"strings"
+
+	"github.com/klauspost/compress/zstd"
+	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/trieset"
 )
 
 type Matcher struct {
@@ -25,7 +26,7 @@ func LoadGeositeMatcher(reader io.Reader, code string) (*Matcher, error) {
 		return nil, err
 	}
 	if version != 0 {
-		return nil, exceptions.New("bad geosite data")
+		return nil, E.New("bad geosite data")
 	}
 	decoder, err := zstd.NewReader(reader, zstd.WithDecoderLowmem(true), zstd.WithDecoderConcurrency(1))
 	if err != nil {
@@ -72,5 +73,5 @@ func LoadGeositeMatcher(reader io.Reader, code string) (*Matcher, error) {
 			}
 		}
 	}
-	return nil, exceptions.New(code, " not found in geosite")
+	return nil, E.New(code, " not found in geosite")
 }

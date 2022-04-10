@@ -201,7 +201,7 @@ func (e *entry[T]) storeLocked(i *T) {
 // LoadOrStore returns the existing value for the key if present.
 // Otherwise, it stores and returns the given value.
 // The loaded result is true if the value was loaded, false if stored.
-func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
+func (m *Map[K, V]) LoadOrStore(key K, value func() V) (actual V, loaded bool) {
 	// Avoid locking if it's a clean hit.
 	read, _ := m.read.Load().(readOnly[K, V])
 	if e, ok := read.m[key]; ok {
@@ -228,8 +228,9 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 			m.dirtyLocked()
 			m.read.Store(readOnly[K, V]{m: read.m, amended: true})
 		}
-		m.dirty[key] = newEntry(value)
-		actual, loaded = value, false
+		v := value()
+		m.dirty[key] = newEntry(v)
+		actual, loaded = v, false
 	}
 	m.mu.Unlock()
 
@@ -241,7 +242,7 @@ func (m *Map[K, V]) LoadOrStore(key K, value V) (actual V, loaded bool) {
 //
 // If the entry is expunged, tryLoadOrStore leaves the entry unchanged and
 // returns with ok==false.
-func (e *entry[T]) tryLoadOrStore(i T) (actual T, loaded, ok bool) {
+func (e *entry[T]) tryLoadOrStore(i func() T) (actual T, loaded, ok bool) {
 	p := atomic.LoadPointer(&e.p)
 	if p == expunged {
 		var defaultValue T
@@ -254,10 +255,10 @@ func (e *entry[T]) tryLoadOrStore(i T) (actual T, loaded, ok bool) {
 	// Copy the interface after the first load to make this method more amenable
 	// to escape analysis: if we hit the "load" path or the entry is expunged, we
 	// shouldn't bother heap-allocating.
-	ic := i
+	ic := i()
 	for {
 		if atomic.CompareAndSwapPointer(&e.p, nil, unsafe.Pointer(&ic)) {
-			return i, false, true
+			return ic, false, true
 		}
 		p = atomic.LoadPointer(&e.p)
 		if p == expunged {

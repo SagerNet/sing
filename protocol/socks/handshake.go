@@ -4,11 +4,11 @@ import (
 	"io"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/socksaddr"
+	E "github.com/sagernet/sing/common/exceptions"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
-func ClientHandshake(conn io.ReadWriter, version byte, command byte, addr socksaddr.Addr, port uint16, username string, password string) (*Response, error) {
+func ClientHandshake(conn io.ReadWriter, version byte, command byte, destination *M.AddrPort, username string, password string) (*Response, error) {
 	var method byte
 	if common.IsBlank(username) {
 		method = AuthTypeNotRequired
@@ -27,7 +27,7 @@ func ClientHandshake(conn io.ReadWriter, version byte, command byte, addr socksa
 		return nil, err
 	}
 	if authResponse.Method != method {
-		return nil, exceptions.New("not requested method, request ", method, ", return ", method)
+		return nil, E.New("not requested method, request ", method, ", return ", method)
 	}
 	if method == AuthTypeUsernamePassword {
 		err = WriteUsernamePasswordAuthRequest(conn, &UsernamePasswordAuthRequest{
@@ -46,10 +46,9 @@ func ClientHandshake(conn io.ReadWriter, version byte, command byte, addr socksa
 		}
 	}
 	err = WriteRequest(conn, &Request{
-		Version: version,
-		Command: command,
-		Addr:    addr,
-		Port:    port,
+		Version:     version,
+		Command:     command,
+		Destination: destination,
 	})
 	if err != nil {
 		return nil, err
@@ -57,7 +56,7 @@ func ClientHandshake(conn io.ReadWriter, version byte, command byte, addr socksa
 	return ReadResponse(conn)
 }
 
-func ClientFastHandshake(writer io.Writer, version byte, command byte, addr socksaddr.Addr, port uint16, username string, password string) error {
+func ClientFastHandshake(writer io.Writer, version byte, command byte, destination *M.AddrPort, username string, password string) error {
 	var method byte
 	if common.IsBlank(username) {
 		method = AuthTypeNotRequired
@@ -81,10 +80,9 @@ func ClientFastHandshake(writer io.Writer, version byte, command byte, addr sock
 		}
 	}
 	return WriteRequest(writer, &Request{
-		Version: version,
-		Command: command,
-		Addr:    addr,
-		Port:    port,
+		Version:     version,
+		Command:     command,
+		Destination: destination,
 	})
 }
 

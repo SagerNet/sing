@@ -2,11 +2,12 @@ package redir
 
 import (
 	"net"
-	"net/netip"
 	"syscall"
+
+	M "github.com/sagernet/sing/common/metadata"
 )
 
-func GetOriginalDestination(conn net.Conn) (destination netip.AddrPort, err error) {
+func GetOriginalDestination(conn net.Conn) (destination *M.AddrPort, err error) {
 	rawConn, err := conn.(syscall.Conn).SyscallConn()
 	if err != nil {
 		return
@@ -22,15 +23,14 @@ func GetOriginalDestination(conn net.Conn) (destination netip.AddrPort, err erro
 	if conn.RemoteAddr().(*net.TCPAddr).IP.To4() != nil {
 		raw, err := syscall.GetsockoptIPv6Mreq(int(rawFd), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
 		if err != nil {
-			return netip.AddrPort{}, err
+			return nil, err
 		}
-		addr, _ := netip.AddrFromSlice(raw.Multiaddr[4:8])
-		return netip.AddrPortFrom(addr, uint16(raw.Multiaddr[2])<<8+uint16(raw.Multiaddr[3])), nil
-
+		return M.AddrPortFrom(M.AddrFromIP(raw.Multiaddr[4:8]), uint16(raw.Multiaddr[2])<<8+uint16(raw.Multiaddr[3])), nil
+	} else {
+		raw, err := syscall.GetsockoptIPv6MTUInfo(int(rawFd), syscall.IPPROTO_IPV6, SO_ORIGINAL_DST)
+		if err != nil {
+			return nil, err
+		}
+		return M.AddrPortFrom(M.AddrFromIP(raw.Addr.Addr[:]), raw.Addr.Port), nil
 	}
-	raw, err := syscall.GetsockoptIPv6MTUInfo(int(rawFd), syscall.IPPROTO_IPV6, SO_ORIGINAL_DST)
-	if err != nil {
-		return
-	}
-	return netip.AddrPortFrom(netip.AddrFrom16(raw.Addr.Addr), raw.Addr.Port), nil
 }

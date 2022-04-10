@@ -62,3 +62,7 @@ func IsTimeout(err error) bool {
 	}
 	return false
 }
+
+type Handler interface {
+	HandleError(err error)
+}

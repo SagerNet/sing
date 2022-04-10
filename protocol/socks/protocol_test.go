@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/sagernet/sing/common/socksaddr"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/protocol/socks"
 )
 
@@ -20,7 +20,7 @@ func TestHandshake(t *testing.T) {
 	method := socks.AuthTypeUsernamePassword
 
 	go func() {
-		response, err := socks.ClientHandshake(client, socks.Version5, socks.CommandConnect, socksaddr.AddrFromFqdn("test"), 80, "user", "pswd")
+		response, err := socks.ClientHandshake(client, socks.Version5, socks.CommandConnect, M.AddrPortFrom(M.AddrFromFqdn("test"), 80), "user", "pswd")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,14 +60,13 @@ func TestHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if request.Version != socks.Version5 || request.Command != socks.CommandConnect || request.Addr.Fqdn() != "test" || request.Port != 80 {
+	if request.Version != socks.Version5 || request.Command != socks.CommandConnect || request.Destination.Addr.Fqdn() != "test" || request.Destination.Port != 80 {
 		t.Fatal(request)
 	}
 	err = socks.WriteResponse(server, &socks.Response{
 		Version:   socks.Version5,
 		ReplyCode: socks.ReplyCodeSuccess,
-		BindAddr:  socksaddr.AddrFromIP(net.IPv4zero),
-		BindPort:  0,
+		Bind:      M.AddrPortFrom(M.AddrFromIP(net.IPv4zero), 0),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"net"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/list"
@@ -186,6 +187,18 @@ func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
 	}
 	b.end += n
 	return int64(n), nil
+}
+
+func (b *Buffer) ReadPacketFrom(r net.PacketConn) (int64, net.Addr, error) {
+	if b.IsFull() {
+		return 0, nil, io.ErrShortBuffer
+	}
+	n, addr, err := r.ReadFrom(b.FreeBytes())
+	if err != nil {
+		return 0, nil, err
+	}
+	b.end += n
+	return int64(n), addr, nil
 }
 
 func (b *Buffer) ReadAtLeastFrom(r io.Reader, min int) (int64, error) {

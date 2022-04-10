@@ -70,3 +70,12 @@ func (w *BufferedWriter) Flush() error {
 	}
 	return common.Error(w.Writer.Write(buffer.Bytes()))
 }
+
+func (w *BufferedWriter) Close() error {
+	buffer := w.Buffer
+	if buffer != nil {
+		w.Buffer = nil
+		buffer.Release()
+	}
+	return nil
+}

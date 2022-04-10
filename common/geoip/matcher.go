@@ -1,10 +1,11 @@
 package geoip
 
 import (
-	"github.com/oschwald/geoip2-golang"
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/oschwald/geoip2-golang"
 )
 
 var (

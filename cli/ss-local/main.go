@@ -1,0 +1,374 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/netip"
+	"os"
+	"os/signal"
+	"runtime/debug"
+	"syscall"
+	"time"
+
+	"github.com/sagernet/sing"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/geoip"
+	"github.com/sagernet/sing/common/geosite"
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/random"
+	"github.com/sagernet/sing/common/redir"
+	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/task"
+	"github.com/sagernet/sing/protocol/shadowsocks"
+	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
+	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/transport/mixed"
+	"github.com/sagernet/sing/transport/system"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+)
+
+type flags struct {
+	Server             string `json:"server"`
+	ServerPort         uint16 `json:"server_port"`
+	LocalPort          uint16 `json:"local_port"`
+	Password           string `json:"password"`
+	Key                string `json:"key"`
+	Method             string `json:"method"`
+	TCPFastOpen        bool   `json:"fast_open"`
+	Verbose            bool   `json:"verbose"`
+	Transproxy         string `json:"transproxy"`
+	FWMark             int    `json:"fwmark"`
+	Bypass             string `json:"bypass"`
+	UseSystemRNG       bool   `json:"use_system_rng"`
+	ReducedSaltEntropy bool   `json:"reduced_salt_entropy"`
+	ConfigFile         string
+}
+
+func main() {
+	f := new(flags)
+
+	command := &cobra.Command{
+		Use:     "ss-local",
+		Short:   "shadowsocks client",
+		Version: sing.VersionStr,
+		Run: func(cmd *cobra.Command, args []string) {
+			Run(cmd, f)
+		},
+	}
+
+	command.Flags().StringVarP(&f.Server, "server", "s", "", "Set the server’s hostname or IP.")
+	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Set the server’s port number.")
+	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Set the local port number.")
+	command.Flags().StringVarP(&f.Password, "password", "k", "", "Set the password. The server and the client should use the same password.")
+	command.Flags().StringVar(&f.Key, "key", "", "Set the key directly. The key should be encoded with URL-safe Base64.")
+	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", `Set the cipher.
+
+Supported ciphers:
+
+none
+aes-128-gcm
+aes-192-gcm
+aes-256-gcm
+chacha20-ietf-poly1305
+xchacha20-ietf-poly1305`)
+	command.Flags().BoolVar(&f.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
+Only available with Linux kernel > 3.7.0.`)
+	command.Flags().StringVarP(&f.Transproxy, "transproxy", "t", "", "Enable transparent proxy support. [possible values: redirect, tproxy]")
+	command.Flags().IntVar(&f.FWMark, "fwmark", 0, "Set outbound socket mark.")
+	command.Flags().StringVar(&f.Bypass, "bypass", "", "Set bypass country.")
+	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
+	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Enable verbose mode.")
+	command.Flags().BoolVar(&f.UseSystemRNG, "use-system-rng", false, "Use system random number generator.")
+	command.Flags().BoolVar(&f.ReducedSaltEntropy, "reduced-salt-entropy", false, "Remapping salt to printable chars.")
+
+	err := command.Execute()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+}
+
+type LocalClient struct {
+	*mixed.Listener
+	*geosite.Matcher
+	server  *M.AddrPort
+	method  shadowsocks.Method
+	session shadowsocks.Session
+	dialer  net.Dialer
+	bypass  string
+}
+
+func NewLocalClient(f *flags) (*LocalClient, error) {
+	if f.ConfigFile != "" {
+		configFile, err := ioutil.ReadFile(f.ConfigFile)
+		if err != nil {
+			return nil, E.Cause(err, "read config file")
+		}
+		flagsNew := new(flags)
+		err = json.Unmarshal(configFile, flagsNew)
+		if err != nil {
+			return nil, E.Cause(err, "decode config file")
+		}
+		if flagsNew.Server != "" && f.Server == "" {
+			f.Server = flagsNew.Server
+		}
+		if flagsNew.ServerPort != 0 && f.ServerPort == 0 {
+			f.ServerPort = flagsNew.ServerPort
+		}
+		if flagsNew.LocalPort != 0 && f.LocalPort == 0 {
+			f.LocalPort = flagsNew.LocalPort
+		}
+		if flagsNew.Password != "" && f.Password == "" {
+			f.Password = flagsNew.Password
+		}
+		if flagsNew.Key != "" && f.Key == "" {
+			f.Key = flagsNew.Key
+		}
+		if flagsNew.Method != "" && f.Method == "" {
+			f.Method = flagsNew.Method
+		}
+		if flagsNew.Transproxy != "" && f.Transproxy == "" {
+			f.Transproxy = flagsNew.Transproxy
+		}
+		if flagsNew.TCPFastOpen {
+			f.TCPFastOpen = true
+		}
+		if flagsNew.Verbose {
+			f.Verbose = true
+		}
+	}
+
+	if f.Verbose {
+		logrus.SetLevel(logrus.TraceLevel)
+	}
+
+	if f.Server == "" {
+		return nil, E.New("missing server address")
+	} else if f.ServerPort == 0 {
+		return nil, E.New("missing server port")
+	} else if f.Method == "" {
+		return nil, E.New("missing method")
+	}
+
+	client := &LocalClient{
+		server: M.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort),
+		bypass: f.Bypass,
+	}
+
+	if f.Method == shadowsocks.MethodNone {
+		client.method = shadowsocks.NewNone()
+	} else if common.Contains(shadowaead.List, f.Method) {
+		var key []byte
+		var rng io.Reader
+		if f.UseSystemRNG {
+			rng = random.System
+		} else {
+			rng = random.Blake3KeyedHash()
+		}
+		if f.ReducedSaltEntropy {
+			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
+		}
+		client.method = shadowaead.New(f.Method, rng)
+		keyLength := client.method.KeyLength()
+
+		if f.Key != "" {
+			decoded, err := base64.URLEncoding.DecodeString(f.Key)
+			if err != nil {
+				return nil, E.Cause(err, "decode key")
+			}
+			if len(decoded) != keyLength {
+				return nil, E.Cause(err, "bad key")
+			}
+			key = decoded
+		} else if f.Password != "" {
+			key = shadowsocks.Key([]byte(f.Password), keyLength)
+		} else {
+			return nil, E.New("missing password")
+		}
+		client.session = shadowaead.NewSession(key, false)
+	}
+
+	client.dialer.Control = func(network, address string, c syscall.RawConn) error {
+		var rawFd uintptr
+		err := c.Control(func(fd uintptr) {
+			rawFd = fd
+		})
+		if err != nil {
+			return err
+		}
+		if f.FWMark > 0 {
+			err = syscall.SetsockoptInt(int(rawFd), syscall.SOL_SOCKET, syscall.SO_MARK, f.FWMark)
+			if err != nil {
+				return err
+			}
+		}
+		if f.TCPFastOpen {
+			err = system.TCPFastOpen(rawFd)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	var transproxyMode redir.TransproxyMode
+	switch f.Transproxy {
+	case "redirect":
+		transproxyMode = redir.ModeRedirect
+	case "tproxy":
+		transproxyMode = redir.ModeTProxy
+	case "":
+		transproxyMode = redir.ModeDisabled
+	default:
+		return nil, E.New("unknown transproxy mode ", f.Transproxy)
+	}
+
+	client.Listener = mixed.NewListener(netip.AddrPortFrom(netip.IPv6Unspecified(), f.LocalPort), nil, transproxyMode, client)
+
+	if f.Bypass != "" {
+		err := geoip.LoadMMDB("Country.mmdb")
+		if err != nil {
+			return nil, E.Cause(err, "load Country.mmdb")
+		}
+
+		geodata, err := os.Open("geosite.dat")
+		if err != nil {
+			return nil, E.Cause(err, "geosite.dat not found")
+		}
+
+		geositeMatcher, err := geosite.LoadGeositeMatcher(geodata, f.Bypass)
+		if err != nil {
+			return nil, err
+		}
+		client.Matcher = geositeMatcher
+		debug.FreeOSMemory()
+	}
+
+	return client, nil
+}
+
+func bypass(conn net.Conn, destination *M.AddrPort) error {
+	logrus.Info("BYPASS ", conn.RemoteAddr(), " ==> ", destination)
+	serverConn, err := net.Dial("tcp", destination.String())
+	if err != nil {
+		return err
+	}
+	return task.Run(context.Background(), func() error {
+		defer rw.CloseRead(conn)
+		defer rw.CloseWrite(serverConn)
+		return common.Error(io.Copy(serverConn, conn))
+	}, func() error {
+		defer rw.CloseRead(serverConn)
+		defer rw.CloseWrite(conn)
+		return common.Error(io.Copy(conn, serverConn))
+	})
+}
+
+func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
+	if c.bypass != "" {
+		if metadata.Destination.Addr.Family().IsFqdn() {
+			if c.Match(metadata.Destination.Addr.Fqdn()) {
+				return bypass(conn, metadata.Destination)
+			}
+		} else {
+			if geoip.Match(c.bypass, metadata.Destination.Addr.Addr().AsSlice()) {
+				return bypass(conn, metadata.Destination)
+			}
+		}
+	}
+
+	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", metadata.Destination)
+	ctx := context.Background()
+
+	var serverConn net.Conn
+	payload := buf.New()
+	err := task.Run(ctx, func() error {
+		sc, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
+		serverConn = sc
+		if err != nil {
+			return E.Cause(err, "connect to server")
+		}
+		return nil
+	}, func() error {
+		err := conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		if err != nil {
+			return err
+		}
+		_, err = payload.ReadFrom(conn)
+		if err != nil && !E.IsTimeout(err) {
+			return E.Cause(err, "read payload")
+		}
+		err = conn.SetReadDeadline(time.Time{})
+		return err
+	})
+	if err != nil {
+		payload.Release()
+		return err
+	}
+	serverConn = c.method.DialEarlyConn(c.session, serverConn, metadata.Destination)
+	_, err = serverConn.Write(payload.Bytes())
+	payload.Release()
+	if err != nil {
+		return E.Cause(err, "client handshake")
+	}
+
+	return rw.CopyConn(ctx, serverConn, conn)
+}
+
+func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) error {
+	ctx := context.Background()
+	udpConn, err := c.dialer.DialContext(ctx, "udp", c.server.String())
+	if err != nil {
+		return err
+	}
+	serverConn := c.method.DialPacketConn(c.session, udpConn)
+	return task.Run(ctx, func() error {
+		var init bool
+		return socks.CopyPacketConn(serverConn, conn, func(destination *M.AddrPort, n int) {
+			if !init {
+				init = true
+				logrus.Info("UDP ", conn.LocalAddr(), " ==> ", destination)
+			} else {
+				logrus.Trace("UDP ", conn.LocalAddr(), " ==> ", destination)
+			}
+		})
+	}, func() error {
+		return socks.CopyPacketConn(conn, serverConn, func(destination *M.AddrPort, n int) {
+			logrus.Trace("UDP ", conn.LocalAddr(), " <== ", destination)
+		})
+	})
+}
+
+func Run(cmd *cobra.Command, flags *flags) {
+	client, err := NewLocalClient(flags)
+	if err != nil {
+		logrus.StandardLogger().Log(logrus.FatalLevel, err, "\n\n")
+		cmd.Help()
+		os.Exit(1)
+	}
+	err = client.Listener.Start()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	logrus.Info("mixed server started at ", client.Listener.TCPListener.Addr())
+
+	osSignals := make(chan os.Signal, 1)
+	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
+	<-osSignals
+
+	client.Listener.Close()
+}
+
+func (c *LocalClient) HandleError(err error) {
+	if E.IsClosed(err) {
+		return
+	}
+	logrus.Warn(err)
+}
