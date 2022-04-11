@@ -1,8 +1,9 @@
 package replay
 
 import (
-	"github.com/v2fly/ss-bloomring"
 	"sync"
+
+	"github.com/v2fly/ss-bloomring"
 )
 
 func NewBloomRing() Filter {

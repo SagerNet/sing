@@ -19,14 +19,14 @@ type Handler interface {
 type Listener struct {
 	*net.UDPConn
 	handler Handler
-	bind    *net.UDPAddr
+	bind    netip.AddrPort
 	tproxy  bool
 }
 
 func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
 	listener := &Listener{
 		handler: handler,
-		bind:    net.UDPAddrFromAddrPort(listen),
+		bind:    listen,
 	}
 	for _, option := range options {
 		option(listener)
@@ -35,7 +35,11 @@ func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *
 }
 
 func (l *Listener) Start() error {
-	udpConn, err := net.ListenUDP("udp", l.bind)
+	network := "udp"
+	if l.bind.Addr() == netip.IPv4Unspecified() {
+		network = "udp4"
+	}
+	udpConn, err := net.ListenUDP(network, net.UDPAddrFromAddrPort(l.bind))
 	if err != nil {
 		return err
 	}
@@ -45,11 +49,11 @@ func (l *Listener) Start() error {
 		if err != nil {
 			return err
 		}
-		err = redir.TProxy(fd, l.bind.AddrPort().Addr().Is6())
+		err = redir.TProxy(fd, l.bind.Addr().Is6())
 		if err != nil {
 			return E.Cause(err, "configure tproxy")
 		}
-		err = redir.TProxyUDP(fd, l.bind.AddrPort().Addr().Is6())
+		err = redir.TProxyUDP(fd, l.bind.Addr().Is6())
 		if err != nil {
 			return E.Cause(err, "configure tproxy")
 		}

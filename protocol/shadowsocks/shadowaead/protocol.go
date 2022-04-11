@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha1"
-	"github.com/sagernet/sing/common/replay"
 	"io"
 	"net"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/socks"
@@ -28,10 +28,18 @@ var List = []string{
 	"xchacha20-ietf-poly1305",
 }
 
-func New(method string, secureRNG io.Reader) shadowsocks.Method {
+var (
+	ErrBadKey          = E.New("bad key")
+	ErrMissingPassword = E.New("missing password")
+)
+
+func New(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool) (shadowsocks.Method, error) {
 	m := &Method{
 		name:      method,
 		secureRNG: secureRNG,
+	}
+	if replayFilter {
+		m.replayFilter = replay.NewBloomRing()
 	}
 	switch method {
 	case "aes-128-gcm":
@@ -58,15 +66,16 @@ func New(method string, secureRNG io.Reader) shadowsocks.Method {
 			return cipher
 		}
 	}
-	return m
-}
-
-func NewSession(key []byte, replayFilter bool) shadowsocks.Session {
-	var filter replay.Filter
-	if replayFilter {
-		filter = replay.NewBloomRing()
+	if len(key) == m.keySaltLength {
+		m.key = key
+	} else if len(key) > 0 {
+		return nil, ErrBadKey
+	} else if len(password) > 0 {
+		m.key = shadowsocks.Key(password, m.keySaltLength)
+	} else {
+		return nil, ErrMissingPassword
 	}
-	return &session{key, filter}
+	return m, nil
 }
 
 func Kdf(key, iv []byte, keyLength int) []byte {
@@ -88,7 +97,9 @@ type Method struct {
 	name          string
 	keySaltLength int
 	constructor   func(key []byte) cipher.AEAD
+	key           []byte
 	secureRNG     io.Reader
+	replayFilter  replay.Filter
 }
 
 func (m *Method) Name() string {
@@ -99,29 +110,25 @@ func (m *Method) KeyLength() int {
 	return m.keySaltLength
 }
 
-func (m *Method) DialConn(account shadowsocks.Session, conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
-	shadowsocksConn := &aeadConn{
-		Conn:         conn,
-		method:       m,
-		key:          account.Key(),
-		replayFilter: account.ReplayFilter(),
-		destination:  destination,
+func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
+	shadowsocksConn := &clientConn{
+		Conn:        conn,
+		method:      m,
+		destination: destination,
 	}
-	return shadowsocksConn, shadowsocksConn.clientHandshake()
+	return shadowsocksConn, shadowsocksConn.writeRequest(nil)
 }
 
-func (m *Method) DialEarlyConn(account shadowsocks.Session, conn net.Conn, destination *M.AddrPort) net.Conn {
-	return &aeadConn{
-		Conn:         conn,
-		method:       m,
-		key:          account.Key(),
-		replayFilter: account.ReplayFilter(),
-		destination:  destination,
+func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn {
+	return &clientConn{
+		Conn:        conn,
+		method:      m,
+		destination: destination,
 	}
 }
 
-func (m *Method) DialPacketConn(account shadowsocks.Session, conn net.Conn) socks.PacketConn {
-	return &aeadPacketConn{conn, account.Key(), m}
+func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
+	return &aeadPacketConn{conn, m}
 }
 
 func (m *Method) EncodePacket(key []byte, buffer *buf.Buffer) error {
@@ -145,160 +152,133 @@ func (m *Method) DecodePacket(key []byte, buffer *buf.Buffer) error {
 	return nil
 }
 
-type session struct {
-	key          []byte
-	replayFilter replay.Filter
-}
-
-func (a *session) Key() []byte {
-	return a.key
-}
-
-func (a *session) ReplayFilter() replay.Filter {
-	return a.replayFilter
-}
-
-type aeadConn struct {
+type clientConn struct {
 	net.Conn
 
 	method      *Method
-	key         []byte
 	destination *M.AddrPort
 
-	access       sync.Mutex
-	reader       io.Reader
-	writer       io.Writer
-	replayFilter replay.Filter
+	access sync.Mutex
+	reader io.Reader
+	writer io.Writer
 }
 
-func (c *aeadConn) clientHandshake() error {
-	header := buf.New()
-	defer header.Release()
+func (c *clientConn) writeRequest(payload []byte) error {
+	request := buf.New()
+	defer request.Release()
 
-	common.Must1(header.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
-	if c.replayFilter != nil {
-		c.replayFilter.Check(header.Bytes())
+	common.Must1(request.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
+	if c.method.replayFilter != nil {
+		c.method.replayFilter.Check(request.Bytes())
 	}
 
-	c.writer = NewAEADWriter(
-		&buf.BufferedWriter{
-			Writer: c.Conn,
-			Buffer: header,
-		},
-		c.method.constructor(Kdf(c.key, header.Bytes(), c.method.keySaltLength)),
+	var writer io.Writer = c.Conn
+	writer = &buf.BufferedWriter{
+		Writer: writer,
+		Buffer: request,
+	}
+	writer = NewWriter(
+		writer,
+		c.method.constructor(Kdf(c.method.key, request.Bytes(), c.method.keySaltLength)),
+		MaxPacketSize,
 	)
 
-	err := socks.AddressSerializer.WriteAddrPort(c.writer, c.destination)
+	if len(payload) > 0 {
+		header := buf.New()
+		defer header.Release()
+
+		writer = &buf.BufferedWriter{
+			Writer: writer,
+			Buffer: header,
+		}
+
+		err := socks.AddressSerializer.WriteAddrPort(writer, c.destination)
+		if err != nil {
+			return err
+		}
+
+		_, err = writer.Write(payload)
+		if err != nil {
+			return err
+		}
+	} else {
+		err := socks.AddressSerializer.WriteAddrPort(writer, c.destination)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := common.FlushVar(&writer)
 	if err != nil {
 		return err
 	}
-
-	return common.FlushVar(&c.writer)
+	c.writer = writer
+	return nil
 }
 
-func (c *aeadConn) serverHandshake() error {
+func (c *clientConn) readResponse() error {
 	if c.reader == nil {
 		salt := make([]byte, c.method.keySaltLength)
 		_, err := io.ReadFull(c.Conn, salt)
 		if err != nil {
 			return err
 		}
-		if c.replayFilter != nil {
-			if !c.replayFilter.Check(salt) {
+		if c.method.replayFilter != nil {
+			if !c.method.replayFilter.Check(salt) {
 				return E.New("salt is not unique")
 			}
 		}
-		c.reader = NewReader(c.Conn, c.method.constructor(Kdf(c.key, salt, c.method.keySaltLength)))
+		c.reader = NewReader(
+			c.Conn,
+			c.method.constructor(Kdf(c.method.key, salt, c.method.keySaltLength)),
+			MaxPacketSize,
+		)
 	}
 	return nil
 }
 
-func (c *aeadConn) Read(p []byte) (n int, err error) {
-	if err = c.serverHandshake(); err != nil {
+func (c *clientConn) Read(p []byte) (n int, err error) {
+	if err = c.readResponse(); err != nil {
 		return
 	}
 	return c.reader.Read(p)
 }
 
-func (c *aeadConn) WriteTo(w io.Writer) (n int64, err error) {
-	if err = c.serverHandshake(); err != nil {
+func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
+	if err = c.readResponse(); err != nil {
 		return
 	}
 	return c.reader.(io.WriterTo).WriteTo(w)
 }
 
-func (c *aeadConn) Write(p []byte) (n int, err error) {
+func (c *clientConn) Write(p []byte) (n int, err error) {
 	if c.writer != nil {
-		goto direct
+		return c.writer.Write(p)
 	}
 
 	c.access.Lock()
-	defer c.access.Unlock()
 
 	if c.writer != nil {
-		goto direct
+		c.access.Unlock()
+		return c.writer.Write(p)
 	}
 
-	// client handshake
-
-	{
-		header := buf.New()
-		defer header.Release()
-
-		request := buf.New()
-		defer request.Release()
-
-		common.Must1(header.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
-		if c.replayFilter != nil {
-			c.replayFilter.Check(header.Bytes())
-		}
-
-		var writer io.Writer = c.Conn
-		writer = &buf.BufferedWriter{
-			Writer: writer,
-			Buffer: header,
-		}
-		writer = NewAEADWriter(writer, c.method.constructor(Kdf(c.key, header.Bytes(), c.method.keySaltLength)))
-		writer = &buf.BufferedWriter{
-			Writer: writer,
-			Buffer: request,
-		}
-
-		err = socks.AddressSerializer.WriteAddrPort(writer, c.destination)
-		if err != nil {
-			return
-		}
-
-		if len(p) > 0 {
-			_, err = writer.Write(p)
-			if err != nil {
-				return
-			}
-		}
-
-		err = common.FlushVar(&writer)
-		if err != nil {
-			return
-		}
-
-		c.writer = writer
-		return len(p), nil
+	err = c.writeRequest(p)
+	if err != nil {
+		return
 	}
-
-direct:
-	return c.writer.Write(p)
+	return len(p), nil
 }
 
-func (c *aeadConn) ReadFrom(r io.Reader) (n int64, err error) {
+func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if c.writer == nil {
-		panic("missing client handshake")
+		panic("missing handshake")
 	}
 	return c.writer.(io.ReaderFrom).ReadFrom(r)
 }
 
 type aeadPacketConn struct {
 	net.Conn
-	key    []byte
 	method *Method
 }
 
@@ -311,7 +291,7 @@ func (c *aeadPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort
 		return err
 	}
 	buffer = buffer.WriteBufferAtFirst(header)
-	err = c.method.EncodePacket(c.key, buffer)
+	err = c.method.EncodePacket(c.method.key, buffer)
 	if err != nil {
 		return err
 	}
@@ -324,7 +304,7 @@ func (c *aeadPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		return nil, err
 	}
 	buffer.Truncate(n)
-	err = c.method.DecodePacket(c.key, buffer)
+	err = c.method.DecodePacket(c.method.key, buffer)
 	if err != nil {
 		return nil, err
 	}

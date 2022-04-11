@@ -22,6 +22,7 @@ type Handler interface {
 type Listener struct {
 	TCPListener   *tcp.Listener
 	UDPListener   *udp.Listener
+	bindAddr      netip.Addr
 	handler       Handler
 	authenticator auth.Authenticator
 	udpNat        *udpnat.Server
@@ -29,6 +30,7 @@ type Listener struct {
 
 func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transproxy redir.TransproxyMode, handler Handler) *Listener {
 	listener := &Listener{
+		bindAddr:      bind.Addr(),
 		handler:       handler,
 		authenticator: authenticator,
 	}
@@ -52,7 +54,7 @@ func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	}
 	switch header[0] {
 	case socks.Version4, socks.Version5:
-		return socks.HandleConnection(bufConn, l.authenticator, l.handler)
+		return socks.HandleConnection(bufConn, l.bindAddr, l.authenticator, l.handler)
 	default:
 		return http.HandleConnection(bufConn, l.authenticator, l.handler)
 	}

@@ -27,11 +27,7 @@ func (m *NoneMethod) KeyLength() int {
 	return 0
 }
 
-func (m *NoneMethod) NewSession(key []byte) Session {
-	return nil
-}
-
-func (m *NoneMethod) DialConn(_ Session, conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
+func (m *NoneMethod) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
 	shadowsocksConn := &noneConn{
 		Conn:        conn,
 		handshake:   true,
@@ -40,14 +36,14 @@ func (m *NoneMethod) DialConn(_ Session, conn net.Conn, destination *M.AddrPort)
 	return shadowsocksConn, shadowsocksConn.clientHandshake()
 }
 
-func (m *NoneMethod) DialEarlyConn(_ Session, conn net.Conn, destination *M.AddrPort) net.Conn {
+func (m *NoneMethod) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn {
 	return &noneConn{
 		Conn:        conn,
 		destination: destination,
 	}
 }
 
-func (m *NoneMethod) DialPacketConn(_ Session, conn net.Conn) socks.PacketConn {
+func (m *NoneMethod) DialPacketConn(conn net.Conn) socks.PacketConn {
 	return &nonePacketConn{conn}
 }
 

@@ -2,26 +2,21 @@ package shadowsocks
 
 import (
 	"crypto/md5"
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/replay"
-	"github.com/sagernet/sing/protocol/socks"
 	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
-)
 
-type Session interface {
-	Key() []byte
-	ReplayFilter() replay.Filter
-}
+	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/protocol/socks"
+)
 
 type Method interface {
 	Name() string
 	KeyLength() int
-	DialConn(session Session, conn net.Conn, destination *M.AddrPort) (net.Conn, error)
-	DialEarlyConn(session Session, conn net.Conn, destination *M.AddrPort) net.Conn
-	DialPacketConn(session Session, conn net.Conn) socks.PacketConn
+	DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error)
+	DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn
+	DialPacketConn(conn net.Conn) socks.PacketConn
 }
 
 func Key(password []byte, keySize int) []byte {

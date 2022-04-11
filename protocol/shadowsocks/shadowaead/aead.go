@@ -23,11 +23,11 @@ type Reader struct {
 	cached   int
 }
 
-func NewReader(upstream io.Reader, cipher cipher.AEAD) *Reader {
+func NewReader(upstream io.Reader, cipher cipher.AEAD, maxPacketSize int) *Reader {
 	return &Reader{
 		upstream: upstream,
 		cipher:   cipher,
-		data:     make([]byte, MaxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
+		data:     make([]byte, maxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
 		nonce:    make([]byte, cipher.NonceSize()),
 	}
 }
@@ -132,18 +132,20 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 }
 
 type AEADWriter struct {
-	upstream io.Writer
-	cipher   cipher.AEAD
-	data     []byte
-	nonce    []byte
+	upstream      io.Writer
+	cipher        cipher.AEAD
+	data          []byte
+	nonce         []byte
+	maxPacketSize int
 }
 
-func NewAEADWriter(upstream io.Writer, cipher cipher.AEAD) *AEADWriter {
+func NewWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int) *AEADWriter {
 	return &AEADWriter{
-		upstream: upstream,
-		cipher:   cipher,
-		data:     make([]byte, MaxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
-		nonce:    make([]byte, cipher.NonceSize()),
+		upstream:      upstream,
+		cipher:        cipher,
+		data:          make([]byte, maxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
+		nonce:         make([]byte, cipher.NonceSize()),
+		maxPacketSize: maxPacketSize,
 	}
 }
 
@@ -162,7 +164,7 @@ func (w *AEADWriter) SetWriter(writer io.Writer) {
 func (w *AEADWriter) ReadFrom(r io.Reader) (n int64, err error) {
 	for {
 		offset := w.cipher.Overhead() + PacketLengthBufferSize
-		readN, readErr := r.Read(w.data[offset : offset+MaxPacketSize])
+		readN, readErr := r.Read(w.data[offset : offset+w.maxPacketSize])
 		if readErr != nil {
 			return 0, readErr
 		}
@@ -184,7 +186,11 @@ func (w *AEADWriter) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 func (w *AEADWriter) Write(p []byte) (n int, err error) {
-	for _, data := range buf.ForeachN(p, MaxPacketSize) {
+	if len(p) == 0 {
+		return
+	}
+
+	for _, data := range buf.ForeachN(p, w.maxPacketSize) {
 		binary.BigEndian.PutUint16(w.data[:PacketLengthBufferSize], uint16(len(data)))
 		w.cipher.Seal(w.data[:0], w.nonce, w.data[:PacketLengthBufferSize], nil)
 		increaseNonce(w.nonce)

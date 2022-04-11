@@ -18,6 +18,7 @@ type Handler interface {
 }
 
 type Listener struct {
+	bindAddr      netip.Addr
 	tcpListener   *tcp.Listener
 	authenticator auth.Authenticator
 	handler       Handler
@@ -25,6 +26,7 @@ type Listener struct {
 
 func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler Handler) *Listener {
 	listener := &Listener{
+		bindAddr:      bind.Addr(),
 		handler:       handler,
 		authenticator: authenticator,
 	}
@@ -33,7 +35,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 }
 
 func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(conn, l.authenticator, l.handler)
+	return HandleConnection(conn, l.bindAddr, l.authenticator, l.handler)
 }
 
 func (l *Listener) Start() error {
@@ -48,7 +50,7 @@ func (l *Listener) HandleError(err error) {
 	l.handler.HandleError(err)
 }
 
-func HandleConnection(conn net.Conn, authenticator auth.Authenticator, handler Handler) error {
+func HandleConnection(conn net.Conn, bind netip.Addr, authenticator auth.Authenticator, handler Handler) error {
 	authRequest, err := ReadAuthRequest(conn)
 	if err != nil {
 		return E.Cause(err, "read socks auth request")
@@ -111,7 +113,11 @@ func HandleConnection(conn net.Conn, authenticator auth.Authenticator, handler H
 			Destination: request.Destination,
 		})
 	case CommandUDPAssociate:
-		udpConn, err := net.ListenUDP("udp", nil)
+		network := "udp"
+		if bind.Is4() {
+			network = "udp4"
+		}
+		udpConn, err := net.ListenUDP(network, net.UDPAddrFromAddrPort(netip.AddrPortFrom(bind, 0)))
 		if err != nil {
 			return err
 		}

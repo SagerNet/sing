@@ -82,9 +82,11 @@ func Error(_ any, err error) error {
 	return err
 }
 
-func Must(err error) {
-	if err != nil {
-		log.Fatalln(err)
+func Must(errs ...error) {
+	for _, err := range errs {
+		if err != nil {
+			log.Fatalln(err)
+		}
 	}
 }
 

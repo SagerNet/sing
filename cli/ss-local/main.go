@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/sagernet/sing/common/task"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
+	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sagernet/sing/transport/system"
@@ -37,6 +39,7 @@ import (
 type flags struct {
 	Server             string `json:"server"`
 	ServerPort         uint16 `json:"server_port"`
+	Bind               string `json:"local_address"`
 	LocalPort          uint16 `json:"local_port"`
 	Password           string `json:"password"`
 	Key                string `json:"key"`
@@ -65,26 +68,24 @@ func main() {
 
 	command.Flags().StringVarP(&f.Server, "server", "s", "", "Set the server’s hostname or IP.")
 	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Set the server’s port number.")
+	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Set the local address.")
 	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Set the local port number.")
 	command.Flags().StringVarP(&f.Password, "password", "k", "", "Set the password. The server and the client should use the same password.")
 	command.Flags().StringVar(&f.Key, "key", "", "Set the key directly. The key should be encoded with URL-safe Base64.")
-	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", `Set the cipher.
 
-Supported ciphers:
+	var supportedCiphers []string
+	supportedCiphers = append(supportedCiphers, shadowsocks.MethodNone)
+	supportedCiphers = append(supportedCiphers, shadowaead_2022.List...)
+	supportedCiphers = append(supportedCiphers, shadowaead.List...)
 
-none
-aes-128-gcm
-aes-192-gcm
-aes-256-gcm
-chacha20-ietf-poly1305
-xchacha20-ietf-poly1305`)
+	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", "Set the cipher.\n\nSupported ciphers:\n\n"+strings.Join(supportedCiphers, "\n"))
 	command.Flags().BoolVar(&f.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
 Only available with Linux kernel > 3.7.0.`)
 	command.Flags().StringVarP(&f.Transproxy, "transproxy", "t", "", "Enable transparent proxy support. [possible values: redirect, tproxy]")
 	command.Flags().IntVar(&f.FWMark, "fwmark", 0, "Set outbound socket mark.")
 	command.Flags().StringVar(&f.Bypass, "bypass", "", "Set bypass country.")
 	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
-	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Enable verbose mode.")
+	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", true, "Enable verbose mode.")
 	command.Flags().BoolVar(&f.UseSystemRNG, "use-system-rng", false, "Use system random number generator.")
 	command.Flags().BoolVar(&f.ReducedSaltEntropy, "reduced-salt-entropy", false, "Remapping salt to printable chars.")
 
@@ -97,11 +98,10 @@ Only available with Linux kernel > 3.7.0.`)
 type LocalClient struct {
 	*mixed.Listener
 	*geosite.Matcher
-	server  *M.AddrPort
-	method  shadowsocks.Method
-	session shadowsocks.Session
-	dialer  net.Dialer
-	bypass  string
+	server *M.AddrPort
+	method shadowsocks.Method
+	dialer net.Dialer
+	bypass string
 }
 
 func NewLocalClient(f *flags) (*LocalClient, error) {
@@ -120,6 +120,9 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		}
 		if flagsNew.ServerPort != 0 && f.ServerPort == 0 {
 			f.ServerPort = flagsNew.ServerPort
+		}
+		if flagsNew.Bind != "" && f.Bind == "" {
+			f.Bind = flagsNew.Bind
 		}
 		if flagsNew.LocalPort != 0 && f.LocalPort == 0 {
 			f.LocalPort = flagsNew.LocalPort
@@ -163,8 +166,15 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 
 	if f.Method == shadowsocks.MethodNone {
 		client.method = shadowsocks.NewNone()
-	} else if common.Contains(shadowaead.List, f.Method) {
+	} else {
 		var key []byte
+		if f.Key != "" {
+			decoded, err := base64.StdEncoding.DecodeString(f.Key)
+			if err != nil {
+				return nil, E.Cause(err, "decode key")
+			}
+			key = decoded
+		}
 		var rng io.Reader
 		if f.UseSystemRNG {
 			rng = random.System
@@ -174,24 +184,19 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		if f.ReducedSaltEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
 		}
-		client.method = shadowaead.New(f.Method, rng)
-		keyLength := client.method.KeyLength()
-
-		if f.Key != "" {
-			decoded, err := base64.URLEncoding.DecodeString(f.Key)
+		if common.Contains(shadowaead.List, f.Method) {
+			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng, false)
 			if err != nil {
-				return nil, E.Cause(err, "decode key")
+				return nil, err
 			}
-			if len(decoded) != keyLength {
-				return nil, E.Cause(err, "bad key")
+			client.method = method
+		} else if common.Contains(shadowaead_2022.List, f.Method) {
+			method, err := shadowaead_2022.New(f.Method, key, rng)
+			if err != nil {
+				return nil, err
 			}
-			key = decoded
-		} else if f.Password != "" {
-			key = shadowsocks.Key([]byte(f.Password), keyLength)
-		} else {
-			return nil, E.New("missing password")
+			client.method = method
 		}
-		client.session = shadowaead.NewSession(key, false)
 	}
 
 	client.dialer.Control = func(network, address string, c syscall.RawConn) error {
@@ -229,7 +234,18 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		return nil, E.New("unknown transproxy mode ", f.Transproxy)
 	}
 
-	client.Listener = mixed.NewListener(netip.AddrPortFrom(netip.IPv6Unspecified(), f.LocalPort), nil, transproxyMode, client)
+	var bind netip.Addr
+	if f.Bind != "" {
+		addr, err := netip.ParseAddr(f.Bind)
+		if err != nil {
+			return nil, E.Cause(err, "bad local address")
+		}
+		bind = addr
+	} else {
+		bind = netip.IPv6Unspecified()
+	}
+
+	client.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, client)
 
 	if f.Bypass != "" {
 		err := geoip.LoadMMDB("Country.mmdb")
@@ -311,7 +327,7 @@ func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
 		payload.Release()
 		return err
 	}
-	serverConn = c.method.DialEarlyConn(c.session, serverConn, metadata.Destination)
+	serverConn = c.method.DialEarlyConn(serverConn, metadata.Destination)
 	_, err = serverConn.Write(payload.Bytes())
 	payload.Release()
 	if err != nil {
@@ -327,7 +343,7 @@ func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 	if err != nil {
 		return err
 	}
-	serverConn := c.method.DialPacketConn(c.session, udpConn)
+	serverConn := c.method.DialPacketConn(udpConn)
 	return task.Run(ctx, func() error {
 		var init bool
 		return socks.CopyPacketConn(serverConn, conn, func(destination *M.AddrPort, n int) {

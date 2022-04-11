@@ -35,7 +35,11 @@ func NewTCPListener(listen netip.AddrPort, handler Handler, options ...Option) *
 }
 
 func (l *Listener) Start() error {
-	tcpListener, err := net.ListenTCP("tcp", net.TCPAddrFromAddrPort(l.bind))
+	network := "tcp"
+	if l.bind.Addr() == netip.IPv4Unspecified() {
+		network = "tcp4"
+	}
+	tcpListener, err := net.ListenTCP(network, net.TCPAddrFromAddrPort(l.bind))
 	if err != nil {
 		return err
 	}

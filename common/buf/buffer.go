@@ -7,7 +7,6 @@ import (
 	"net"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/list"
 )
 
 type Buffer struct {
@@ -346,6 +345,10 @@ func (b Buffer) To(n int) []byte {
 	return b.data[b.start : b.start+n]
 }
 
+func (b Buffer) Range(start, end int) []byte {
+	return b.data[b.start+start : b.start+end]
+}
+
 func (b Buffer) Index(start int) []byte {
 	return b.data[b.start+start : b.start+start]
 }
@@ -382,14 +385,6 @@ func (b Buffer) Copy() []byte {
 	buffer := make([]byte, b.Len())
 	copy(buffer, b.Bytes())
 	return buffer
-}
-
-func ReleaseMulti(mb *list.List[*Buffer]) {
-	for entry := mb.Front(); entry != nil; entry = entry.Next() {
-		// TODO: remove cast
-		buffer := entry.Value
-		buffer.Release()
-	}
 }
 
 func ForeachN(b []byte, size int) [][]byte {
