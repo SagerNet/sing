@@ -441,7 +441,6 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		if !c.session.filter.ValidateCounter(packetId, math.MaxUint64) {
 			return nil, ErrPacketIdNotUnique
 		}
-		c.session.remoteSeen = time.Now().Unix()
 	} else if sessionId == c.session.lastRemoteSessionId {
 		if !c.session.lastFilter.ValidateCounter(packetId, math.MaxUint64) {
 			return nil, ErrPacketIdNotUnique
@@ -455,14 +454,13 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 			} else {
 				c.session.lastRemoteSessionId = c.session.remoteSessionId
 				c.session.lastFilter = c.session.filter
-				c.session.lastRemoteSeen = c.session.remoteSeen
+				c.session.lastRemoteSeen = time.Now().Unix()
 				c.session.lastRemoteCipher = c.session.remoteCipher
 				c.session.filter = new(wgReplay.Filter)
 			}
 		}
 		c.session.remoteSessionId = sessionId
 		c.session.remoteCipher = remoteCipher
-		c.session.remoteSeen = time.Now().Unix()
 		c.session.filter.ValidateCounter(packetId, math.MaxUint64)
 	}
 
@@ -491,7 +489,6 @@ type udpSession struct {
 	packetId            uint64
 	remoteSessionId     uint64
 	lastRemoteSessionId uint64
-	remoteSeen          int64
 	lastRemoteSeen      int64
 	cipher              cipher.AEAD
 	remoteCipher        cipher.AEAD
