@@ -168,9 +168,6 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	defer request.Release()
 
 	common.Must1(request.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
-	if c.method.replayFilter != nil {
-		c.method.replayFilter.Check(request.Bytes())
-	}
 
 	var writer io.Writer = c.Conn
 	writer = &buf.BufferedWriter{
