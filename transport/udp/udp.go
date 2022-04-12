@@ -19,6 +19,7 @@ type Handler interface {
 type Listener struct {
 	*net.UDPConn
 	handler Handler
+	network string
 	bind    netip.AddrPort
 	tproxy  bool
 }
@@ -35,11 +36,7 @@ func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *
 }
 
 func (l *Listener) Start() error {
-	network := "udp"
-	if l.bind.Addr() == netip.IPv4Unspecified() {
-		network = "udp4"
-	}
-	udpConn, err := net.ListenUDP(network, net.UDPAddrFromAddrPort(l.bind))
+	udpConn, err := net.ListenUDP(M.NetworkFromNetAddr("udp", l.bind.Addr()), net.UDPAddrFromAddrPort(l.bind))
 	if err != nil {
 		return err
 	}

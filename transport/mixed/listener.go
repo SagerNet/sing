@@ -1,11 +1,17 @@
 package mixed
 
 import (
+	"io"
 	"net"
+	netHttp "net/http"
 	"net/netip"
+	"strings"
 
+	"github.com/sagernet/sing"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/udpnat"
@@ -53,11 +59,40 @@ func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
 		return err
 	}
 	switch header[0] {
-	case socks.Version4, socks.Version5:
-		return socks.HandleConnection(bufConn, l.bindAddr, l.authenticator, l.handler)
-	default:
-		return http.HandleConnection(bufConn, l.authenticator, l.handler)
+	case socks.Version4:
+		return E.New("socks4 request dropped (TODO)")
+	case socks.Version5:
+		return socks.HandleConnection(bufConn, l.authenticator, l.bindAddr, l.handler, metadata)
 	}
+
+	request, err := http.ReadRequest(bufConn.Reader())
+	if err != nil {
+		return E.Cause(err, "read http request")
+	}
+
+	if request.Method == "GET" && request.URL.Path == "/proxy.pac" {
+		content := newPAC(M.AddrPortFromNetAddr(conn.LocalAddr()))
+		response := &netHttp.Response{
+			StatusCode: 200,
+			Status:     netHttp.StatusText(200),
+			Proto:      request.Proto,
+			ProtoMajor: request.ProtoMajor,
+			ProtoMinor: request.ProtoMinor,
+			Header: netHttp.Header{
+				"Content-Type": {"application/x-ns-proxy-autoconfig"},
+				"Server":       {sing.VersionStr},
+			},
+			ContentLength: int64(len(content)),
+			Body:          io.NopCloser(strings.NewReader(content)),
+		}
+		err = response.Write(bufConn)
+		if err != nil {
+			return E.Cause(err, "write pac response")
+		}
+		return nil
+	}
+
+	return http.HandleRequest(request, bufConn, l.authenticator, l.handler, metadata)
 }
 
 func (l *Listener) NewPacket(packet *buf.Buffer, metadata M.Metadata) error {
@@ -80,9 +115,8 @@ func (l *Listener) Start() error {
 }
 
 func (l *Listener) Close() error {
-	l.TCPListener.Close()
-	if l.UDPListener != nil {
-		l.UDPListener.Close()
-	}
-	return nil
+	return common.Close(
+		l.TCPListener,
+		l.UDPListener,
+	)
 }

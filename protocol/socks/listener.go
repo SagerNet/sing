@@ -35,7 +35,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 }
 
 func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(conn, l.bindAddr, l.authenticator, l.handler)
+	return HandleConnection(conn, l.authenticator, l.bindAddr, l.handler, metadata)
 }
 
 func (l *Listener) Start() error {
@@ -50,7 +50,7 @@ func (l *Listener) HandleError(err error) {
 	l.handler.HandleError(err)
 }
 
-func HandleConnection(conn net.Conn, bind netip.Addr, authenticator auth.Authenticator, handler Handler) error {
+func HandleConnection(conn net.Conn, authenticator auth.Authenticator, bind netip.Addr, handler Handler, metadata M.Metadata) error {
 	authRequest, err := ReadAuthRequest(conn)
 	if err != nil {
 		return E.Cause(err, "read socks auth request")
@@ -72,7 +72,7 @@ func HandleConnection(conn net.Conn, bind netip.Addr, authenticator auth.Authent
 	}
 	err = WriteAuthResponse(conn, &AuthResponse{
 		Version: authRequest.Version,
-		Method:  AuthTypeNotRequired,
+		Method:  authMethod,
 	})
 	if err != nil {
 		return E.Cause(err, "write socks auth response")
@@ -109,9 +109,8 @@ func HandleConnection(conn net.Conn, bind netip.Addr, authenticator auth.Authent
 		if err != nil {
 			return E.Cause(err, "write socks response")
 		}
-		return handler.NewConnection(conn, M.Metadata{
-			Destination: request.Destination,
-		})
+		metadata.Destination = request.Destination
+		return handler.NewConnection(conn, metadata)
 	case CommandUDPAssociate:
 		network := "udp"
 		if bind.Is4() {
@@ -130,15 +129,12 @@ func HandleConnection(conn net.Conn, bind netip.Addr, authenticator auth.Authent
 		if err != nil {
 			return E.Cause(err, "write socks response")
 		}
+		metadata.Destination = request.Destination
 		go func() {
-			err := handler.NewPacketConnection(NewPacketConn(conn, udpConn), M.Metadata{
-				Source:      M.AddrPortFromNetAddr(conn.RemoteAddr()),
-				Destination: request.Destination,
-			})
+			err := handler.NewPacketConnection(NewPacketConn(conn, udpConn), metadata)
 			if err != nil {
 				handler.HandleError(err)
 			}
-			conn.Close()
 		}()
 		return common.Error(io.Copy(io.Discard, conn))
 	default:

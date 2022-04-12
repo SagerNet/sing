@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/sagernet/sing"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
@@ -133,6 +134,7 @@ func (c *localClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 }
 
 func (c *localClient) OnError(err error) {
+	common.Close(err)
 	if E.IsClosed(err) {
 		return
 	}

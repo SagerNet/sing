@@ -12,7 +12,6 @@ import (
 	_ "unsafe"
 
 	"github.com/sagernet/sing/common/auth"
-	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/transport/tcp"
@@ -22,14 +21,9 @@ type Handler interface {
 	tcp.Handler
 }
 
-func HandleConnection(conn *buf.BufferedConn, authenticator auth.Authenticator, handler Handler) error {
+func HandleRequest(request *http.Request, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	var httpClient *http.Client
 	for {
-		request, err := readRequest(conn.Reader())
-		if err != nil {
-			return E.Cause(err, "read http request")
-		}
-
 		if authenticator != nil {
 			var authOk bool
 			authorization := request.Header.Get("Proxy-Authorization")
@@ -39,7 +33,7 @@ func HandleConnection(conn *buf.BufferedConn, authenticator auth.Authenticator, 
 				authOk = authenticator.Verify(userPswdArr[0], userPswdArr[1])
 			}
 			if !authOk {
-				err = responseWith(request, http.StatusProxyAuthRequired).Write(conn)
+				err := responseWith(request, http.StatusProxyAuthRequired).Write(conn)
 				if err != nil {
 					return err
 				}
@@ -61,9 +55,8 @@ func HandleConnection(conn *buf.BufferedConn, authenticator auth.Authenticator, 
 			if err != nil {
 				return E.Cause(err, "write http response")
 			}
-			return handler.NewConnection(conn, M.Metadata{
-				Destination: destination,
-			})
+			metadata.Destination = destination
+			return handler.NewConnection(conn, metadata)
 		}
 
 		keepAlive := strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
@@ -101,11 +94,10 @@ func HandleConnection(conn *buf.BufferedConn, authenticator auth.Authenticator, 
 
 						left, right := net.Pipe()
 						go func() {
-							err = handler.NewConnection(right, M.Metadata{
-								Destination: destination,
-							})
+							metadata.Destination = destination
+							err = handler.NewConnection(right, metadata)
 							if err != nil {
-								handler.HandleError(err)
+								handler.HandleError(&tcp.Error{Conn: right, Cause: err})
 							}
 						}()
 						return left, nil
@@ -137,11 +129,15 @@ func HandleConnection(conn *buf.BufferedConn, authenticator auth.Authenticator, 
 		if err != nil {
 			return err
 		}
+
+		if !keepAlive {
+			return conn.Close()
+		}
 	}
 }
 
-//go:linkname readRequest net/http.ReadRequest
-func readRequest(b *bufio.Reader) (req *http.Request, err error)
+//go:linkname ReadRequest net/http.ReadRequest
+func ReadRequest(b *bufio.Reader) (req *http.Request, err error)
 
 func removeHopByHopHeaders(header http.Header) {
 	// Strip hop-by-hop header based on RFC:

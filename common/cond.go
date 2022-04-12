@@ -96,20 +96,33 @@ func Must1(_ any, err error) {
 	}
 }
 
-func Close(closers ...any) {
+func Close(closers ...any) error {
+	var retErr error
 	for _, closer := range closers {
 		if closer == nil {
 			continue
 		}
+		var err error
 		switch c := closer.(type) {
 		case io.Closer:
-			c.Close()
+			err = c.Close()
 		}
 		switch c := closer.(type) {
 		case ReaderWithUpstream:
-			Close(c.Upstream())
+			err = Close(c.Upstream())
 		case WriterWithUpstream:
-			Close(c.Upstream())
+			err = Close(c.Upstream())
+		}
+		if err != nil {
+			retErr = err
 		}
 	}
+	return retErr
+}
+
+func CloseError(closer any, err error) error {
+	if err == nil {
+		return nil
+	}
+	return Close(closer)
 }

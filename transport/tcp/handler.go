@@ -23,6 +23,23 @@ type Listener struct {
 	*net.TCPListener
 }
 
+type Error struct {
+	Conn  net.Conn
+	Cause error
+}
+
+func (e *Error) Error() string {
+	return e.Cause.Error()
+}
+
+func (e *Error) Unwrap() error {
+	return e.Cause
+}
+
+func (e *Error) Close() error {
+	return common.Close(e.Conn)
+}
+
 func NewTCPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
 	listener := &Listener{
 		bind:    listen,
@@ -35,11 +52,7 @@ func NewTCPListener(listen netip.AddrPort, handler Handler, options ...Option) *
 }
 
 func (l *Listener) Start() error {
-	network := "tcp"
-	if l.bind.Addr() == netip.IPv4Unspecified() {
-		network = "tcp4"
-	}
-	tcpListener, err := net.ListenTCP(network, net.TCPAddrFromAddrPort(l.bind))
+	tcpListener, err := net.ListenTCP(M.NetworkFromNetAddr("tcp", l.bind.Addr()), net.TCPAddrFromAddrPort(l.bind))
 	if err != nil {
 		return err
 	}
@@ -73,7 +86,9 @@ func (l *Listener) loop() {
 			l.Close()
 			return
 		}
-		var metadata M.Metadata
+		metadata := M.Metadata{
+			Source: M.AddrPortFromNetAddr(tcpConn.RemoteAddr()),
+		}
 		switch l.trans {
 		case redir.ModeRedirect:
 			metadata.Destination, _ = redir.GetOriginalDestination(tcpConn)
@@ -86,9 +101,9 @@ func (l *Listener) loop() {
 			}
 		}
 		go func() {
-			err := l.handler.NewConnection(tcpConn, metadata)
-			if err != nil {
-				l.handler.HandleError(err)
+			hErr := l.handler.NewConnection(tcpConn, metadata)
+			if hErr != nil {
+				l.handler.HandleError(&Error{Conn: tcpConn, Cause: hErr})
 			}
 		}()
 	}
