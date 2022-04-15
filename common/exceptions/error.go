@@ -42,6 +42,9 @@ func New(message ...any) error {
 }
 
 func Cause(cause error, message string) Exception {
+	if cause == nil {
+		return nil
+	}
 	return exception{message, cause}
 }
 

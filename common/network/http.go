@@ -18,6 +18,15 @@ func HTTPClientWithNetwork(network string) *http.Client {
 	}
 }
 
+func Get(url string) ([]byte, error) {
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+	return ioutil.ReadAll(response.Body)
+}
+
 func GetContext(ctx context.Context, client *http.Client, url string) ([]byte, error) {
 	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {

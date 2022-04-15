@@ -256,7 +256,7 @@ func (c *clientConn) readResponse() error {
 	}
 
 	if !c.method.replayFilter.Check(salt) {
-		return E.New("salt is not unique")
+		return E.New("salt not unique")
 	}
 
 	reader := shadowaead.NewReader(

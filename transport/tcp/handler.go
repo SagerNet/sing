@@ -6,6 +6,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/lowmem"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
 )
@@ -105,6 +106,7 @@ func (l *Listener) loop() {
 			if hErr != nil {
 				l.handler.HandleError(&Error{Conn: tcpConn, Cause: hErr})
 			}
+			lowmem.Free()
 		}()
 	}
 }

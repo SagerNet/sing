@@ -110,6 +110,32 @@ func (m *Method) KeyLength() int {
 	return m.keySaltLength
 }
 
+func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
+	saltBuffer := buf.Make(m.keySaltLength)
+	salt := common.Dup(saltBuffer)
+	_, err := io.ReadFull(upstream, salt)
+	if err != nil {
+		return nil, E.Cause(err, "read salt")
+	}
+	if m.replayFilter != nil {
+		if !m.replayFilter.Check(salt) {
+			return nil, E.New("salt not unique")
+		}
+	}
+	return NewReader(upstream, m.constructor(Kdf(m.key, salt, m.keySaltLength)), MaxPacketSize), nil
+}
+
+func (m *Method) WriteResponse(upstream io.Writer) (io.Writer, error) {
+	saltBuffer := buf.Make(m.keySaltLength)
+	salt := common.Dup(saltBuffer)
+	common.Must1(io.ReadFull(m.secureRNG, salt))
+	_, err := upstream.Write(salt)
+	if err != nil {
+		return nil, err
+	}
+	return NewWriter(upstream, m.constructor(Kdf(m.key, salt, m.keySaltLength)), MaxPacketSize), nil
+}
+
 func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
 	shadowsocksConn := &clientConn{
 		Conn:        conn,
@@ -131,19 +157,19 @@ func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
 	return &aeadPacketConn{conn, m}
 }
 
-func (m *Method) EncodePacket(key []byte, buffer *buf.Buffer) error {
-	cipher := m.constructor(Kdf(key, buffer.To(m.keySaltLength), m.keySaltLength))
-	cipher.Seal(buffer.From(m.keySaltLength)[:0], rw.ZeroBytes[:cipher.NonceSize()], buffer.From(m.keySaltLength), nil)
-	buffer.Extend(cipher.Overhead())
+func (m *Method) EncodePacket(buffer *buf.Buffer) error {
+	c := m.constructor(Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength))
+	c.Seal(buffer.From(m.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
+	buffer.Extend(c.Overhead())
 	return nil
 }
 
-func (m *Method) DecodePacket(key []byte, buffer *buf.Buffer) error {
+func (m *Method) DecodePacket(buffer *buf.Buffer) error {
 	if buffer.Len() < m.keySaltLength {
 		return E.New("bad packet")
 	}
-	aead := m.constructor(Kdf(key, buffer.To(m.keySaltLength), m.keySaltLength))
-	packet, err := aead.Open(buffer.Index(m.keySaltLength), rw.ZeroBytes[:aead.NonceSize()], buffer.From(m.keySaltLength), nil)
+	c := m.constructor(Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength))
+	packet, err := c.Open(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	if err != nil {
 		return err
 	}
@@ -222,7 +248,7 @@ func (c *clientConn) readResponse() error {
 		}
 		if c.method.replayFilter != nil {
 			if !c.method.replayFilter.Check(salt) {
-				return E.New("salt is not unique")
+				return E.New("salt not unique")
 			}
 		}
 		c.reader = NewReader(
@@ -288,7 +314,7 @@ func (c *aeadPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort
 		return err
 	}
 	buffer = buffer.WriteBufferAtFirst(header)
-	err = c.method.EncodePacket(c.method.key, buffer)
+	err = c.method.EncodePacket(buffer)
 	if err != nil {
 		return err
 	}
@@ -301,7 +327,7 @@ func (c *aeadPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		return nil, err
 	}
 	buffer.Truncate(n)
-	err = c.method.DecodePacket(c.method.key, buffer)
+	err = c.method.DecodePacket(buffer)
 	if err != nil {
 		return nil, err
 	}

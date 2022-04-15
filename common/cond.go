@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"unsafe"
 )
 
 func Any[T any](array []T, block func(it T) bool) bool {
@@ -51,6 +52,11 @@ func Find[T any](arr []T, block func(it T) bool) T {
 	}
 	var defaultValue T
 	return defaultValue
+}
+
+func Dup[T any](obj T) T {
+	p := uintptr(unsafe.Pointer(&obj))
+	return *(*T)(unsafe.Pointer(p))
 }
 
 func Uniq[T comparable](arr []T) []T {

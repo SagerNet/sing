@@ -41,7 +41,7 @@ func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
 }
 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
-	return task.Run(context.Background(), func() error {
+	err := task.Run(ctx, func() error {
 		defer CloseRead(conn)
 		defer CloseWrite(dest)
 		return common.Error(io.Copy(dest, conn))
@@ -50,6 +50,9 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 		defer CloseWrite(conn)
 		return common.Error(io.Copy(conn, dest))
 	})
+	conn.Close()
+	dest.Close()
+	return err
 }
 
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {

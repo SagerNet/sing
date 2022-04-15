@@ -14,12 +14,12 @@ func CloseRead(conn io.Closer) error {
 	if closer, ok := conn.(ReadCloser); ok {
 		return closer.CloseRead()
 	}
-	return conn.Close()
+	return nil
 }
 
 func CloseWrite(conn io.Closer) error {
 	if closer, ok := conn.(WriteCloser); ok {
 		return closer.CloseWrite()
 	}
-	return conn.Close()
+	return nil
 }

@@ -131,7 +131,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 	}
 }
 
-type AEADWriter struct {
+type Writer struct {
 	upstream      io.Writer
 	cipher        cipher.AEAD
 	data          []byte
@@ -139,8 +139,8 @@ type AEADWriter struct {
 	maxPacketSize int
 }
 
-func NewWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int) *AEADWriter {
-	return &AEADWriter{
+func NewWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int) *Writer {
+	return &Writer{
 		upstream:      upstream,
 		cipher:        cipher,
 		data:          make([]byte, maxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
@@ -149,19 +149,19 @@ func NewWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int) *AEADW
 	}
 }
 
-func (w *AEADWriter) Upstream() io.Writer {
+func (w *Writer) Upstream() io.Writer {
 	return w.upstream
 }
 
-func (w *AEADWriter) Replaceable() bool {
+func (w *Writer) Replaceable() bool {
 	return false
 }
 
-func (w *AEADWriter) SetWriter(writer io.Writer) {
+func (w *Writer) SetWriter(writer io.Writer) {
 	w.upstream = writer
 }
 
-func (w *AEADWriter) ReadFrom(r io.Reader) (n int64, err error) {
+func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	for {
 		offset := w.cipher.Overhead() + PacketLengthBufferSize
 		readN, readErr := r.Read(w.data[offset : offset+w.maxPacketSize])
@@ -185,7 +185,7 @@ func (w *AEADWriter) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 }
 
-func (w *AEADWriter) Write(p []byte) (n int, err error) {
+func (w *Writer) Write(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return
 	}

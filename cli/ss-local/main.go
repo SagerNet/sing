@@ -258,13 +258,18 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 			return nil, E.Cause(err, "geosite.dat not found")
 		}
 
-		geositeMatcher, err := geosite.LoadGeositeMatcher(geodata, f.Bypass)
+		site, err := geosite.ReadArray(geodata, f.Bypass)
+		if err != nil {
+			return nil, err
+		}
+
+		geositeMatcher, err := geosite.NewMatcher(site)
 		if err != nil {
 			return nil, err
 		}
 		client.Matcher = geositeMatcher
-		debug.FreeOSMemory()
 	}
+	debug.FreeOSMemory()
 
 	return client, nil
 }

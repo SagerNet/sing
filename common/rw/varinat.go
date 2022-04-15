@@ -7,14 +7,23 @@ import (
 	"github.com/sagernet/sing/common"
 )
 
-type InputStream interface {
+type stubByteReader struct {
 	io.Reader
-	io.ByteReader
 }
 
-type OutputStream interface {
-	io.Writer
-	io.ByteWriter
+func (r stubByteReader) ReadByte() (byte, error) {
+	return ReadByte(r)
+}
+
+func ToByteReader(reader io.Reader) io.ByteReader {
+	if byteReader, ok := reader.(io.ByteReader); ok {
+		return byteReader
+	}
+	return &stubByteReader{reader}
+}
+
+func ReadUVariant(reader io.Reader) (uint64, error) {
+	return binary.ReadUvarint(ToByteReader(reader))
 }
 
 func WriteUVariant(writer io.Writer, value uint64) error {
@@ -30,8 +39,8 @@ func WriteVString(writer io.Writer, value string) error {
 	return WriteString(writer, value)
 }
 
-func ReadVString(reader InputStream) (string, error) {
-	length, err := binary.ReadUvarint(reader)
+func ReadVString(reader io.Reader) (string, error) {
+	length, err := binary.ReadUvarint(ToByteReader(reader))
 	if err != nil {
 		return "", err
 	}

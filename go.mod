@@ -3,8 +3,6 @@ module github.com/sagernet/sing
 go 1.18
 
 require (
-	github.com/insomniacslk/dhcp v0.0.0-20220405050111-12fbdcb11b41
-	github.com/klauspost/compress v1.15.1
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/geoip2-golang v1.7.0
 	github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c
@@ -34,7 +32,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/u-root/uio v0.0.0-20210528114334-82958018845c // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
