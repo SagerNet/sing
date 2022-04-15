@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/sagernet/uot/common"
-	"github.com/sagernet/uot/common/buf"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	"golang.org/x/net/dns/dnsmessage"
 )
 

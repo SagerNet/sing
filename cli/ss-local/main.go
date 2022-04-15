@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -31,7 +30,6 @@ import (
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
 	"github.com/sagernet/sing/protocol/socks"
-	"github.com/sagernet/sing/protocol/wapd"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sagernet/sing/transport/system"
 	"github.com/sirupsen/logrus"
@@ -54,7 +52,6 @@ type flags struct {
 	UseSystemRNG       bool   `json:"use_system_rng"`
 	ReducedSaltEntropy bool   `json:"reduced_salt_entropy"`
 	ConfigFile         string
-	WAPD               bool
 }
 
 func main() {
@@ -91,7 +88,6 @@ Only available with Linux kernel > 3.7.0.`)
 	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", true, "Enable verbose mode.")
 	command.Flags().BoolVar(&f.UseSystemRNG, "use-system-rng", false, "Use system random number generator.")
 	command.Flags().BoolVar(&f.ReducedSaltEntropy, "reduced-salt-entropy", false, "Remapping salt to printable chars.")
-	command.Flags().BoolVar(&f.WAPD, "wapd", false, "Listen WADP server.")
 
 	err := command.Execute()
 	if err != nil {
@@ -106,7 +102,6 @@ type LocalClient struct {
 	method shadowsocks.Method
 	dialer net.Dialer
 	bypass string
-	wapd   *wapd.Listener
 }
 
 func NewLocalClient(f *flags) (*LocalClient, error) {
@@ -252,10 +247,6 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 
 	client.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, client)
 
-	if f.WAPD {
-		client.wapd = wapd.NewListener(netip.MustParseAddr("255.255.255.255"), "http://127.0.0.1:"+strconv.Itoa(int(f.LocalPort))+"/proxy.pac", client)
-	}
-
 	if f.Bypass != "" {
 		err := geoip.LoadMMDB("Country.mmdb")
 		if err != nil {
@@ -380,10 +371,6 @@ func Run(cmd *cobra.Command, flags *flags) {
 	err = client.Listener.Start()
 	if err != nil {
 		logrus.Fatal(err)
-	}
-
-	if client.wapd != nil {
-		err = client.wapd.Start()
 	}
 
 	if err != nil {

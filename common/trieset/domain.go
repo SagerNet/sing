@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/samber/lo"
+	"github.com/sagernet/sing/common"
 )
 
 // ErrInvalidDomain means insert domain is invalid
@@ -89,7 +89,7 @@ func New(domains []string) (*DomainSet, error) {
 	}
 
 	sort.Strings(list)
-	list = lo.Uniq(list)
+	list = common.Uniq(list)
 
 	return &DomainSet{NewSet(list)}, nil
 }

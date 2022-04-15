@@ -74,6 +74,17 @@ func ParseAddrPort(address string, port string) (*AddrPort, error) {
 	return AddrPortFrom(ParseAddr(address), uint16(portInt)), nil
 }
 
+func AddrFromNetAddr(netAddr net.Addr) Addr {
+	switch addr := netAddr.(type) {
+	case *net.IPAddr:
+		return AddrFromIP(addr.IP)
+	case *net.IPNet:
+		return AddrFromIP(addr.IP)
+	default:
+		return nil
+	}
+}
+
 func AddrPortFromNetAddr(netAddr net.Addr) *AddrPort {
 	var ip net.IP
 	var port uint16
