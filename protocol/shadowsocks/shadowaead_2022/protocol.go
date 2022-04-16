@@ -35,7 +35,18 @@ const (
 	PacketNonceSize       = 24
 	MinRequestHeaderSize  = 1 + 8
 	MinResponseHeaderSize = MinRequestHeaderSize + KeySaltSize
-	MaxPacketSize         = 64 * 1024
+	MaxPacketSize         = 65535 + shadowaead.PacketLengthBufferSize + nonceSize*2
+)
+
+const (
+	// crypto/cipher.gcmStandardNonceSize
+	// golang.org/x/crypto/chacha20poly1305.NonceSize
+	nonceSize = 12
+
+	// Overhead
+	// crypto/cipher.gcmTagSize
+	// golang.org/x/crypto/chacha20poly1305.Overhead
+	overhead = 16
 )
 
 var (
@@ -83,10 +94,10 @@ func New(method string, psk []byte, secureRNG io.Reader) (shadowsocks.Method, er
 }
 
 func Blake3DeriveKey(secret, salt []byte, keyLength int) []byte {
-	sessionKey := make([]byte, len(secret)+len(salt))
+	sessionKey := make([]byte, 2*KeySaltSize)
 	copy(sessionKey, secret)
 	copy(sessionKey[len(secret):], salt)
-	outKey := make([]byte, keyLength)
+	outKey := buf.Make(keyLength)
 	blake3.DeriveKey(outKey, "shadowsocks 2022 session subkey", sessionKey)
 	return outKey
 }
@@ -249,7 +260,8 @@ func (c *clientConn) readResponse() error {
 		return nil
 	}
 
-	salt := make([]byte, KeySaltSize)
+	_salt := make([]byte, KeySaltSize)
+	salt := common.Dup(_salt)
 	_, err := io.ReadFull(c.Conn, salt)
 	if err != nil {
 		return err
@@ -282,7 +294,8 @@ func (c *clientConn) readResponse() error {
 		return ErrBadTimestamp
 	}
 
-	requestSalt := make([]byte, KeySaltSize)
+	_requestSalt := make([]byte, KeySaltSize)
+	requestSalt := common.Dup(_requestSalt)
 	_, err = io.ReadFull(reader, requestSalt)
 	if err != nil {
 		return err

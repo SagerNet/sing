@@ -162,9 +162,12 @@ find:
 				for _, domain := range geoSite.Domain {
 					if domain.Type == routercommon.Domain_Full {
 						domains = append(domains, domain.Value)
+					} else if domain.Type == routercommon.Domain_RootDomain {
+						domains = append(domains, "+."+domain.Value)
+					} else if domain.Type == routercommon.Domain_Plain {
+						logrus.Warn("ignore match rule ", geoSite.CountryCode, " ", domain.Value)
 					} else {
-						domains = append(domains, domain.Value)
-						domains = append(domains, "."+domain.Value)
+						domains = append(domains, "regexp:"+domain.Value)
 					}
 				}
 				loaded[strings.ToLower(geoSite.CountryCode)] = common.Uniq(domains)

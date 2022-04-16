@@ -72,19 +72,19 @@ func (ds *DomainSet) has(key []byte, nodeId, bmIdx int) bool {
 }
 
 func New(domains []string) (*DomainSet, error) {
-	list := make([]string, len(domains))
+	list := make([]string, 0, len(domains))
 
-	for i, domain := range domains {
-		if domain == "" || domain[len(domain)-1] == '.' {
-			return nil, ErrInvalidDomain
+	for _, domain := range domains {
+		if domain == "" || domain[len(domain)-1] == '.' || strings.HasPrefix(domain, "regexp:") {
+			continue
 		}
 
 		domain = string(reverse(domain))
 		if strings.HasSuffix(domain, "+") {
-			list[i] = domain[:len(domain)-1]
+			list = append(list, domain[:len(domain)-1])
 			list = append(list, domain[:len(domain)-2])
 		} else {
-			list[i] = domain
+			list = append(list, domain)
 		}
 	}
 
