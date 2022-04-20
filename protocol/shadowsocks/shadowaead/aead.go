@@ -9,7 +9,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 )
 
-//https://shadowsocks.org/en/wiki/AEAD-Ciphers.html
+// https://shadowsocks.org/en/wiki/AEAD-Ciphers.html
 const (
 	MaxPacketSize          = 16*1024 - 1
 	PacketLengthBufferSize = 2

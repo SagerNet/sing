@@ -1,0 +1,11 @@
+[Unit]
+Description=DDNS Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/cloudflare-ddns -c /usr/local/etc/ddns.json
+Restart=on-failure
+RestartPreventExitStatus=23
+
+[Install]
+WantedBy=multi-user.target

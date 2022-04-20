@@ -22,12 +22,16 @@ func LocalAddrs() ([]netip.Addr, error) {
 	}), nil
 }
 
+func IsPublicAddr(addr netip.Addr) bool {
+	return !(addr.IsPrivate() || addr.IsLoopback() || addr.IsMulticast() || addr.IsGlobalUnicast() || addr.IsLinkLocalUnicast() || addr.IsInterfaceLocalMulticast())
+}
+
 func LocalPublicAddrs() ([]netip.Addr, error) {
 	publicAddrs, err := LocalAddrs()
 	if err != nil {
 		return nil, err
 	}
 	return common.Filter(publicAddrs, func(addr netip.Addr) bool {
-		return !(addr.IsPrivate() || addr.IsLoopback() || addr.IsMulticast() || addr.IsGlobalUnicast() || addr.IsLinkLocalUnicast() || addr.IsInterfaceLocalMulticast())
+		return IsPublicAddr(addr)
 	}), nil
 }

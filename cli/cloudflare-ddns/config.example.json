@@ -1,0 +1,6 @@
+{
+  "cloudflare_api_key": "",
+  "cloudflare_api_email": "",
+  "domain": "example.com",
+  "over_proxy": false
+}
