@@ -15,7 +15,7 @@ require (
 	github.com/v2fly/v2ray-core/v5 v5.0.3
 	github.com/vishvananda/netlink v1.1.0
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
-	golang.org/x/net v0.0.0-20220418201149-a630d4f3e7a2
+	golang.org/x/net v0.0.0-20220420153159-1850ba15e1be
 	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
 	google.golang.org/protobuf v1.28.0
