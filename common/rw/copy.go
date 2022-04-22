@@ -57,8 +57,8 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {
 	return task.Run(ctx, func() error {
-		buffer := buf.FullNew()
-		defer buffer.Release()
+		_buffer := buf.With(make([]byte, buf.UDPBufferSize))
+		buffer := common.Dup(_buffer)
 		for {
 			n, addr, err := conn.ReadFrom(buffer.FreeBytes())
 			if err != nil {
@@ -72,8 +72,8 @@ func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.
 			buffer.FullReset()
 		}
 	}, func() error {
-		buffer := buf.FullNew()
-		defer buffer.Release()
+		_buffer := buf.With(make([]byte, buf.UDPBufferSize))
+		buffer := common.Dup(_buffer)
 		for {
 			n, addr, err := outPacketConn.ReadFrom(buffer.FreeBytes())
 			if err != nil {

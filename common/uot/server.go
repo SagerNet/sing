@@ -40,8 +40,8 @@ func (c *ServerConn) RemoteAddr() net.Addr {
 }
 
 func (c *ServerConn) loopInput() {
-	buffer := buf.New()
-	defer buffer.Release()
+	_buffer := buf.StackNew()
+	buffer := common.Dup(_buffer)
 	for {
 		destination, err := AddrParser.ReadAddrPort(c.inputReader)
 		if err != nil {
@@ -73,8 +73,8 @@ func (c *ServerConn) loopInput() {
 }
 
 func (c *ServerConn) loopOutput() {
-	buffer := buf.New()
-	defer buffer.Release()
+	_buffer := buf.StackNew()
+	buffer := common.Dup(_buffer)
 	for {
 		buffer.FullReset()
 		n, addr, err := buffer.ReadPacketFrom(c)

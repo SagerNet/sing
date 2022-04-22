@@ -79,9 +79,9 @@ func New(method string, key []byte, password []byte, secureRNG io.Reader, replay
 }
 
 func Kdf(key, iv []byte, keyLength int) []byte {
-	subKey := make([]byte, keyLength)
+	subKey := buf.Make(keyLength)
 	kdf := hkdf.New(sha1.New, key, iv, []byte("ss-subkey"))
-	common.Must1(io.ReadFull(kdf, subKey))
+	common.Must1(io.ReadFull(kdf, common.Dup(subKey)))
 	return subKey
 }
 
@@ -111,8 +111,8 @@ func (m *Method) KeyLength() int {
 }
 
 func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
-	saltBuffer := buf.Make(m.keySaltLength)
-	salt := common.Dup(saltBuffer)
+	_salt := buf.Make(m.keySaltLength)
+	salt := common.Dup(_salt)
 	_, err := io.ReadFull(upstream, salt)
 	if err != nil {
 		return nil, E.Cause(err, "read salt")
@@ -122,18 +122,20 @@ func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
 			return nil, E.New("salt not unique")
 		}
 	}
-	return NewReader(upstream, m.constructor(Kdf(m.key, salt, m.keySaltLength)), MaxPacketSize), nil
+	key := Kdf(m.key, salt, m.keySaltLength)
+	return NewReader(upstream, m.constructor(common.Dup(key)), MaxPacketSize), nil
 }
 
 func (m *Method) WriteResponse(upstream io.Writer) (io.Writer, error) {
-	saltBuffer := buf.Make(m.keySaltLength)
-	salt := common.Dup(saltBuffer)
+	_salt := buf.Make(m.keySaltLength)
+	salt := common.Dup(_salt)
 	common.Must1(io.ReadFull(m.secureRNG, salt))
 	_, err := upstream.Write(salt)
 	if err != nil {
 		return nil, err
 	}
-	return NewWriter(upstream, m.constructor(Kdf(m.key, salt, m.keySaltLength)), MaxPacketSize), nil
+	key := Kdf(m.key, salt, m.keySaltLength)
+	return NewWriter(upstream, m.constructor(common.Dup(key)), MaxPacketSize), nil
 }
 
 func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
@@ -154,11 +156,12 @@ func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn 
 }
 
 func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
-	return &aeadPacketConn{conn, m}
+	return &clientPacketConn{conn, m}
 }
 
 func (m *Method) EncodePacket(buffer *buf.Buffer) error {
-	c := m.constructor(Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength))
+	key := Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength)
+	c := m.constructor(common.Dup(key))
 	c.Seal(buffer.From(m.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	buffer.Extend(c.Overhead())
 	return nil
@@ -168,7 +171,8 @@ func (m *Method) DecodePacket(buffer *buf.Buffer) error {
 	if buffer.Len() < m.keySaltLength {
 		return E.New("bad packet")
 	}
-	c := m.constructor(Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength))
+	key := Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength)
+	c := m.constructor(common.Dup(key))
 	packet, err := c.Open(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	if err != nil {
 		return err
@@ -190,8 +194,8 @@ type clientConn struct {
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {
-	request := buf.New()
-	defer request.Release()
+	_request := buf.StackNew()
+	request := common.Dup(_request)
 
 	common.Must1(request.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
 
@@ -207,8 +211,8 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	)
 
 	if len(payload) > 0 {
-		header := buf.New()
-		defer header.Release()
+		_header := buf.StackNew()
+		header := common.Dup(_header)
 
 		writer = &buf.BufferedWriter{
 			Writer: writer,
@@ -240,23 +244,26 @@ func (c *clientConn) writeRequest(payload []byte) error {
 }
 
 func (c *clientConn) readResponse() error {
-	if c.reader == nil {
-		salt := make([]byte, c.method.keySaltLength)
-		_, err := io.ReadFull(c.Conn, salt)
-		if err != nil {
-			return err
-		}
-		if c.method.replayFilter != nil {
-			if !c.method.replayFilter.Check(salt) {
-				return E.New("salt not unique")
-			}
-		}
-		c.reader = NewReader(
-			c.Conn,
-			c.method.constructor(Kdf(c.method.key, salt, c.method.keySaltLength)),
-			MaxPacketSize,
-		)
+	if c.reader != nil {
+		return nil
 	}
+	_salt := buf.Make(c.method.keySaltLength)
+	salt := common.Dup(_salt)
+	_, err := io.ReadFull(c.Conn, salt)
+	if err != nil {
+		return err
+	}
+	if c.method.replayFilter != nil {
+		if !c.method.replayFilter.Check(salt) {
+			return E.New("salt not unique")
+		}
+	}
+	key := Kdf(c.method.key, salt, c.method.keySaltLength)
+	c.reader = NewReader(
+		c.Conn,
+		c.method.constructor(common.Dup(key)),
+		MaxPacketSize,
+	)
 	return nil
 }
 
@@ -300,14 +307,14 @@ func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	return c.writer.(io.ReaderFrom).ReadFrom(r)
 }
 
-type aeadPacketConn struct {
+type clientPacketConn struct {
 	net.Conn
 	method *Method
 }
 
-func (c *aeadPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	defer buffer.Release()
-	header := buf.New()
+func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	_header := buf.StackNew()
+	header := common.Dup(_header)
 	common.Must1(header.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
 	err := socks.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
@@ -321,7 +328,7 @@ func (c *aeadPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort
 	return common.Error(c.Write(buffer.Bytes()))
 }
 
-func (c *aeadPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	n, err := c.Read(buffer.FreeBytes())
 	if err != nil {
 		return nil, err

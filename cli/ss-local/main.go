@@ -192,7 +192,11 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 			if len(pskList) > 1 {
 				return nil, shadowaead.ErrBadKey
 			}
-			method, err := shadowaead.New(f.Method, pskList[0], []byte(f.Password), rng, false)
+			var key []byte
+			if len(pskList) > 0 {
+				key = pskList[0]
+			}
+			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng, false)
 			if err != nil {
 				return nil, err
 			}
@@ -314,27 +318,21 @@ func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", metadata.Destination)
 	ctx := context.Background()
 
-	var serverConn net.Conn
-	payload := buf.New()
-	err := task.Run(ctx, func() error {
-		sc, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
-		serverConn = sc
-		if err != nil {
-			return E.Cause(err, "connect to server")
-		}
-		return nil
-	}, func() error {
-		err := conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
-		if err != nil {
-			return err
-		}
-		_, err = payload.ReadFrom(conn)
-		if err != nil && !E.IsTimeout(err) {
-			return E.Cause(err, "read payload")
-		}
-		err = conn.SetReadDeadline(time.Time{})
+	serverConn, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
+	if err != nil {
+		return E.Cause(err, "connect to server")
+	}
+	_payload := buf.StackNew()
+	payload := common.Dup(_payload)
+	err = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	if err != nil {
 		return err
-	})
+	}
+	_, err = payload.ReadFrom(conn)
+	if err != nil && !E.IsTimeout(err) {
+		return E.Cause(err, "read payload")
+	}
+	err = conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		payload.Release()
 		return err

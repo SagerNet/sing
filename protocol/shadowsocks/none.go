@@ -81,8 +81,8 @@ func (c *noneConn) Write(b []byte) (n int, err error) {
 			return 0, c.clientHandshake()
 		}
 
-		buffer := buf.New()
-		defer buffer.Release()
+		_buffer := buf.StackNew()
+		buffer := common.Dup(_buffer)
 
 		err = socks.AddressSerializer.WriteAddrPort(buffer, c.destination)
 		if err != nil {
@@ -138,7 +138,8 @@ func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 
 func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort *M.AddrPort) error {
 	defer buffer.Release()
-	header := buf.New()
+	_header := buf.StackNew()
+	header := common.Dup(_header)
 	err := socks.AddressSerializer.WriteAddrPort(header, addrPort)
 	if err != nil {
 		header.Release()

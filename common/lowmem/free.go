@@ -1,13 +1,13 @@
 package lowmem
 
 import (
-	"runtime"
+	"runtime/debug"
 )
 
 var Enabled = false
 
 func Free() {
 	if Enabled {
-		runtime.GC()
+		debug.FreeOSMemory()
 	}
 }

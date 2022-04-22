@@ -141,6 +141,7 @@ func checkUpdate() {
 			Name:    domain,
 			Content: content,
 			Proxied: &overProxy,
+			TTL:     60,
 		}
 		if addr.Is4() {
 			record.Type = "A"

@@ -25,31 +25,15 @@ func New() *Buffer {
 	}
 }
 
-func NewSize(size int) *Buffer {
-	if size <= 128 || size > BufferSize {
-		return &Buffer{
-			data: make([]byte, size),
-		}
-	}
+func StackNew() *Buffer {
 	return &Buffer{
-		data:    GetBytes(),
-		start:   ReversedHeader,
-		end:     ReversedHeader,
-		managed: true,
+		data: make([]byte, BufferSize),
 	}
 }
 
-func FullNew() *Buffer {
+func StackNewSize(size int) *Buffer {
 	return &Buffer{
-		data:    GetBytes(),
-		managed: true,
-	}
-}
-
-func StackNew() Buffer {
-	return Buffer{
-		data:    GetBytes(),
-		managed: true,
+		data: Make(size),
 	}
 }
 
@@ -68,20 +52,6 @@ func As(data []byte) *Buffer {
 	return &Buffer{
 		data: data,
 		end:  size,
-	}
-}
-
-func Or(data []byte, size int) *Buffer {
-	max := cap(data)
-	if size != max {
-		data = data[:max]
-	}
-	if cap(data) >= size {
-		return &Buffer{
-			data: data,
-		}
-	} else {
-		return NewSize(size)
 	}
 }
 

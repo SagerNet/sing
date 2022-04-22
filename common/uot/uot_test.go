@@ -29,8 +29,8 @@ func TestServerConn(t *testing.T) {
 		IP:   net.IPv4(8, 8, 8, 8),
 		Port: 53,
 	}))
-	buffer := buf.New()
-	defer buffer.Release()
+	_buffer := buf.StackNew()
+	buffer := common.Dup(_buffer)
 	common.Must2(buffer.ReadPacketFrom(clientConn))
 	common.Must(message.Unpack(buffer.Bytes()))
 	for _, answer := range message.Answers {
