@@ -83,7 +83,7 @@ func HandleConnection(conn net.Conn, authenticator auth.Authenticator, bind neti
 		if err != nil {
 			return E.Cause(err, "read user auth request")
 		}
-		response := new(UsernamePasswordAuthResponse)
+		response := &UsernamePasswordAuthResponse{}
 		if authenticator.Verify(usernamePasswordAuthRequest.Username, usernamePasswordAuthRequest.Password) {
 			response.Status = UsernamePasswordStatusSuccess
 		} else {
@@ -109,6 +109,7 @@ func HandleConnection(conn net.Conn, authenticator auth.Authenticator, bind neti
 		if err != nil {
 			return E.Cause(err, "write socks response")
 		}
+		metadata.Protocol = "socks"
 		metadata.Destination = request.Destination
 		return handler.NewConnection(conn, metadata)
 	case CommandUDPAssociate:

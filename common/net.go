@@ -1,6 +1,16 @@
 package common
 
-import "syscall"
+import (
+	"os"
+	"syscall"
+)
+
+func TryFileDescriptor(conn any) (uintptr, error) {
+	if rawConn, isRaw := conn.(syscall.Conn); isRaw {
+		return GetFileDescriptor(rawConn)
+	}
+	return 0, os.ErrInvalid
+}
 
 func GetFileDescriptor(conn syscall.Conn) (uintptr, error) {
 	rawConn, err := conn.SyscallConn()

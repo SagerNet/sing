@@ -2,13 +2,13 @@ package socks
 
 import (
 	"context"
-	"github.com/sagernet/sing/common/task"
 	"net"
 	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/task"
 )
 
 type PacketConn interface {
@@ -47,26 +47,32 @@ func (s *PacketConnStub) SetWriteDeadline(t time.Time) error {
 
 func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error {
 	return task.Run(ctx, func() error {
-		_buffer := buf.StackNew()
+		_buffer := buf.StackNewMax()
 		buffer := common.Dup(_buffer)
+		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
 		for {
-			destination, err := conn.ReadPacket(buffer)
+			data.FullReset()
+			destination, err := conn.ReadPacket(data)
 			if err != nil {
 				return err
 			}
+			buffer.Truncate(data.Len())
 			err = dest.WritePacket(buffer, destination)
 			if err != nil {
 				return err
 			}
 		}
 	}, func() error {
-		_buffer := buf.StackNew()
+		_buffer := buf.StackNewMax()
 		buffer := common.Dup(_buffer)
+		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
 		for {
-			destination, err := dest.ReadPacket(buffer)
+			data.FullReset()
+			destination, err := dest.ReadPacket(data)
 			if err != nil {
 				return err
 			}
+			buffer.Truncate(data.Len())
 			err = conn.WritePacket(buffer, destination)
 			if err != nil {
 				return err
@@ -125,7 +131,8 @@ func (c *associatePacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error
 
 func (c *associatePacketConn) WritePacket(buffer *buf.Buffer, addrPort *M.AddrPort) error {
 	defer buffer.Release()
-	header := buf.New()
+	_header := buf.StackNew()
+	header := common.Dup(_header)
 	common.Must(header.WriteZeroN(3))
 	common.Must(AddressSerializer.WriteAddrPort(header, addrPort))
 	buffer = buffer.WriteBufferAtFirst(header)

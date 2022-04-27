@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 )
 
@@ -92,6 +91,46 @@ func (r *Reader) WriteTo(writer io.Writer) (n int64, err error) {
 	}
 }
 
+func (r *Reader) readInternal() (err error) {
+	start := PacketLengthBufferSize + r.cipher.Overhead()
+	_, err = io.ReadFull(r.upstream, r.buffer[:start])
+	if err != nil {
+		return err
+	}
+	_, err = r.cipher.Open(r.buffer[:0], r.nonce, r.buffer[:start], nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	length := int(binary.BigEndian.Uint16(r.buffer[:PacketLengthBufferSize]))
+	end := length + r.cipher.Overhead()
+	_, err = io.ReadFull(r.upstream, r.buffer[:end])
+	if err != nil {
+		return err
+	}
+	_, err = r.cipher.Open(r.buffer[:0], r.nonce, r.buffer[:end], nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	r.cached = length
+	r.index = 0
+	return nil
+}
+
+func (r *Reader) ReadByte() (byte, error) {
+	if r.cached == 0 {
+		err := r.readInternal()
+		if err != nil {
+			return 0, err
+		}
+	}
+	index := r.index
+	r.index++
+	r.cached--
+	return r.buffer[index], nil
+}
+
 func (r *Reader) Read(b []byte) (n int, err error) {
 	if r.cached > 0 {
 		n = copy(b, r.buffer[r.index:r.index+r.cached])
@@ -138,6 +177,24 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 		r.cached = length - n
 		r.index = n
 		return
+	}
+}
+
+func (r *Reader) Discard(n int) error {
+	for {
+		if r.cached >= n {
+			r.cached -= n
+			r.index += n
+			return nil
+		} else if r.cached > 0 {
+			n -= r.cached
+			r.cached = 0
+			r.index = 0
+		}
+		err := r.readInternal()
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -197,10 +254,6 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		if err != nil {
 			return
 		}
-		err = common.FlushVar(&w.upstream)
-		if err != nil {
-			return
-		}
 		n += int64(readN)
 	}
 }
@@ -225,6 +278,70 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	}
 
 	return
+}
+
+func (w *Writer) Buffer() *buf.Buffer {
+	return buf.With(w.buffer)
+}
+
+func (w *Writer) BufferedWriter(reversed int) *BufferedWriter {
+	return &BufferedWriter{
+		upstream: w,
+		reversed: reversed,
+		data:     w.buffer[PacketLengthBufferSize+w.cipher.Overhead() : len(w.buffer)-w.cipher.Overhead()],
+	}
+}
+
+type BufferedWriter struct {
+	upstream *Writer
+	data     []byte
+	reversed int
+	index    int
+}
+
+func (w *BufferedWriter) Upstream() io.Writer {
+	return w.upstream
+}
+
+func (w *BufferedWriter) Replaceable() bool {
+	return w.index == 0
+}
+
+func (w *BufferedWriter) Write(p []byte) (n int, err error) {
+	var index int
+	for {
+		cachedN := copy(w.data[w.reversed+w.index:], p[index:])
+		if cachedN == len(p[index:]) {
+			w.index += cachedN
+			return cachedN, nil
+		}
+		err = w.Flush()
+		if err != nil {
+			return
+		}
+		index += cachedN
+	}
+}
+
+func (w *BufferedWriter) Flush() error {
+	if w.index == 0 {
+		if w.reversed > 0 {
+			_, err := w.upstream.upstream.Write(w.upstream.buffer[:w.reversed])
+			w.reversed = 0
+			return err
+		}
+		return nil
+	}
+	buffer := w.upstream.buffer[w.reversed:]
+	binary.BigEndian.PutUint16(buffer[:PacketLengthBufferSize], uint16(w.index))
+	w.upstream.cipher.Seal(buffer[:0], w.upstream.nonce, buffer[:PacketLengthBufferSize], nil)
+	increaseNonce(w.upstream.nonce)
+	offset := w.upstream.cipher.Overhead() + PacketLengthBufferSize
+	packet := w.upstream.cipher.Seal(buffer[offset:offset], w.upstream.nonce, buffer[offset:offset+w.index], nil)
+	increaseNonce(w.upstream.nonce)
+	_, err := w.upstream.upstream.Write(w.upstream.buffer[:w.reversed+offset+len(packet)])
+	w.reversed = 0
+	return err
 }
 
 func increaseNonce(nonce []byte) {

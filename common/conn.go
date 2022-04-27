@@ -29,11 +29,11 @@ func (r *readWriteConn) Close() error {
 }
 
 func (r *readWriteConn) LocalAddr() net.Addr {
-	return new(DummyAddr)
+	return &DummyAddr{}
 }
 
 func (r *readWriteConn) RemoteAddr() net.Addr {
-	return new(DummyAddr)
+	return &DummyAddr{}
 }
 
 func (r *readWriteConn) SetDeadline(t time.Time) error {
@@ -53,7 +53,7 @@ type readConn struct {
 }
 
 func (r *readConn) Write(b []byte) (n int, err error) {
-	return 0, new(ReadOnlyException)
+	return 0, &ReadOnlyException{}
 }
 
 type writeConn struct {
@@ -62,23 +62,23 @@ type writeConn struct {
 }
 
 func (w *writeConn) Read(p []byte) (n int, err error) {
-	return 0, new(WriteOnlyException)
+	return 0, &WriteOnlyException{}
 }
 
 func NewReadConn(reader io.Reader) net.Conn {
-	c := new(readConn)
+	c := &readConn{}
 	c.Reader = reader
 	return c
 }
 
 func NewWritConn(writer io.Writer) net.Conn {
-	c := new(writeConn)
+	c := &writeConn{}
 	c.Writer = writer
 	return c
 }
 
 func NewReadWriteConn(reader io.Reader, writer io.Writer) net.Conn {
-	c := new(readWriteConn)
+	c := &readConn{}
 	c.Reader = reader
 	c.Writer = writer
 	return c

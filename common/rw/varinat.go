@@ -12,7 +12,7 @@ type stubByteReader struct {
 }
 
 func (r stubByteReader) ReadByte() (byte, error) {
-	return ReadByte(r)
+	return ReadByte(r.Reader)
 }
 
 func ToByteReader(reader io.Reader) io.ByteReader {

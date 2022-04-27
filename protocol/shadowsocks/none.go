@@ -117,7 +117,8 @@ func (c *noneConn) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 func (c *noneConn) WriteTo(w io.Writer) (n int64, err error) {
-	return c.Conn.(io.WriterTo).WriteTo(w)
+	return io.Copy(w, c.Conn)
+	// return c.Conn.(io.WriterTo).WriteTo(w)
 }
 
 func (c *noneConn) RemoteAddr() net.Addr {
@@ -138,7 +139,7 @@ func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 
 func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort *M.AddrPort) error {
 	defer buffer.Release()
-	_header := buf.StackNew()
+	_header := buf.StackNewMax()
 	header := common.Dup(_header)
 	err := socks.AddressSerializer.WriteAddrPort(header, addrPort)
 	if err != nil {

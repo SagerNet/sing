@@ -62,7 +62,7 @@ func main() {
 		Short:   "shadowsocks client",
 		Version: sing.VersionStr,
 		Run: func(cmd *cobra.Command, args []string) {
-			Run(cmd, f)
+			run(cmd, f)
 		},
 	}
 
@@ -95,7 +95,7 @@ Only available with Linux kernel > 3.7.0.`)
 	}
 }
 
-type LocalClient struct {
+type client struct {
 	*mixed.Listener
 	*geosite.Matcher
 	server *M.AddrPort
@@ -104,7 +104,7 @@ type LocalClient struct {
 	bypass string
 }
 
-func NewLocalClient(f *flags) (*LocalClient, error) {
+func newClient(f *flags) (*client, error) {
 	if f.ConfigFile != "" {
 		configFile, err := ioutil.ReadFile(f.ConfigFile)
 		if err != nil {
@@ -159,13 +159,13 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		return nil, E.New("missing method")
 	}
 
-	client := &LocalClient{
+	c := &client{
 		server: M.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort),
 		bypass: f.Bypass,
 	}
 
 	if f.Method == shadowsocks.MethodNone {
-		client.method = shadowsocks.NewNone()
+		c.method = shadowsocks.NewNone()
 	} else {
 		var pskList [][]byte
 		if f.Key != "" {
@@ -183,7 +183,7 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		if f.UseSystemRNG {
 			rng = random.System
 		} else {
-			rng = random.Blake3KeyedHash()
+			rng = random.System
 		}
 		if f.ReducedSaltEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
@@ -200,17 +200,17 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 			if err != nil {
 				return nil, err
 			}
-			client.method = method
+			c.method = method
 		} else if common.Contains(shadowaead_2022.List, f.Method) {
 			method, err := shadowaead_2022.New(f.Method, pskList, rng)
 			if err != nil {
 				return nil, err
 			}
-			client.method = method
+			c.method = method
 		}
 	}
 
-	client.dialer.Control = func(network, address string, c syscall.RawConn) error {
+	c.dialer.Control = func(network, address string, c syscall.RawConn) error {
 		var rawFd uintptr
 		err := c.Control(func(fd uintptr) {
 			rawFd = fd
@@ -256,7 +256,7 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		bind = netip.IPv6Unspecified()
 	}
 
-	client.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, client)
+	c.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, c)
 
 	if f.Bypass != "" {
 		err := geoip.LoadMMDB("Country.mmdb")
@@ -278,11 +278,11 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 		if err != nil {
 			return nil, err
 		}
-		client.Matcher = geositeMatcher
+		c.Matcher = geositeMatcher
 	}
 	debug.FreeOSMemory()
 
-	return client, nil
+	return c, nil
 }
 
 func bypass(conn net.Conn, destination *M.AddrPort) error {
@@ -302,7 +302,7 @@ func bypass(conn net.Conn, destination *M.AddrPort) error {
 	})
 }
 
-func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (c *client) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	if c.bypass != "" {
 		if metadata.Destination.Addr.Family().IsFqdn() {
 			if c.Match(metadata.Destination.Addr.Fqdn()) {
@@ -315,7 +315,7 @@ func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
 		}
 	}
 
-	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", metadata.Destination)
+	logrus.Info("outbound ", metadata.Protocol, " TCP ", conn.RemoteAddr(), " ==> ", metadata.Destination)
 	ctx := context.Background()
 
 	serverConn, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
@@ -339,7 +339,6 @@ func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	}
 	serverConn = c.method.DialEarlyConn(serverConn, metadata.Destination)
 	_, err = serverConn.Write(payload.Bytes())
-	payload.Release()
 	if err != nil {
 		return E.Cause(err, "client handshake")
 	}
@@ -347,7 +346,7 @@ func (c *LocalClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	return rw.CopyConn(ctx, serverConn, conn)
 }
 
-func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) error {
+func (c *client) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) error {
 	ctx := context.Background()
 	udpConn, err := c.dialer.DialContext(ctx, "udp", c.server.String())
 	if err != nil {
@@ -371,32 +370,28 @@ func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 	})
 }
 
-func Run(cmd *cobra.Command, flags *flags) {
-	client, err := NewLocalClient(flags)
+func run(cmd *cobra.Command, flags *flags) {
+	c, err := newClient(flags)
 	if err != nil {
 		logrus.StandardLogger().Log(logrus.FatalLevel, err, "\n\n")
 		cmd.Help()
 		os.Exit(1)
 	}
-	err = client.Listener.Start()
+	err = c.Start()
 	if err != nil {
 		logrus.Fatal(err)
 	}
 
-	if err != nil {
-		logrus.Fatal(err)
-	}
-
-	logrus.Info("mixed server started at ", client.Listener.TCPListener.Addr())
+	logrus.Info("mixed server started at ", c.TCPListener.Addr())
 
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
 	<-osSignals
 
-	client.Listener.Close()
+	c.Close()
 }
 
-func (c *LocalClient) HandleError(err error) {
+func (c *client) HandleError(err error) {
 	common.Close(err)
 	if E.IsClosed(err) {
 		return

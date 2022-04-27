@@ -2,6 +2,4 @@
 
 package lowmem
 
-func init() {
-	Enabled = true
-}
+const Enabled = true

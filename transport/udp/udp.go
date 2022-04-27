@@ -80,7 +80,8 @@ func (l *Listener) loop() {
 			}
 			buffer.Truncate(n)
 			err = l.handler.NewPacket(buffer, M.Metadata{
-				Source: M.AddrPortFromNetAddr(addr),
+				Protocol: "udp",
+				Source:   M.AddrPortFromNetAddr(addr),
 			})
 			if err != nil {
 				buffer.Release()
@@ -104,6 +105,7 @@ func (l *Listener) loop() {
 			}
 			buffer.Truncate(n)
 			err = l.handler.NewPacket(buffer, M.Metadata{
+				Protocol:    "tproxy",
 				Source:      M.AddrPortFromAddrPort(addr),
 				Destination: destination,
 			})

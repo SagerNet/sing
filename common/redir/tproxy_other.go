@@ -3,9 +3,10 @@
 package redir
 
 import (
+	"net"
+
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"net"
 )
 
 func TProxy(fd uintptr, isIPv6 bool) error {

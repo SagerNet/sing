@@ -95,6 +95,7 @@ func HandleRequest(request *http.Request, conn net.Conn, authenticator auth.Auth
 						left, right := net.Pipe()
 						go func() {
 							metadata.Destination = destination
+							metadata.Protocol = "http"
 							err = handler.NewConnection(right, metadata)
 							if err != nil {
 								handler.HandleError(&tcp.Error{Conn: right, Cause: err})

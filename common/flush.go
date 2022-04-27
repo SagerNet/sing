@@ -52,8 +52,8 @@ func FlushVar(writerP *io.Writer) error {
 					writerBack = writer
 					*writerP = writer
 					continue
-				} else if setter, hasSetter := u.Upstream().(UpstreamWriterSetter); hasSetter {
-					setter.SetWriter(writerBack)
+				} else if setter, hasSetter := writerBack.(UpstreamWriterSetter); hasSetter {
+					setter.SetWriter(u.Upstream())
 					writer = u.Upstream()
 					continue
 				}

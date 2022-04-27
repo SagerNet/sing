@@ -19,7 +19,7 @@ func After(task func() error, after func() error) func() error {
 
 func Run(ctx context.Context, tasks ...func() error) error {
 	ctx, cancel := context.WithCancel(ctx)
-	wg := new(sync.WaitGroup)
+	wg := &sync.WaitGroup{}
 	wg.Add(len(tasks))
 	var retErr error
 	for _, task := range tasks {

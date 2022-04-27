@@ -7,6 +7,7 @@ import (
 )
 
 type Metadata struct {
+	Protocol    string
 	Source      *AddrPort
 	Destination *AddrPort
 }

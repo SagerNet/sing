@@ -31,6 +31,12 @@ func StackNew() *Buffer {
 	}
 }
 
+func StackNewMax() *Buffer {
+	return &Buffer{
+		data: make([]byte, 65535),
+	}
+}
+
 func StackNewSize(size int) *Buffer {
 	return &Buffer{
 		data: Make(size),
@@ -289,6 +295,14 @@ func (b *Buffer) Release() {
 	}
 	PutBytes(b.data)
 	*b = Buffer{}
+}
+
+func (b *Buffer) Cut(start int, end int) *Buffer {
+	b.start += start
+	b.end = len(b.data) - end
+	return &Buffer{
+		data: b.data[b.start:b.end],
+	}
 }
 
 func (b Buffer) Len() int {

@@ -15,7 +15,7 @@ func TestServerConn(t *testing.T) {
 	serverConn := NewServerConn(udpConn)
 	defer serverConn.Close()
 	clientConn := NewClientConn(serverConn)
-	message := new(dnsmessage.Message)
+	message := &dnsmessage.Message{}
 	message.Header.ID = 1
 	message.Header.RecursionDesired = true
 	message.Questions = append(message.Questions, dnsmessage.Question{
@@ -30,6 +30,7 @@ func TestServerConn(t *testing.T) {
 		Port: 53,
 	}))
 	_buffer := buf.StackNew()
+	common.Use(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must2(buffer.ReadPacketFrom(clientConn))
 	common.Must(message.Unpack(buffer.Bytes()))

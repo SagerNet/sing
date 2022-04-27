@@ -92,16 +92,22 @@ func (l *Listener) loop() {
 		}
 		switch l.trans {
 		case redir.ModeRedirect:
-			metadata.Destination, _ = redir.GetOriginalDestination(tcpConn)
+			destination, err := redir.GetOriginalDestination(tcpConn)
+			if err == nil {
+				metadata.Protocol = "redirect"
+				metadata.Destination = destination
+			}
 		case redir.ModeTProxy:
 			lAddr := tcpConn.LocalAddr().(*net.TCPAddr)
 			rAddr := tcpConn.RemoteAddr().(*net.TCPAddr)
 
 			if lAddr.Port != l.lAddr.Port || !lAddr.IP.Equal(rAddr.IP) && !lAddr.IP.IsLoopback() && !lAddr.IP.IsPrivate() {
+				metadata.Protocol = "tproxy"
 				metadata.Destination = M.AddrPortFromNetAddr(lAddr)
 			}
 		}
 		go func() {
+			metadata.Protocol = "tcp"
 			hErr := l.handler.NewConnection(tcpConn, metadata)
 			if hErr != nil {
 				l.handler.HandleError(&Error{Conn: tcpConn, Cause: hErr})

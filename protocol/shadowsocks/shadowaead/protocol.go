@@ -189,56 +189,47 @@ type clientConn struct {
 	destination *M.AddrPort
 
 	access sync.Mutex
-	reader io.Reader
-	writer io.Writer
+	reader *Reader
+	writer *Writer
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {
-	_request := buf.StackNew()
-	request := common.Dup(_request)
+	_salt := make([]byte, c.method.keySaltLength)
+	salt := common.Dup(_salt)
+	common.Must1(io.ReadFull(c.method.secureRNG, salt))
 
-	common.Must1(request.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
-
-	var writer io.Writer = c.Conn
-	writer = &buf.BufferedWriter{
-		Writer: writer,
-		Buffer: request,
-	}
-	writer = NewWriter(
-		writer,
-		c.method.constructor(Kdf(c.method.key, request.Bytes(), c.method.keySaltLength)),
+	key := Kdf(c.method.key, salt, c.method.keySaltLength)
+	writer := NewWriter(
+		c.Conn,
+		c.method.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	header := writer.Buffer()
+	header.Write(salt)
+	bufferedWriter := writer.BufferedWriter(header.Len())
 
 	if len(payload) > 0 {
-		_header := buf.StackNew()
-		header := common.Dup(_header)
-
-		writer = &buf.BufferedWriter{
-			Writer: writer,
-			Buffer: header,
-		}
-
-		err := socks.AddressSerializer.WriteAddrPort(writer, c.destination)
+		err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 		if err != nil {
 			return err
 		}
 
-		_, err = writer.Write(payload)
+		_, err = bufferedWriter.Write(payload)
 		if err != nil {
 			return err
 		}
 	} else {
-		err := socks.AddressSerializer.WriteAddrPort(writer, c.destination)
+		err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 		if err != nil {
 			return err
 		}
 	}
 
-	err := common.FlushVar(&writer)
+	err := bufferedWriter.Flush()
 	if err != nil {
 		return err
 	}
+
 	c.writer = writer
 	return nil
 }
@@ -278,7 +269,7 @@ func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
 	if err = c.readResponse(); err != nil {
 		return
 	}
-	return c.reader.(io.WriterTo).WriteTo(w)
+	return c.reader.WriteTo(w)
 }
 
 func (c *clientConn) Write(p []byte) (n int, err error) {
@@ -302,9 +293,9 @@ func (c *clientConn) Write(p []byte) (n int, err error) {
 
 func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if c.writer == nil {
-		panic("missing handshake")
+		return rw.ReadFrom0(c, r)
 	}
-	return c.writer.(io.ReaderFrom).ReadFrom(r)
+	return c.writer.ReadFrom(r)
 }
 
 type clientPacketConn struct {

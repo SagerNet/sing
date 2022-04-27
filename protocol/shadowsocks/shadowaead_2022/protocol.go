@@ -197,8 +197,8 @@ type clientConn struct {
 
 	requestSalt []byte
 
-	reader io.Reader
-	writer io.Writer
+	reader *shadowaead.Reader
+	writer *shadowaead.Writer
 }
 
 func (m *Method) writeExtendedIdentityHeaders(request *buf.Buffer, salt []byte) {
@@ -222,68 +222,56 @@ func (m *Method) writeExtendedIdentityHeaders(request *buf.Buffer, salt []byte) 
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {
-	_request := buf.StackNew()
-	request := common.Dup(_request)
-
 	salt := make([]byte, KeySaltSize)
 	common.Must1(io.ReadFull(c.method.secureRNG, salt))
-	common.Must1(request.Write(salt))
-	c.method.writeExtendedIdentityHeaders(request, salt)
-
-	var writer io.Writer
-	writer = &buf.BufferedWriter{
-		Writer: c.Conn,
-		Buffer: request,
-	}
 
 	key := Blake3DeriveKey(c.method.psk, salt, c.method.keyLength)
-	writer = shadowaead.NewWriter(
-		writer,
+	writer := shadowaead.NewWriter(
+		c.Conn,
 		c.method.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
 
-	_header := buf.StackNew()
-	header := common.Dup(_header)
+	header := writer.Buffer()
+	header.Write(salt)
+	c.method.writeExtendedIdentityHeaders(header, salt)
 
-	writer = &buf.BufferedWriter{
-		Writer: writer,
-		Buffer: header,
-	}
+	bufferedWriter := writer.BufferedWriter(header.Len())
 
-	common.Must(rw.WriteByte(writer, HeaderTypeClient))
-	common.Must(binary.Write(writer, binary.BigEndian, uint64(time.Now().Unix())))
+	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeClient))
+	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
 
-	err := socks.AddressSerializer.WriteAddrPort(writer, c.destination)
+	err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 	if err != nil {
 		return E.Cause(err, "write destination")
 	}
 
 	if len(payload) > 0 {
-		err = binary.Write(writer, binary.BigEndian, uint16(0))
+		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(0))
 		if err != nil {
 			return E.Cause(err, "write padding length")
 		}
-		_, err = writer.Write(payload)
+		_, err = bufferedWriter.Write(payload)
 		if err != nil {
 			return E.Cause(err, "write payload")
 		}
 	} else {
 		pLen := rand.Intn(MaxPaddingLength + 1)
-		err = binary.Write(writer, binary.BigEndian, uint16(pLen))
+		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(pLen))
 		if err != nil {
 			return E.Cause(err, "write padding length")
 		}
-		_, err = io.CopyN(writer, c.method.secureRNG, int64(pLen))
+		_, err = io.CopyN(bufferedWriter, c.method.secureRNG, int64(pLen))
 		if err != nil {
 			return E.Cause(err, "write padding")
 		}
 	}
 
-	err = common.FlushVar(&writer)
+	err = bufferedWriter.Flush()
 	if err != nil {
 		return E.Cause(err, "client handshake")
 	}
+
 	c.requestSalt = salt
 	c.writer = writer
 	return nil
@@ -363,7 +351,7 @@ func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
 	if err = c.readResponse(); err != nil {
 		return
 	}
-	return c.reader.(io.WriterTo).WriteTo(w)
+	return c.reader.WriteTo(w)
 }
 
 func (c *clientConn) Write(p []byte) (n int, err error) {
@@ -389,10 +377,10 @@ func (c *clientConn) Write(p []byte) (n int, err error) {
 
 func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if c.writer == nil {
-		panic("missing client handshake")
+		return rw.ReadFrom0(c, r)
 	}
 
-	return c.writer.(io.ReaderFrom).ReadFrom(r)
+	return c.writer.ReadFrom(r)
 }
 
 type clientPacketConn struct {
@@ -540,7 +528,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 				c.session.lastFilter = c.session.filter
 				c.session.lastRemoteSeen = time.Now().Unix()
 				c.session.lastRemoteCipher = c.session.remoteCipher
-				c.session.filter = new(wgReplay.Filter)
+				c.session.filter = wgReplay.Filter{}
 			}
 		}
 		c.session.remoteSessionId = sessionId
@@ -577,8 +565,8 @@ type udpSession struct {
 	cipher              cipher.AEAD
 	remoteCipher        cipher.AEAD
 	lastRemoteCipher    cipher.AEAD
-	filter              *wgReplay.Filter
-	lastFilter          *wgReplay.Filter
+	filter              wgReplay.Filter
+	lastFilter          wgReplay.Filter
 }
 
 func (s *udpSession) nextPacketId() uint64 {
@@ -588,7 +576,6 @@ func (s *udpSession) nextPacketId() uint64 {
 func (m *Method) newUDPSession() *udpSession {
 	session := &udpSession{
 		sessionId: rand.Uint64(),
-		filter:    new(wgReplay.Filter),
 	}
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
