@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"syscall"
 )
 
@@ -60,8 +61,13 @@ func IsTimeout(err error) bool {
 	if unwrapErr := errors.Unwrap(err); unwrapErr != nil {
 		err = unwrapErr
 	}
-	if opErr, isOpErr := err.(*net.OpError); isOpErr {
-		return opErr.Timeout()
+	if ne, ok := err.(*os.SyscallError); ok {
+		err = ne.Err
+	}
+	if timeoutErr, isTimeoutErr := err.(interface {
+		Timeout() bool
+	}); isTimeoutErr {
+		return timeoutErr.Timeout()
 	}
 	return false
 }
