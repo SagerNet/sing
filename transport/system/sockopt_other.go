@@ -1,6 +1,6 @@
 //go:build !linux
 
-package main
+package system
 
 import "github.com/sagernet/sing/common/exceptions"
 
