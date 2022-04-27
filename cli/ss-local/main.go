@@ -356,7 +356,7 @@ func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 	serverConn := c.method.DialPacketConn(udpConn)
 	return task.Run(ctx, func() error {
 		var init bool
-		return socks.CopyPacketConn(serverConn, conn, func(destination *M.AddrPort, n int) {
+		return socks.CopyPacketConn0(serverConn, conn, func(destination *M.AddrPort, n int) {
 			if !init {
 				init = true
 				logrus.Info("UDP ", conn.LocalAddr(), " ==> ", destination)
@@ -365,7 +365,7 @@ func (c *LocalClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 			}
 		})
 	}, func() error {
-		return socks.CopyPacketConn(conn, serverConn, func(destination *M.AddrPort, n int) {
+		return socks.CopyPacketConn0(conn, serverConn, func(destination *M.AddrPort, n int) {
 			logrus.Trace("UDP ", conn.LocalAddr(), " <== ", destination)
 		})
 	})

@@ -1,6 +1,8 @@
 package socks
 
 import (
+	"context"
+	"github.com/sagernet/sing/common/task"
 	"net"
 	"time"
 
@@ -43,7 +45,37 @@ func (s *PacketConnStub) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func CopyPacketConn(dest PacketConn, conn PacketConn, onAction func(destination *M.AddrPort, n int)) error {
+func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error {
+	return task.Run(ctx, func() error {
+		_buffer := buf.StackNew()
+		buffer := common.Dup(_buffer)
+		for {
+			destination, err := conn.ReadPacket(buffer)
+			if err != nil {
+				return err
+			}
+			err = dest.WritePacket(buffer, destination)
+			if err != nil {
+				return err
+			}
+		}
+	}, func() error {
+		_buffer := buf.StackNew()
+		buffer := common.Dup(_buffer)
+		for {
+			destination, err := dest.ReadPacket(buffer)
+			if err != nil {
+				return err
+			}
+			err = conn.WritePacket(buffer, destination)
+			if err != nil {
+				return err
+			}
+		}
+	})
+}
+
+func CopyPacketConn0(dest PacketConn, conn PacketConn, onAction func(destination *M.AddrPort, n int)) error {
 	for {
 		buffer := buf.New()
 		destination, err := conn.ReadPacket(buffer)

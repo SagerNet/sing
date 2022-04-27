@@ -123,11 +123,11 @@ func (c *localClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 
 	client := uot.NewClientConn(upstream)
 	return task.Run(context.Background(), func() error {
-		return socks.CopyPacketConn(client, conn, func(destination *M.AddrPort, n int) {
+		return socks.CopyPacketConn0(client, conn, func(destination *M.AddrPort, n int) {
 			logrus.Trace("UDP ", conn.LocalAddr(), " ==> ", destination)
 		})
 	}, func() error {
-		return socks.CopyPacketConn(conn, client, func(destination *M.AddrPort, n int) {
+		return socks.CopyPacketConn0(conn, client, func(destination *M.AddrPort, n int) {
 			logrus.Trace("UDP ", conn.LocalAddr(), " <== ", destination)
 		})
 	})
