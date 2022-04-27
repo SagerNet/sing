@@ -219,7 +219,7 @@ func NewLocalClient(f *flags) (*LocalClient, error) {
 			return err
 		}
 		if f.FWMark > 0 {
-			err = syscall.SetsockoptInt(int(rawFd), syscall.SOL_SOCKET, syscall.SO_MARK, f.FWMark)
+			err = redir.FWMark(rawFd, f.FWMark)
 			if err != nil {
 				return err
 			}

@@ -32,6 +32,10 @@ func TProxyUDP(fd uintptr, isIPv6 bool) error {
 	return syscall.SetsockoptInt(int(fd), syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1)
 }
 
+func FWMark(fd uintptr, mark int) error {
+	return syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_MARK, mark)
+}
+
 func GetOriginalDestinationFromOOB(oob []byte) (*M.AddrPort, error) {
 	controlMessages, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {
