@@ -1,6 +1,7 @@
 package socks
 
 import (
+	"context"
 	"io"
 	"net"
 	"net/netip"
@@ -34,8 +35,8 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 	return listener
 }
 
-func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(conn, l.authenticator, l.bindAddr, l.handler, metadata)
+func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	return HandleConnection(ctx, conn, l.authenticator, l.bindAddr, l.handler, metadata)
 }
 
 func (l *Listener) Start() error {
@@ -50,7 +51,7 @@ func (l *Listener) HandleError(err error) {
 	l.handler.HandleError(err)
 }
 
-func HandleConnection(conn net.Conn, authenticator auth.Authenticator, bind netip.Addr, handler Handler, metadata M.Metadata) error {
+func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, bind netip.Addr, handler Handler, metadata M.Metadata) error {
 	authRequest, err := ReadAuthRequest(conn)
 	if err != nil {
 		return E.Cause(err, "read socks auth request")
@@ -111,7 +112,7 @@ func HandleConnection(conn net.Conn, authenticator auth.Authenticator, bind neti
 		}
 		metadata.Protocol = "socks"
 		metadata.Destination = request.Destination
-		return handler.NewConnection(conn, metadata)
+		return handler.NewConnection(ctx, conn, metadata)
 	case CommandUDPAssociate:
 		network := "udp"
 		if bind.Is4() {

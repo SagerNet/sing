@@ -131,16 +131,16 @@ func newServer(f *flags) (*server, error) {
 	return s, nil
 }
 
-func (s *server) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if metadata.Protocol != "shadowsocks" {
-		return s.service.NewConnection(conn, metadata)
+		return s.service.NewConnection(ctx, conn, metadata)
 	}
 	logrus.Info("inbound TCP ", conn.RemoteAddr(), " ==> ", metadata.Destination)
 	destConn, err := network.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
 	if err != nil {
 		return err
 	}
-	return rw.CopyConn(context.Background(), conn, destConn)
+	return rw.CopyConn(ctx, conn, destConn)
 }
 
 func (s *server) HandleError(err error) {

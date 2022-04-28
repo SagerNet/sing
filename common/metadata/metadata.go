@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"net"
 
 	"github.com/sagernet/sing/common/buf"
@@ -13,7 +14,7 @@ type Metadata struct {
 }
 
 type TCPConnectionHandler interface {
-	NewConnection(conn net.Conn, metadata Metadata) error
+	NewConnection(ctx context.Context, conn net.Conn, metadata Metadata) error
 }
 
 type UDPHandler interface {

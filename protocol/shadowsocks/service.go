@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"context"
 	"net"
 
 	M "github.com/sagernet/sing/common/metadata"
@@ -31,12 +32,12 @@ func NewNoneService(handler Handler) Service {
 	}
 }
 
-func (s *NoneService) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (s *NoneService) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	destination, err := socks.AddressSerializer.ReadAddrPort(conn)
 	if err != nil {
 		return err
 	}
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
-	return s.handler.NewConnection(conn, metadata)
+	return s.handler.NewConnection(ctx, conn, metadata)
 }

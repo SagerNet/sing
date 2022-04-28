@@ -302,7 +302,7 @@ func bypass(conn net.Conn, destination *M.AddrPort) error {
 	})
 }
 
-func (c *client) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if c.bypass != "" {
 		if metadata.Destination.Addr.Family().IsFqdn() {
 			if c.Match(metadata.Destination.Addr.Fqdn()) {
@@ -316,7 +316,6 @@ func (c *client) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	}
 
 	logrus.Info("outbound ", metadata.Protocol, " TCP ", conn.RemoteAddr(), " ==> ", metadata.Destination)
-	ctx := context.Background()
 
 	serverConn, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
 	if err != nil {

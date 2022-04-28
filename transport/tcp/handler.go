@@ -1,6 +1,7 @@
 package tcp
 
 import (
+	"context"
 	"net"
 	"net/netip"
 
@@ -108,7 +109,7 @@ func (l *Listener) loop() {
 		}
 		go func() {
 			metadata.Protocol = "tcp"
-			hErr := l.handler.NewConnection(tcpConn, metadata)
+			hErr := l.handler.NewConnection(context.Background(), tcpConn, metadata)
 			if hErr != nil {
 				l.handler.HandleError(&Error{Conn: tcpConn, Cause: hErr})
 			}

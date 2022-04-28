@@ -94,7 +94,7 @@ type localClient struct {
 	upstream string
 }
 
-func (c *localClient) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", metadata.Destination)
 
 	upstream, err := net.Dial("tcp", c.upstream)

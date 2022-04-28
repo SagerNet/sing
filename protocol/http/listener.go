@@ -21,7 +21,7 @@ type Handler interface {
 	tcp.Handler
 }
 
-func HandleRequest(request *http.Request, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	var httpClient *http.Client
 	for {
 		if authenticator != nil {
@@ -56,7 +56,7 @@ func HandleRequest(request *http.Request, conn net.Conn, authenticator auth.Auth
 				return E.Cause(err, "write http response")
 			}
 			metadata.Destination = destination
-			return handler.NewConnection(conn, metadata)
+			return handler.NewConnection(ctx, conn, metadata)
 		}
 
 		keepAlive := strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
@@ -96,7 +96,7 @@ func HandleRequest(request *http.Request, conn net.Conn, authenticator auth.Auth
 						go func() {
 							metadata.Destination = destination
 							metadata.Protocol = "http"
-							err = handler.NewConnection(right, metadata)
+							err = handler.NewConnection(ctx, right, metadata)
 							if err != nil {
 								handler.HandleError(&tcp.Error{Conn: right, Cause: err})
 							}

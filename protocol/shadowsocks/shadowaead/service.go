@@ -1,6 +1,7 @@
 package shadowaead
 
 import (
+	"context"
 	"crypto/cipher"
 	"io"
 	"net"
@@ -73,7 +74,7 @@ func NewService(method string, key []byte, password []byte, secureRNG io.Reader,
 	return s, nil
 }
 
-func (s *Service) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	_salt := buf.Make(s.keySaltLength)
 	salt := common.Dup(_salt)
 
@@ -92,7 +93,7 @@ func (s *Service) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
 
-	return s.handler.NewConnection(&serverConn{
+	return s.handler.NewConnection(ctx, &serverConn{
 		Service: s,
 		Conn:    conn,
 		reader:  reader,
@@ -153,7 +154,7 @@ func (c *serverConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *serverConn) ReadFrom(r io.Reader) (n int64, err error) {
-	if c.writer != nil {
+	if c.writer == nil {
 		return rw.ReadFrom0(c, r)
 	}
 	return c.writer.ReadFrom(r)

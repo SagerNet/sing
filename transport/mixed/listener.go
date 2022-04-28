@@ -1,6 +1,7 @@
 package mixed
 
 import (
+	"context"
 	"io"
 	"net"
 	netHttp "net/http"
@@ -49,9 +50,9 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transpro
 	return listener
 }
 
-func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
+func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if metadata.Destination != nil {
-		return l.handler.NewConnection(conn, metadata)
+		return l.handler.NewConnection(ctx, conn, metadata)
 	}
 	bufConn := buf.NewBufferedConn(conn)
 	header, err := bufConn.Peek(1)
@@ -62,7 +63,7 @@ func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
 	case socks.Version4:
 		return E.New("socks4 request dropped (TODO)")
 	case socks.Version5:
-		return socks.HandleConnection(bufConn, l.authenticator, l.bindAddr, l.handler, metadata)
+		return socks.HandleConnection(ctx, bufConn, l.authenticator, l.bindAddr, l.handler, metadata)
 	}
 
 	request, err := http.ReadRequest(bufConn.Reader())
@@ -92,7 +93,7 @@ func (l *Listener) NewConnection(conn net.Conn, metadata M.Metadata) error {
 		return nil
 	}
 
-	return http.HandleRequest(request, bufConn, l.authenticator, l.handler, metadata)
+	return http.HandleRequest(ctx, request, bufConn, l.authenticator, l.handler, metadata)
 }
 
 func (l *Listener) NewPacket(packet *buf.Buffer, metadata M.Metadata) error {
