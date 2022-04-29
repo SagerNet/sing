@@ -55,6 +55,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 			if err != nil {
 				return E.Cause(err, "write http response")
 			}
+			metadata.Protocol = "http"
 			metadata.Destination = destination
 			return handler.NewConnection(ctx, conn, metadata)
 		}
