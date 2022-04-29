@@ -85,7 +85,7 @@ Only available with Linux kernel > 3.7.0.`)
 	command.Flags().IntVar(&f.FWMark, "fwmark", 0, "Set outbound socket mark.")
 	command.Flags().StringVar(&f.Bypass, "bypass", "", "Set bypass country.")
 	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
-	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", true, "Enable verbose mode.")
+	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Enable verbose mode.")
 	command.Flags().BoolVar(&f.UseSystemRNG, "use-system-rng", false, "Use system random number generator.")
 	command.Flags().BoolVar(&f.ReducedSaltEntropy, "reduced-salt-entropy", false, "Remapping salt to printable chars.")
 

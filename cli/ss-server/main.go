@@ -69,7 +69,7 @@ func main() {
 
 	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", "Set the cipher.\n\nSupported ciphers:\n\n"+strings.Join(supportedCiphers, "\n"))
 	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
-	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", true, "Enable verbose mode.")
+	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Enable verbose mode.")
 
 	err := command.Execute()
 	if err != nil {
@@ -217,6 +217,7 @@ func newServer(f *flags) (*server, error) {
 
 func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if metadata.Protocol != "shadowsocks" {
+		logrus.Trace("inbound raw TCP from ", metadata.Source)
 		return s.service.NewConnection(ctx, conn, metadata)
 	}
 	logrus.Info("inbound TCP ", conn.RemoteAddr(), " ==> ", metadata.Destination)
@@ -237,6 +238,7 @@ func (s *server) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata)
 }
 
 func (s *server) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	logrus.Trace("inbound raw UDP from ", metadata.Source)
 	return s.service.NewPacket(conn, buffer, metadata)
 }
 
