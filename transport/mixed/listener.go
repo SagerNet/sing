@@ -32,7 +32,7 @@ type Listener struct {
 	bindAddr      netip.Addr
 	handler       Handler
 	authenticator auth.Authenticator
-	udpNat        *udpnat.Server
+	udpNat        *udpnat.Service[string]
 }
 
 func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transproxy redir.TransproxyMode, handler Handler) *Listener {
@@ -45,7 +45,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transpro
 	listener.TCPListener = tcp.NewTCPListener(bind, listener, tcp.WithTransproxyMode(transproxy))
 	if transproxy == redir.ModeTProxy {
 		listener.UDPListener = udp.NewUDPListener(bind, listener, udp.WithTransproxyMode(transproxy))
-		listener.udpNat = udpnat.NewServer(handler)
+		listener.udpNat = udpnat.New[string](handler)
 	}
 	return listener
 }
@@ -63,7 +63,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	case socks.Version4:
 		return E.New("socks4 request dropped (TODO)")
 	case socks.Version5:
-		return socks.HandleConnection(ctx, bufConn, l.authenticator, l.bindAddr, l.handler, metadata)
+		return socks.HandleConnection(ctx, bufConn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
 	}
 
 	request, err := http.ReadRequest(bufConn.Reader())
@@ -96,8 +96,23 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	return http.HandleRequest(ctx, request, bufConn, l.authenticator, l.handler, metadata)
 }
 
-func (l *Listener) NewPacket(packet *buf.Buffer, metadata M.Metadata) error {
-	return l.udpNat.HandleUDP(packet, metadata)
+func (l *Listener) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	return l.udpNat.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+		return &tproxyPacketWriter{metadata.Source.UDPAddr()}
+	}, buffer, metadata)
+}
+
+type tproxyPacketWriter struct {
+	source *net.UDPAddr
+}
+
+func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	udpConn, err := redir.DialUDP("udp", destination.UDPAddr(), w.source)
+	if err != nil {
+		return E.Cause(err, "tproxy udp write back")
+	}
+	defer udpConn.Close()
+	return common.Error(udpConn.Write(buffer.Bytes()))
 }
 
 func (l *Listener) HandleError(err error) {

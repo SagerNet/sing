@@ -2,32 +2,43 @@ package shadowaead_2022
 
 import (
 	"context"
+	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
 	"io"
 	"math"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/gsync"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/socks"
+	wgReplay "golang.zx2c4.com/wireguard/replay"
 )
 
 type Service struct {
-	name         string
-	secureRNG    io.Reader
-	keyLength    int
-	constructor  func(key []byte) cipher.AEAD
-	psk          []byte
-	replayFilter replay.Filter
-	handler      shadowsocks.Handler
+	name             string
+	secureRNG        io.Reader
+	keyLength        int
+	constructor      func(key []byte) cipher.AEAD
+	blockConstructor func(key []byte) cipher.Block
+	udpCipher        cipher.AEAD
+	udpBlockCipher   cipher.Block
+	psk              []byte
+	replayFilter     replay.Filter
+	handler          shadowsocks.Handler
+	udpNat           *udpnat.Service[uint64]
+	sessions         gsync.Map[uint64, *serverUDPSession]
 }
 
 func NewService(method string, psk []byte, secureRNG io.Reader, handler shadowsocks.Handler) (shadowsocks.Service, error) {
@@ -47,18 +58,20 @@ func NewService(method string, psk []byte, secureRNG io.Reader, handler shadowso
 	case "2022-blake3-aes-128-gcm":
 		s.keyLength = 16
 		s.constructor = newAESGCM
-		// m.blockConstructor = newAES
-		// m.udpBlockCipher = newAES(m.psk)
+		s.blockConstructor = newAES
+		s.udpBlockCipher = newAES(s.psk)
 	case "2022-blake3-aes-256-gcm":
 		s.keyLength = 32
 		s.constructor = newAESGCM
-		// m.blockConstructor = newAES
-		// m.udpBlockCipher = newAES(m.psk)
+		s.blockConstructor = newAES
+		s.udpBlockCipher = newAES(s.psk)
 	case "2022-blake3-chacha20-poly1305":
 		s.keyLength = 32
 		s.constructor = newChacha20Poly1305
-		// m.udpCipher = newXChacha20Poly1305(m.psk)
+		s.udpCipher = newXChacha20Poly1305(s.psk)
 	}
+
+	s.udpNat = udpnat.New[uint64](s)
 	return s, nil
 }
 
@@ -193,4 +206,170 @@ func (c *serverConn) ReadFrom(r io.Reader) (n int64, err error) {
 
 func (c *serverConn) WriteTo(w io.Writer) (n int64, err error) {
 	return c.reader.WriteTo(w)
+}
+
+func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	var packetHeader []byte
+	if s.udpCipher != nil {
+		_, err := s.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)
+		if err != nil {
+			return E.Cause(err, "decrypt packet header")
+		}
+		buffer.Advance(PacketNonceSize)
+	} else {
+		packetHeader = buffer.To(aes.BlockSize)
+		s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
+	}
+
+	var sessionId, packetId uint64
+	err := binary.Read(buffer, binary.BigEndian, &sessionId)
+	if err != nil {
+		return err
+	}
+	err = binary.Read(buffer, binary.BigEndian, &packetId)
+	if err != nil {
+		return err
+	}
+
+	session, loaded := s.sessions.LoadOrStore(sessionId, s.newUDPSession)
+	if !loaded {
+		session.remoteSessionId = sessionId
+		if packetHeader != nil {
+			key := Blake3DeriveKey(s.psk, packetHeader[:8], s.keyLength)
+			session.remoteCipher = s.constructor(common.Dup(key))
+		}
+	}
+
+	if !session.filter.ValidateCounter(packetId, math.MaxUint64) {
+		return ErrPacketIdNotUnique
+	}
+
+	if packetHeader != nil {
+		_, err = session.remoteCipher.Open(buffer.Index(0), packetHeader[4:16], buffer.Bytes(), nil)
+		if err != nil {
+			return E.Cause(err, "decrypt packet")
+		}
+	}
+
+	var headerType byte
+	headerType, err = buffer.ReadByte()
+	if err != nil {
+		return err
+	}
+
+	if headerType != HeaderTypeClient {
+		return ErrBadHeaderType
+	}
+
+	var epoch uint64
+	err = binary.Read(buffer, binary.BigEndian, &epoch)
+	if err != nil {
+		return err
+	}
+	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
+		return ErrBadTimestamp
+	}
+
+	var paddingLength uint16
+	err = binary.Read(buffer, binary.BigEndian, &paddingLength)
+	if err != nil {
+		return E.Cause(err, "read padding length")
+	}
+	buffer.Advance(int(paddingLength))
+
+	destination, err := socks.AddressSerializer.ReadAddrPort(buffer)
+	if err != nil {
+		return err
+	}
+	metadata.Destination = destination
+
+	return s.udpNat.NewPacket(sessionId, func() socks.PacketWriter {
+		return &serverPacketWriter{s, conn, session, metadata.Source}
+	}, buffer, metadata)
+}
+
+type serverPacketWriter struct {
+	*Service
+	socks.PacketConn
+	session *serverUDPSession
+	source  *M.AddrPort
+}
+
+func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	defer buffer.Release()
+
+	_header := buf.StackNew()
+	header := common.Dup(_header)
+
+	var dataIndex int
+	if w.udpCipher != nil {
+		common.Must1(header.ReadFullFrom(w.secureRNG, PacketNonceSize))
+		dataIndex = buffer.Len()
+	} else {
+		dataIndex = aes.BlockSize
+	}
+
+	common.Must(
+		binary.Write(header, binary.BigEndian, w.session.sessionId),
+		binary.Write(header, binary.BigEndian, w.session.nextPacketId()),
+		header.WriteByte(HeaderTypeServer),
+		binary.Write(header, binary.BigEndian, uint64(time.Now().Unix())),
+		binary.Write(header, binary.BigEndian, w.session.remoteSessionId),
+		binary.Write(header, binary.BigEndian, uint16(0)), // padding length
+	)
+
+	err := socks.AddressSerializer.WriteAddrPort(header, destination)
+	if err != nil {
+		return err
+	}
+
+	_, err = header.Write(buffer.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if w.udpCipher != nil {
+		w.udpCipher.Seal(header.Index(dataIndex), header.To(dataIndex), header.From(dataIndex), nil)
+		header.Extend(w.udpCipher.Overhead())
+	} else {
+		packetHeader := header.To(aes.BlockSize)
+		w.session.cipher.Seal(header.Index(dataIndex), packetHeader[4:16], header.From(dataIndex), nil)
+		header.Extend(w.session.cipher.Overhead())
+		w.udpBlockCipher.Encrypt(packetHeader, packetHeader)
+	}
+	return w.PacketConn.WritePacket(header, w.source)
+}
+
+type serverUDPSession struct {
+	sessionId       uint64
+	remoteSessionId uint64
+	packetId        uint64
+	cipher          cipher.AEAD
+	remoteCipher    cipher.AEAD
+	filter          wgReplay.Filter
+}
+
+func (s *serverUDPSession) nextPacketId() uint64 {
+	return atomic.AddUint64(&s.packetId, 1)
+}
+
+func (m *Service) newUDPSession() *serverUDPSession {
+	session := &serverUDPSession{}
+	common.Must(binary.Read(m.secureRNG, binary.BigEndian, &session.sessionId))
+	session.packetId--
+	if m.udpCipher == nil {
+		sessionId := make([]byte, 8)
+		binary.BigEndian.PutUint64(sessionId, session.sessionId)
+		key := Blake3DeriveKey(m.psk, sessionId, m.keyLength)
+		session.cipher = m.constructor(common.Dup(key))
+	}
+	return session
+}
+
+func (s *Service) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
+	return s.handler.NewPacketConnection(conn, metadata)
+}
+
+func (s *Service) HandleError(err error) {
+	s.handler.HandleError(err)
 }

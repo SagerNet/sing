@@ -345,28 +345,15 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, serverConn, conn)
 }
 
-func (c *client) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) error {
+func (c *client) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
+	logrus.Info("outbound ", metadata.Protocol, " UDP ", metadata.Source, " ==> ", metadata.Destination)
 	ctx := context.Background()
 	udpConn, err := c.dialer.DialContext(ctx, "udp", c.server.String())
 	if err != nil {
 		return err
 	}
 	serverConn := c.method.DialPacketConn(udpConn)
-	return task.Run(ctx, func() error {
-		var init bool
-		return socks.CopyPacketConn0(serverConn, conn, func(destination *M.AddrPort, n int) {
-			if !init {
-				init = true
-				logrus.Info("UDP ", conn.LocalAddr(), " ==> ", destination)
-			} else {
-				logrus.Trace("UDP ", conn.LocalAddr(), " ==> ", destination)
-			}
-		})
-	}, func() error {
-		return socks.CopyPacketConn0(conn, serverConn, func(destination *M.AddrPort, n int) {
-			logrus.Trace("UDP ", conn.LocalAddr(), " <== ", destination)
-		})
-	})
+	return socks.CopyPacketConn(ctx, serverConn, conn)
 }
 
 func run(cmd *cobra.Command, flags *flags) {

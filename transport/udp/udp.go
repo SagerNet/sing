@@ -9,10 +9,11 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
+	"github.com/sagernet/sing/protocol/socks"
 )
 
 type Handler interface {
-	M.UDPHandler
+	socks.UDPHandler
 	E.Handler
 }
 
@@ -22,6 +23,19 @@ type Listener struct {
 	network string
 	bind    netip.AddrPort
 	tproxy  bool
+}
+
+func (l *Listener) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+	n, addr, err := l.ReadFromUDP(buffer.FreeBytes())
+	if err != nil {
+		return nil, err
+	}
+	buffer.Truncate(n)
+	return M.AddrPortFromNetAddr(addr), nil
+}
+
+func (l *Listener) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	return common.Error(l.UDPConn.WriteTo(buffer.Bytes(), destination.UDPAddr()))
 }
 
 func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
@@ -69,32 +83,31 @@ func (l *Listener) Close() error {
 }
 
 func (l *Listener) loop() {
+	_buffer := buf.StackNewMax()
+	buffer := common.Dup(_buffer)
+	data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader).Slice()
 	if !l.tproxy {
 		for {
-			buffer := buf.New()
-			n, addr, err := l.ReadFromUDP(buffer.Extend(buf.UDPBufferSize))
+			n, addr, err := l.ReadFromUDP(data)
 			if err != nil {
-				buffer.Release()
 				l.handler.HandleError(err)
 				return
 			}
-			buffer.Truncate(n)
-			err = l.handler.NewPacket(buffer, M.Metadata{
+			buffer.Resize(buf.ReversedHeader, n)
+			err = l.handler.NewPacket(l, buffer, M.Metadata{
 				Protocol: "udp",
 				Source:   M.AddrPortFromNetAddr(addr),
 			})
 			if err != nil {
-				buffer.Release()
 				l.handler.HandleError(err)
 			}
 		}
 	} else {
-		oob := make([]byte, 1024)
+		_oob := make([]byte, 1024)
+		oob := common.Dup(_oob)
 		for {
-			buffer := buf.New()
-			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(buffer.FreeBytes(), oob)
+			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(data, oob)
 			if err != nil {
-				buffer.Release()
 				l.handler.HandleError(err)
 				return
 			}
@@ -103,14 +116,13 @@ func (l *Listener) loop() {
 				l.handler.HandleError(E.Cause(err, "get original destination"))
 				return
 			}
-			buffer.Truncate(n)
-			err = l.handler.NewPacket(buffer, M.Metadata{
+			buffer.Resize(buf.ReversedHeader, n)
+			err = l.handler.NewPacket(l, buffer, M.Metadata{
 				Protocol:    "tproxy",
 				Source:      M.AddrPortFromAddrPort(addr),
 				Destination: destination,
 			})
 			if err != nil {
-				buffer.Release()
 				l.handler.HandleError(err)
 			}
 		}

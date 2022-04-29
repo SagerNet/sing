@@ -30,7 +30,6 @@ func TestServerConn(t *testing.T) {
 		Port: 53,
 	}))
 	_buffer := buf.StackNew()
-	common.Use(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must2(buffer.ReadPacketFrom(clientConn))
 	common.Must(message.Unpack(buffer.Bytes()))

@@ -109,9 +109,9 @@ func New(method string, pskList [][]byte, secureRNG io.Reader) (shadowsocks.Meth
 }
 
 func Blake3DeriveKey(psk, salt []byte, keyLength int) []byte {
-	sessionKey := make([]byte, 2*KeySaltSize)
+	sessionKey := buf.Make(len(psk) + len(salt))
 	copy(sessionKey, psk)
-	copy(sessionKey[KeySaltSize:], salt)
+	copy(sessionKey[len(psk):], salt)
 	outKey := buf.Make(keyLength)
 	blake3.DeriveKey(outKey, "shadowsocks 2022 session subkey", sessionKey)
 	return outKey
@@ -434,6 +434,9 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 		return err
 	}
 	buffer = buffer.WriteBufferAtFirst(header)
+	if err != nil {
+		return err
+	}
 	if c.method.udpCipher != nil {
 		c.method.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
 		buffer.Extend(c.method.udpCipher.Overhead())
@@ -574,9 +577,9 @@ func (s *udpSession) nextPacketId() uint64 {
 }
 
 func (m *Method) newUDPSession() *udpSession {
-	session := &udpSession{
-		sessionId: rand.Uint64(),
-	}
+	session := &udpSession{}
+	common.Must(binary.Read(m.secureRNG, binary.BigEndian, &session.sessionId))
+	session.packetId--
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)

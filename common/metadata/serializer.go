@@ -55,26 +55,41 @@ func (s *Serializer) WriteAddress(writer io.Writer, addr Addr) error {
 	return err
 }
 
+func (s *Serializer) AddressLen(addr Addr) int {
+	switch addr.Family() {
+	case AddressFamilyIPv4:
+		return 5
+	case AddressFamilyIPv6:
+		return 17
+	default:
+		return 1 + len(addr.Fqdn())
+	}
+}
+
 func (s *Serializer) WritePort(writer io.Writer, port uint16) error {
 	return binary.Write(writer, binary.BigEndian, port)
 }
 
-func (s *Serializer) WriteAddrPort(writer io.Writer, addrPort *AddrPort) error {
+func (s *Serializer) WriteAddrPort(writer io.Writer, destination *AddrPort) error {
 	var err error
 	if !s.portFirst {
-		err = s.WriteAddress(writer, addrPort.Addr)
+		err = s.WriteAddress(writer, destination.Addr)
 	} else {
-		err = s.WritePort(writer, addrPort.Port)
+		err = s.WritePort(writer, destination.Port)
 	}
 	if err != nil {
 		return err
 	}
 	if s.portFirst {
-		err = s.WriteAddress(writer, addrPort.Addr)
+		err = s.WriteAddress(writer, destination.Addr)
 	} else {
-		err = s.WritePort(writer, addrPort.Port)
+		err = s.WritePort(writer, destination.Port)
 	}
 	return err
+}
+
+func (s *Serializer) AddrPortLen(destination *AddrPort) int {
+	return s.AddressLen(destination.Addr) + 2
 }
 
 func (s *Serializer) ReadAddress(reader io.Reader) (Addr, error) {
@@ -120,7 +135,7 @@ func (s *Serializer) ReadPort(reader io.Reader) (uint16, error) {
 	return binary.BigEndian.Uint16(port), nil
 }
 
-func (s *Serializer) ReadAddrPort(reader io.Reader) (addrPort *AddrPort, err error) {
+func (s *Serializer) ReadAddrPort(reader io.Reader) (destination *AddrPort, err error) {
 	var addr Addr
 	var port uint16
 	if !s.portFirst {

@@ -156,13 +156,13 @@ func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn 
 }
 
 func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
-	return &clientPacketConn{conn, m}
+	return &clientPacketConn{m, conn}
 }
 
 func (m *Method) EncodePacket(buffer *buf.Buffer) error {
 	key := Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength)
 	c := m.constructor(common.Dup(key))
-	c.Seal(buffer.From(m.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
+	c.Seal(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	buffer.Extend(c.Overhead())
 	return nil
 }
@@ -299,20 +299,18 @@ func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 type clientPacketConn struct {
+	*Method
 	net.Conn
-	method *Method
 }
 
 func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	_header := buf.StackNew()
-	header := common.Dup(_header)
-	common.Must1(header.ReadFullFrom(c.method.secureRNG, c.method.keySaltLength))
-	err := socks.AddressSerializer.WriteAddrPort(header, destination)
+	header := buffer.ExtendHeader(c.keySaltLength + socks.AddressSerializer.AddrPortLen(destination))
+	common.Must1(io.ReadFull(c.secureRNG, header[:c.keySaltLength]))
+	err := socks.AddressSerializer.WriteAddrPort(buf.With(header[c.keySaltLength:]), destination)
 	if err != nil {
 		return err
 	}
-	buffer = buffer.WriteBufferAtFirst(header)
-	err = c.method.EncodePacket(buffer)
+	err = c.EncodePacket(buffer)
 	if err != nil {
 		return err
 	}
@@ -325,7 +323,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		return nil, err
 	}
 	buffer.Truncate(n)
-	err = c.method.DecodePacket(buffer)
+	err = c.DecodePacket(buffer)
 	if err != nil {
 		return nil, err
 	}

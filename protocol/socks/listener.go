@@ -36,7 +36,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 }
 
 func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(ctx, conn, l.authenticator, l.bindAddr, l.handler, metadata)
+	return HandleConnection(ctx, conn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
 }
 
 func (l *Listener) Start() error {
@@ -131,9 +131,10 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 		if err != nil {
 			return E.Cause(err, "write socks response")
 		}
+		metadata.Protocol = "socks"
 		metadata.Destination = request.Destination
 		go func() {
-			err := handler.NewPacketConnection(NewPacketConn(conn, udpConn), metadata)
+			err := handler.NewPacketConnection(NewAssociatePacketConn(conn, udpConn, request.Destination), metadata)
 			if err != nil {
 				handler.HandleError(err)
 			}

@@ -28,6 +28,12 @@ wget 'https://github.com/Dreamacro/maxmind-geoip/releases/latest/download/Countr
 go install -v -trimpath -ldflags "-s -w -buildid=" ./cli/ss-local
 ```
 
+### ss-server
+
+```shell
+go install -v -trimpath -ldflags "-s -w -buildid=" ./cli/ss-server
+```
+
 ### ddns
 
 ```shell

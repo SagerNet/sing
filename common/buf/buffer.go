@@ -104,11 +104,15 @@ func (b *Buffer) ExtendHeader(size int) []byte {
 		b.start -= size
 		return b.data[b.start-size : b.start]
 	} else {
-		offset := size - b.start
+		/*offset := size - b.start
 		end := b.end + size
+		if end > len(b.data) {
+			panic("buffer overflow")
+		}
 		copy(b.data[offset:end], b.data[b.start:b.end])
 		b.end = end
-		return b.data[:offset]
+		return b.data[:offset]*/
+		panic("no header available")
 	}
 }
 
@@ -119,10 +123,18 @@ func (b *Buffer) WriteBufferAtFirst(buffer *Buffer) *Buffer {
 		b.start -= n
 		buffer.Release()
 		return b
+	} else if buffer.FreeLen() >= b.Len() {
+		common.Must1(buffer.Write(b.Bytes()))
+		b.Release()
+		return buffer
+	} else if b.FreeLen() >= size {
+		copy(b.data[b.start+size:b.end+size], b.data[b.start:b.end])
+		copy(b.data, buffer.data)
+		buffer.Release()
+		return b
+	} else {
+		panic("buffer overflow")
 	}
-	common.Must1(buffer.Write(b.Bytes()))
-	b.Release()
-	return buffer
 }
 
 func (b *Buffer) WriteAtFirst(data []byte) (n int, err error) {
@@ -303,6 +315,10 @@ func (b *Buffer) Cut(start int, end int) *Buffer {
 	return &Buffer{
 		data: b.data[b.start:b.end],
 	}
+}
+
+func (b Buffer) Start() int {
+	return b.start
 }
 
 func (b Buffer) Len() int {

@@ -14,7 +14,6 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/common/task"
 	"github.com/sagernet/sing/common/uot"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/transport/mixed"
@@ -122,15 +121,7 @@ func (c *localClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 	}
 
 	client := uot.NewClientConn(upstream)
-	return task.Run(context.Background(), func() error {
-		return socks.CopyPacketConn0(client, conn, func(destination *M.AddrPort, n int) {
-			logrus.Trace("UDP ", conn.LocalAddr(), " ==> ", destination)
-		})
-	}, func() error {
-		return socks.CopyPacketConn0(conn, client, func(destination *M.AddrPort, n int) {
-			logrus.Trace("UDP ", conn.LocalAddr(), " <== ", destination)
-		})
-	})
+	return socks.CopyPacketConn(context.Background(), client, conn)
 }
 
 func (c *localClient) OnError(err error) {

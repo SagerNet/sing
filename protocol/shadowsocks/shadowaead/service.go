@@ -13,6 +13,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/socks"
 	"golang.org/x/crypto/chacha20poly1305"
@@ -25,6 +26,7 @@ type Service struct {
 	key           []byte
 	secureRNG     io.Reader
 	replayFilter  replay.Filter
+	udp           *udpnat.Service[string]
 	handler       shadowsocks.Handler
 }
 
@@ -34,6 +36,7 @@ func NewService(method string, key []byte, password []byte, secureRNG io.Reader,
 		secureRNG: secureRNG,
 		handler:   handler,
 	}
+	s.udp = udpnat.New[string](s)
 	if replayFilter {
 		s.replayFilter = replay.NewBloomRing()
 	}
@@ -162,4 +165,60 @@ func (c *serverConn) ReadFrom(r io.Reader) (n int64, err error) {
 
 func (c *serverConn) WriteTo(w io.Writer) (n int64, err error) {
 	return c.reader.WriteTo(w)
+}
+
+func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	if buffer.Len() < s.keySaltLength {
+		return E.New("bad packet")
+	}
+	key := Kdf(s.key, buffer.To(s.keySaltLength), s.keySaltLength)
+	c := s.constructor(common.Dup(key))
+	/*data := buf.New()
+	packet, err := c.Open(data.Index(0), rw.ZeroBytes[:c.NonceSize()], buffer.From(s.keySaltLength), nil)
+	if err != nil {
+		return err
+	}
+	data.Truncate(len(packet))
+	metadata.Protocol = "shadowsocks"
+	return s.udp.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+		return &serverPacketWriter{s, conn, metadata.Source}
+	}, data, metadata)*/
+	packet, err := c.Open(buffer.Index(s.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(s.keySaltLength), nil)
+	if err != nil {
+		return err
+	}
+	buffer.Advance(s.keySaltLength)
+	buffer.Truncate(len(packet))
+	metadata.Protocol = "shadowsocks"
+	return s.udp.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+		return &serverPacketWriter{s, conn, metadata.Source}
+	}, buffer, metadata)
+}
+
+type serverPacketWriter struct {
+	*Service
+	socks.PacketConn
+	source *M.AddrPort
+}
+
+func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	header := buffer.ExtendHeader(w.keySaltLength + socks.AddressSerializer.AddrPortLen(destination))
+	common.Must1(io.ReadFull(w.secureRNG, header[:w.keySaltLength]))
+	err := socks.AddressSerializer.WriteAddrPort(buf.With(header[w.keySaltLength:]), destination)
+	if err != nil {
+		return err
+	}
+	key := Kdf(w.key, buffer.To(w.keySaltLength), w.keySaltLength)
+	c := w.constructor(common.Dup(key))
+	c.Seal(buffer.From(w.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(w.keySaltLength), nil)
+	buffer.Extend(c.Overhead())
+	return w.PacketConn.WritePacket(buffer, w.source)
+}
+
+func (s *Service) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
+	return s.handler.NewPacketConnection(conn, metadata)
+}
+
+func (s *Service) HandleError(err error) {
+	s.handler.HandleError(err)
 }
