@@ -9,8 +9,8 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/gsync"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/protocol/socks"
 )
@@ -21,17 +21,18 @@ type Handler interface {
 }
 
 type Service[K comparable] struct {
-	nat     gsync.Map[K, *conn]
+	nat     cache.LruCache[K, *conn]
 	handler Handler
 }
 
-func New[T comparable](handler Handler) *Service[T] {
-	return &Service[T]{
+func New[K comparable](maxAge int64, handler Handler) Service[K] {
+	return Service[K]{
+		nat:     cache.NewLRU[K, *conn](maxAge, true),
 		handler: handler,
 	}
 }
 
-func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet),
@@ -57,7 +58,6 @@ func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *
 	}
 	c.data <- p
 	<-ctx.Done()
-	return nil
 }
 
 type packet struct {

@@ -3,6 +3,7 @@ package shadowsocks
 import (
 	"context"
 	"net"
+	"net/netip"
 
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -24,14 +25,14 @@ type Handler interface {
 
 type NoneService struct {
 	handler Handler
-	udp     *udpnat.Service[string]
+	udp     udpnat.Service[netip.AddrPort]
 }
 
-func NewNoneService(handler Handler) Service {
+func NewNoneService(udpTimeout int64, handler Handler) Service {
 	s := &NoneService{
 		handler: handler,
 	}
-	s.udp = udpnat.New[string](s)
+	s.udp = udpnat.New[netip.AddrPort](udpTimeout, s)
 	return s
 }
 
@@ -52,9 +53,10 @@ func (s *NoneService) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metad
 	}
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
-	return s.udp.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+	s.udp.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
 		return &serverPacketWriter{conn, metadata.Source}
 	}, buffer, metadata)
+	return nil
 }
 
 type serverPacketWriter struct {

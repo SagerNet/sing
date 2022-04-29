@@ -38,6 +38,10 @@ func (ap AddrPort) UDPAddr() *net.UDPAddr {
 	}
 }
 
+func (ap AddrPort) AddrPort() netip.AddrPort {
+	return netip.AddrPortFrom(ap.Addr.Addr(), ap.Port)
+}
+
 func (ap AddrPort) String() string {
 	return net.JoinHostPort(ap.Addr.String(), strconv.Itoa(int(ap.Port)))
 }

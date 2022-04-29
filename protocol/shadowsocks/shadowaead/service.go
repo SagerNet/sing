@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"io"
 	"net"
+	"net/netip"
 	"sync"
 
 	"github.com/sagernet/sing/common"
@@ -26,17 +27,17 @@ type Service struct {
 	key           []byte
 	secureRNG     io.Reader
 	replayFilter  replay.Filter
-	udp           *udpnat.Service[string]
+	udpNat        udpnat.Service[netip.AddrPort]
 	handler       shadowsocks.Handler
 }
 
-func NewService(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:      method,
 		secureRNG: secureRNG,
 		handler:   handler,
 	}
-	s.udp = udpnat.New[string](s)
+	s.udpNat = udpnat.New[netip.AddrPort](udpTimeout, s)
 	if replayFilter {
 		s.replayFilter = replay.NewBloomRing()
 	}
@@ -190,9 +191,10 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 	buffer.Advance(s.keySaltLength)
 	buffer.Truncate(len(packet))
 	metadata.Protocol = "shadowsocks"
-	return s.udp.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+	s.udpNat.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
 		return &serverPacketWriter{s, conn, metadata.Source}
 	}, buffer, metadata)
+	return nil
 }
 
 type serverPacketWriter struct {

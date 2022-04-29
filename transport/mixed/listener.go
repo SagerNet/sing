@@ -32,10 +32,10 @@ type Listener struct {
 	bindAddr      netip.Addr
 	handler       Handler
 	authenticator auth.Authenticator
-	udpNat        *udpnat.Service[string]
+	udpNat        udpnat.Service[netip.AddrPort]
 }
 
-func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transproxy redir.TransproxyMode, handler Handler) *Listener {
+func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transproxy redir.TransproxyMode, udpTimeout int64, handler Handler) *Listener {
 	listener := &Listener{
 		bindAddr:      bind.Addr(),
 		handler:       handler,
@@ -45,7 +45,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transpro
 	listener.TCPListener = tcp.NewTCPListener(bind, listener, tcp.WithTransproxyMode(transproxy))
 	if transproxy == redir.ModeTProxy {
 		listener.UDPListener = udp.NewUDPListener(bind, listener, udp.WithTransproxyMode(transproxy))
-		listener.udpNat = udpnat.New[string](handler)
+		listener.udpNat = udpnat.New[netip.AddrPort](udpTimeout, handler)
 	}
 	return listener
 }
@@ -97,9 +97,10 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 }
 
 func (l *Listener) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	return l.udpNat.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
+	l.udpNat.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
 		return &tproxyPacketWriter{metadata.Source.UDPAddr()}
 	}, buffer, metadata)
+	return nil
 }
 
 type tproxyPacketWriter struct {

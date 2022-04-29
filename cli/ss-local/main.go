@@ -36,6 +36,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const udpTimeout = 5 * 60
+
 type flags struct {
 	Server             string `json:"server"`
 	ServerPort         uint16 `json:"server_port"`
@@ -256,7 +258,7 @@ func newClient(f *flags) (*client, error) {
 		bind = netip.IPv6Unspecified()
 	}
 
-	c.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, c)
+	c.Listener = mixed.NewListener(netip.AddrPortFrom(bind, f.LocalPort), nil, transproxyMode, udpTimeout, c)
 
 	if f.Bypass != "" {
 		err := geoip.LoadMMDB("Country.mmdb")

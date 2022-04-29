@@ -8,14 +8,15 @@ import (
 	"io"
 	"math"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/gsync"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
@@ -37,17 +38,18 @@ type Service struct {
 	psk              []byte
 	replayFilter     replay.Filter
 	handler          shadowsocks.Handler
-	udpNat           *udpnat.Service[uint64]
-	sessions         gsync.Map[uint64, *serverUDPSession]
+	udpNat           udpnat.Service[uint64]
+	sessions         cache.LruCache[uint64, *serverUDPSession]
 }
 
-func NewService(method string, psk []byte, secureRNG io.Reader, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:         method,
 		psk:          psk,
 		secureRNG:    secureRNG,
 		replayFilter: replay.NewCuckoo(60),
 		handler:      handler,
+		sessions:     cache.NewLRU[uint64, *serverUDPSession](udpTimeout, true),
 	}
 
 	if len(psk) != KeySaltSize {
@@ -71,7 +73,7 @@ func NewService(method string, psk []byte, secureRNG io.Reader, handler shadowso
 		s.udpCipher = newXChacha20Poly1305(s.psk)
 	}
 
-	s.udpNat = udpnat.New[uint64](s)
+	s.udpNat = udpnat.New[uint64](udpTimeout, s)
 	return s, nil
 }
 
@@ -239,53 +241,69 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 			session.remoteCipher = s.constructor(common.Dup(key))
 		}
 	}
+	session.remoteAddr = metadata.Source.AddrPort()
 
+	goto process
+
+returnErr:
+	if !loaded {
+		s.sessions.Delete(sessionId)
+	}
+	return err
+
+process:
 	if !session.filter.ValidateCounter(packetId, math.MaxUint64) {
-		return ErrPacketIdNotUnique
+		err = ErrPacketIdNotUnique
+		goto returnErr
 	}
 
 	if packetHeader != nil {
 		_, err = session.remoteCipher.Open(buffer.Index(0), packetHeader[4:16], buffer.Bytes(), nil)
 		if err != nil {
-			return E.Cause(err, "decrypt packet")
+			err = E.Cause(err, "decrypt packet")
+			goto returnErr
 		}
 	}
 
 	var headerType byte
 	headerType, err = buffer.ReadByte()
 	if err != nil {
-		return err
+		err = E.Cause(err, "decrypt packet")
+		goto returnErr
 	}
-
 	if headerType != HeaderTypeClient {
-		return ErrBadHeaderType
+		err = ErrBadHeaderType
+		goto returnErr
 	}
 
 	var epoch uint64
 	err = binary.Read(buffer, binary.BigEndian, &epoch)
 	if err != nil {
-		return err
+		goto returnErr
 	}
 	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
-		return ErrBadTimestamp
+		err = ErrBadTimestamp
+		goto returnErr
 	}
 
 	var paddingLength uint16
 	err = binary.Read(buffer, binary.BigEndian, &paddingLength)
 	if err != nil {
-		return E.Cause(err, "read padding length")
+		err = E.Cause(err, "read padding length")
+		goto returnErr
 	}
 	buffer.Advance(int(paddingLength))
 
 	destination, err := socks.AddressSerializer.ReadAddrPort(buffer)
 	if err != nil {
-		return err
+		goto returnErr
 	}
 	metadata.Destination = destination
 
-	return s.udpNat.NewPacket(sessionId, func() socks.PacketWriter {
+	s.udpNat.NewPacket(sessionId, func() socks.PacketWriter {
 		return &serverPacketWriter{s, conn, session, metadata.Source}
 	}, buffer, metadata)
+	return nil
 }
 
 type serverPacketWriter struct {
@@ -343,6 +361,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.Addr
 type serverUDPSession struct {
 	sessionId       uint64
 	remoteSessionId uint64
+	remoteAddr      netip.AddrPort
 	packetId        uint64
 	cipher          cipher.AEAD
 	remoteCipher    cipher.AEAD

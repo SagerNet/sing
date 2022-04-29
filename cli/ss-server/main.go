@@ -31,6 +31,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const udpTimeout = 5 * 60
+
 type flags struct {
 	Server     string `json:"server"`
 	ServerPort uint16 `json:"server_port"`
@@ -183,15 +185,15 @@ func newServer(f *flags) (*server, error) {
 	}
 
 	if f.Method == shadowsocks.MethodNone {
-		s.service = shadowsocks.NewNoneService(s)
+		s.service = shadowsocks.NewNoneService(udpTimeout, s)
 	} else if common.Contains(shadowaead.List, f.Method) {
-		service, err := shadowaead.NewService(f.Method, key, []byte(f.Password), random.Blake3KeyedHash(), false, s)
+		service, err := shadowaead.NewService(f.Method, key, []byte(f.Password), random.Blake3KeyedHash(), false, udpTimeout, s)
 		if err != nil {
 			return nil, err
 		}
 		s.service = service
 	} else if common.Contains(shadowaead_2022.List, f.Method) {
-		service, err := shadowaead_2022.NewService(f.Method, key, random.Blake3KeyedHash(), s)
+		service, err := shadowaead_2022.NewService(f.Method, key, random.Blake3KeyedHash(), udpTimeout, s)
 		if err != nil {
 			return nil, err
 		}

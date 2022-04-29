@@ -72,7 +72,7 @@ func run(cmd *cobra.Command, args []string) {
 	}
 
 	client := &localClient{upstream: args[1]}
-	client.Listener = mixed.NewListener(bind, nil, transproxyMode, client)
+	client.Listener = mixed.NewListener(bind, nil, transproxyMode, 300, client)
 
 	err = client.Start()
 	if err != nil {
