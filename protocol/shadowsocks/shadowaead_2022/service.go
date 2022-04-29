@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	"net"
-	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -241,8 +240,6 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 			session.remoteCipher = s.constructor(common.Dup(key))
 		}
 	}
-	session.remoteAddr = metadata.Source.AddrPort()
-
 	goto process
 
 returnErr:
@@ -300,8 +297,9 @@ process:
 	}
 	metadata.Destination = destination
 
+	session.remoteAddr = metadata.Source
 	s.udpNat.NewPacket(sessionId, func() socks.PacketWriter {
-		return &serverPacketWriter{s, conn, session, metadata.Source}
+		return &serverPacketWriter{s, conn, session}
 	}, buffer, metadata)
 	return nil
 }
@@ -310,7 +308,6 @@ type serverPacketWriter struct {
 	*Service
 	socks.PacketConn
 	session *serverUDPSession
-	source  *M.AddrPort
 }
 
 func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
@@ -355,13 +352,13 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.Addr
 		header.Extend(w.session.cipher.Overhead())
 		w.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
-	return w.PacketConn.WritePacket(header, w.source)
+	return w.PacketConn.WritePacket(header, w.session.remoteAddr)
 }
 
 type serverUDPSession struct {
 	sessionId       uint64
 	remoteSessionId uint64
-	remoteAddr      netip.AddrPort
+	remoteAddr      *M.AddrPort
 	packetId        uint64
 	cipher          cipher.AEAD
 	remoteCipher    cipher.AEAD

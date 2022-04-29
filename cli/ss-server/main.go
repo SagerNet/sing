@@ -16,7 +16,6 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/gsync"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
@@ -106,7 +105,6 @@ type server struct {
 	tcpIn   *tcp.Listener
 	udpIn   *udp.Listener
 	service shadowsocks.Service
-	udpNat  gsync.Map[string, *net.UDPConn]
 }
 
 func (s *server) Start() error {
