@@ -23,7 +23,6 @@ import (
 )
 
 func init() {
-	// log.Logger = logger.New("acme")
 	log.Logger = logrus.StandardLogger()
 }
 
@@ -168,7 +167,7 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 		}
 
 		keyPair, err = tls.LoadX509KeyPair(certificatePath, privateKeyPath)
-		if err == nil {
+		if err != nil {
 			return nil, err
 		}
 
@@ -184,8 +183,8 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 		}
 
 		privateKey, err := readPrivateKey(privateKeyPath)
-		if err == nil {
-			return &keyPair, nil
+		if err != nil {
+			return nil, err
 		}
 
 		request := certificate.ObtainRequest{
@@ -221,7 +220,7 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 
 finish:
 	keyPair, err = tls.LoadX509KeyPair(certificatePath, privateKeyPath)
-	if err == nil {
+	if err != nil {
 		return nil, err
 	}
 
