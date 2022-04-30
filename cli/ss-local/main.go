@@ -347,9 +347,8 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, serverConn, conn)
 }
 
-func (c *client) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
+func (c *client) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
 	logrus.Info("outbound ", metadata.Protocol, " UDP ", metadata.Source, " ==> ", metadata.Destination)
-	ctx := context.Background()
 	udpConn, err := c.dialer.DialContext(ctx, "udp", c.server.String())
 	if err != nil {
 		return err

@@ -37,7 +37,7 @@ type UDPHandler interface {
 }
 
 type UDPConnectionHandler interface {
-	NewPacketConnection(conn PacketConn, metadata M.Metadata) error
+	NewPacketConnection(ctx context.Context, conn PacketConn, metadata M.Metadata) error
 }
 
 type PacketConnStub struct{}

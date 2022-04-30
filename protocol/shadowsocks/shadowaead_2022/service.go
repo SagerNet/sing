@@ -382,8 +382,8 @@ func (m *Service) newUDPSession() *serverUDPSession {
 	return session
 }
 
-func (s *Service) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
-	return s.handler.NewPacketConnection(conn, metadata)
+func (s *Service) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+	return s.handler.NewPacketConnection(ctx, conn, metadata)
 }
 
 func (s *Service) HandleError(err error) {

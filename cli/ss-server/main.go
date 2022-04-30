@@ -228,13 +228,13 @@ func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, conn, destConn)
 }
 
-func (s *server) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
+func (s *server) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
 	logrus.Info("inbound UDP ", metadata.Source, " ==> ", metadata.Destination)
 	udpConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return err
 	}
-	return socks.CopyNetPacketConn(context.Background(), udpConn, conn)
+	return socks.CopyNetPacketConn(ctx, udpConn, conn)
 }
 
 func (s *server) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {

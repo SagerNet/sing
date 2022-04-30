@@ -203,8 +203,8 @@ func (s *nonePacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 	return s.PacketConn.WritePacket(buffer, s.sourceAddr)
 }
 
-func (s *NoneService) NewPacketConnection(conn socks.PacketConn, metadata M.Metadata) error {
-	return s.handler.NewPacketConnection(conn, metadata)
+func (s *NoneService) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+	return s.handler.NewPacketConnection(ctx, conn, metadata)
 }
 
 func (s *NoneService) HandleError(err error) {

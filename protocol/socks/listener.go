@@ -134,7 +134,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 		metadata.Protocol = "socks"
 		metadata.Destination = request.Destination
 		go func() {
-			err := handler.NewPacketConnection(NewAssociatePacketConn(conn, udpConn, request.Destination), metadata)
+			err := handler.NewPacketConnection(ctx, NewAssociatePacketConn(conn, udpConn, request.Destination), metadata)
 			if err != nil {
 				handler.HandleError(err)
 			}

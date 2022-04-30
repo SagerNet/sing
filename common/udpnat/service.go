@@ -44,7 +44,7 @@ func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *
 	})
 	if !loaded {
 		go func() {
-			err := s.handler.NewPacketConnection(c, metadata)
+			err := s.handler.NewPacketConnection(c.ctx, c, metadata)
 			if err != nil {
 				s.handler.HandleError(err)
 			}

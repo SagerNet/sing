@@ -109,7 +109,7 @@ func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata
 	return rw.CopyConn(context.Background(), upstream, conn)
 }
 
-func (c *localClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) error {
+func (c *localClient) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
 	upstream, err := net.Dial("tcp", c.upstream)
 	if err != nil {
 		return E.Cause(err, "connect to upstream")
@@ -121,7 +121,7 @@ func (c *localClient) NewPacketConnection(conn socks.PacketConn, _ M.Metadata) e
 	}
 
 	client := uot.NewClientConn(upstream)
-	return socks.CopyPacketConn(context.Background(), client, conn)
+	return socks.CopyPacketConn(ctx, client, conn)
 }
 
 func (c *localClient) OnError(err error) {
