@@ -13,10 +13,10 @@ import (
 
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/acme"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/trojan"
@@ -29,14 +29,15 @@ import (
 const udpTimeout = 5 * 60
 
 type flags struct {
-	Server     string `json:"server"`
-	ServerPort uint16 `json:"server_port"`
-	ServerName string `json:"server_name"`
-	Bind       string `json:"local_address"`
-	LocalPort  uint16 `json:"local_port"`
-	Password   string `json:"password"`
-	Verbose    bool   `json:"verbose"`
-	Insecure   bool   `json:"insecure"`
+	Server     string         `json:"server"`
+	ServerPort uint16         `json:"server_port"`
+	ServerName string         `json:"server_name"`
+	Bind       string         `json:"local_address"`
+	LocalPort  uint16         `json:"local_port"`
+	Password   string         `json:"password"`
+	Verbose    bool           `json:"verbose"`
+	Insecure   bool           `json:"insecure"`
+	ACME       *acme.Settings `json:"acme"`
 	ConfigFile string
 }
 
@@ -74,6 +75,20 @@ func run(cmd *cobra.Command, f *flags) {
 		cmd.Help()
 		os.Exit(1)
 	}
+
+	if f.ACME != nil && f.ACME.Enabled {
+		err = f.ACME.SetEnv()
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		acmeManager := acme.NewCertificateManager(f.ACME)
+		certificate, err := acmeManager.GetKeyPair(f.ServerName)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		c.certificate = certificate
+	}
+
 	err = c.tcpIn.Start()
 	if err != nil {
 		logrus.Fatal(err)
@@ -89,8 +104,9 @@ func run(cmd *cobra.Command, f *flags) {
 }
 
 type server struct {
-	tcpIn   *tcp.Listener
-	service trojan.Service[int]
+	tcpIn       *tcp.Listener
+	service     trojan.Service[int]
+	certificate *tls.Certificate
 }
 
 func newServer(f *flags) (*server, error) {
@@ -112,6 +128,9 @@ func newServer(f *flags) (*server, error) {
 		if flagsNew.ServerPort != 0 && f.ServerPort == 0 {
 			f.ServerPort = flagsNew.ServerPort
 		}
+		if flagsNew.ServerName != "" && f.ServerName == "" {
+			f.ServerName = flagsNew.ServerName
+		}
 		if flagsNew.Bind != "" && f.Bind == "" {
 			f.Bind = flagsNew.Bind
 		}
@@ -123,6 +142,9 @@ func newServer(f *flags) (*server, error) {
 		}
 		if flagsNew.Insecure {
 			f.Insecure = true
+		}
+		if flagsNew.ACME != nil {
+			f.ACME = flagsNew.ACME
 		}
 		if flagsNew.Verbose {
 			f.Verbose = true
@@ -158,12 +180,18 @@ func newServer(f *flags) (*server, error) {
 func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if metadata.Protocol != "trojan" {
 		logrus.Trace("inbound raw TCP from ", metadata.Source)
-		tlsConn := tls.Server(conn, &tls.Config{
-			Rand: random.Blake3KeyedHash(),
-			GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return transTLS.GenerateCertificate(info.ServerName)
-			},
-		})
+		var tlsConn *tls.Conn
+		if s.certificate == nil {
+			tlsConn = tls.Server(conn, &tls.Config{
+				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+					return transTLS.GenerateCertificate(info.ServerName)
+				},
+			})
+		} else {
+			tlsConn = tls.Server(conn, &tls.Config{
+				Certificates: []tls.Certificate{*s.certificate},
+			})
+		}
 		return s.service.NewConnection(ctx, tlsConn, metadata)
 	}
 	destConn, err := network.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)

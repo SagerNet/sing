@@ -14,10 +14,10 @@ import (
 
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/acme"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/trojan"
@@ -43,6 +43,8 @@ func main() {
 	}
 }
 
+var acmeManager *acme.CertificateManager
+
 func run(cmd *cobra.Command, args []string) {
 	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
@@ -58,6 +60,13 @@ func run(cmd *cobra.Command, args []string) {
 	}
 	if len(config.Nodes) == 0 {
 		logrus.Fatal("empty nodes")
+	}
+	if config.ACME != nil && config.ACME.Enabled {
+		err = config.ACME.SetEnv()
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		acmeManager = acme.NewCertificateManager(config.ACME)
 	}
 	var instances []Instance
 	for _, node := range config.Nodes {
@@ -95,6 +104,7 @@ type TrojanInstance struct {
 	id           int
 	domain       string
 	listener     net.Listener
+	tlsConfig    tls.Config
 	service      trojan.Service[int]
 	user         UserManager
 	reloadTicker *time.Ticker
@@ -122,6 +132,14 @@ func (i *TrojanInstance) Start() error {
 		return E.CauseF(err, i.id, ": read trojan config")
 	}
 
+	if acmeManager != nil {
+		certificate, err := acmeManager.GetKeyPair(i.domain)
+		if err != nil {
+			return E.CauseF(err, i.id, ": generate certificate")
+		}
+		i.tlsConfig.Certificates = []tls.Certificate{*certificate}
+	}
+
 	tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		Port: int(trojanConfig.LocalPort),
 	})
@@ -129,12 +147,15 @@ func (i *TrojanInstance) Start() error {
 		return E.CauseF(err, i.id, ": listen at tcp:", trojanConfig.LocalPort, ", check server configuration!")
 	}
 
-	i.listener = tls.NewListener(tcpListener, &tls.Config{
-		Rand: random.Blake3KeyedHash(),
-		GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if common.IsEmpty(i.tlsConfig.Certificates) {
+		i.tlsConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			return transTLS.GenerateCertificate(info.ServerName)
-		},
-	})
+		}
+	} else {
+		i.tlsConfig.GetCertificate = nil
+	}
+
+	i.listener = tls.NewListener(tcpListener, &i.tlsConfig)
 
 	logrus.Info(i.id, ": started at ", tcpListener.Addr())
 	go i.loopRequests()
