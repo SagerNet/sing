@@ -77,7 +77,7 @@ func run(cmd *cobra.Command, f *flags) {
 	}
 
 	if f.ACME != nil && f.ACME.Enabled {
-		err = f.ACME.SetEnv()
+		err = f.ACME.SetupEnvironment()
 		if err != nil {
 			logrus.Fatal(err)
 		}

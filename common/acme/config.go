@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/go-acme/lego/v4/challenge"
-	"github.com/go-acme/lego/v4/log"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/acme/cloudflare"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -18,9 +17,8 @@ type Settings struct {
 	DNSEnv        *common.JSONMap `json:"dns_env"`
 }
 
-func (s *Settings) SetEnv() error {
+func (s *Settings) SetupEnvironment() error {
 	for envName, envValue := range s.DNSEnv.Data {
-		log.Infof("acme: set dns env %s=%s", envName, envValue)
 		err := os.Setenv(envName, envValue.(string))
 		if err != nil {
 			return err

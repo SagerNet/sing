@@ -6,10 +6,10 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
@@ -61,6 +61,17 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 	certificatePath := c.path + "/" + domain + ".crt"
 	requestPath := c.path + "/" + domain + ".json"
 
+	if common.FileExists(privateKeyPath) && common.FileExists(certificatePath) {
+		keyPair, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
+		if err == nil {
+			x509Cert, err := x509.ParseCertificate(keyPair.Certificate[0])
+			if err == nil {
+				expiresDays := x509Cert.NotAfter.Sub(time.Now()).Hours() / 24
+				logrus.Info("cert ", domain, " expires in ", expiresDays, " days")
+			}
+		}
+	}
+
 	if !common.FileExists(accountKeyPath) {
 		err = writeNewPrivateKey(accountKeyPath)
 		if err != nil {
@@ -79,13 +90,8 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 	}
 
 	if common.FileExists(accountPath) {
-		var content []byte
-		content, err = ioutil.ReadFile(accountPath)
-		if err != nil {
-			return nil, err
-		}
 		var account registration.Resource
-		err = json.Unmarshal(content, &account)
+		err = common.ReadJSON(accountPath, &account)
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +117,7 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 			return nil, err
 		}
 		user.registration = account
-		err = writeJSON(accountPath, account)
+		err = common.WriteJSON(accountPath, account)
 		if err != nil {
 			return nil, err
 		}
@@ -139,7 +145,7 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 		if err != nil {
 			return nil, err
 		}
-		err = writeJSON(requestPath, certificates)
+		err = common.WriteJSON(requestPath, (*Certificate)(certificates))
 		if err != nil {
 			return nil, err
 		}
@@ -165,6 +171,53 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 	if err != nil {
 		return nil, err
 	}
+
+	cert, err := x509.ParseCertificate(keyPair.Certificate[0])
+	if err == nil {
+		expiresDays := cert.NotAfter.Sub(time.Now()).Hours() / 24
+		if expiresDays > 30 {
+			log.Warnf("test renew cert")
+			// return &keyPair, nil
+		}
+	}
+
+	// renew
+
+	if common.FileExists(requestPath) {
+		var request Certificate
+		err = common.ReadJSON(requestPath, &request)
+		if err != nil {
+			return nil, err
+		}
+		newCert, err := client.Certificate.Renew((certificate.Resource)(request), true, false, "")
+		if err != nil {
+			return nil, err
+		}
+		err = common.WriteJSON(requestPath, (*Certificate)(newCert))
+		if err != nil {
+			return nil, err
+		}
+		certResponse, err := http.Get(newCert.CertURL)
+		if err != nil {
+			return nil, err
+		}
+		defer certResponse.Body.Close()
+		content, err := ioutil.ReadAll(certResponse.Body)
+		if err != nil {
+			return nil, err
+		}
+		if certResponse.StatusCode != 200 {
+			return nil, E.New("HTTP ", certResponse.StatusCode, ": ", string(content))
+		}
+		err = ioutil.WriteFile(certificatePath, content, 0o644)
+		if err != nil {
+			return nil, err
+		}
+	}
+	keyPair, err = tls.LoadX509KeyPair(certificatePath, privateKeyPath)
+	if err != nil {
+		return nil, err
+	}
 	return &keyPair, nil
 }
 
@@ -184,14 +237,6 @@ func (u *acmeUser) GetRegistration() *registration.Resource {
 
 func (u *acmeUser) GetPrivateKey() crypto.PrivateKey {
 	return u.privateKey
-}
-
-func writeJSON(path string, data any) error {
-	content, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	return common.WriteFile(path, content)
 }
 
 func readPrivateKey(path string) (crypto.PrivateKey, error) {
@@ -217,4 +262,14 @@ func writeNewPrivateKey(path string) error {
 		return err
 	}
 	return common.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcsBytes}))
+}
+
+type Certificate struct {
+	Domain            string `json:"domain"`
+	CertURL           string `json:"certUrl"`
+	CertStableURL     string `json:"certStableUrl"`
+	PrivateKey        []byte `json:"private_key"`
+	Certificate       []byte `json:"certificate"`
+	IssuerCertificate []byte `json:"issuer_certificate"`
+	CSR               []byte `json:"csr"`
 }

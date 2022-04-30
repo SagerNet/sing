@@ -62,7 +62,7 @@ func run(cmd *cobra.Command, args []string) {
 		logrus.Fatal("empty nodes")
 	}
 	if config.ACME != nil && config.ACME.Enabled {
-		err = config.ACME.SetEnv()
+		err = config.ACME.SetupEnvironment()
 		if err != nil {
 			logrus.Fatal(err)
 		}
@@ -130,6 +130,10 @@ func (i *TrojanInstance) Start() error {
 	trojanConfig, err := i.GetTrojanConfig(context.Background())
 	if err != nil {
 		return E.CauseF(err, i.id, ": read trojan config")
+	}
+
+	if trojanConfig.SNI != "" {
+		i.domain = trojanConfig.SNI
 	}
 
 	if acmeManager != nil {

@@ -1,6 +1,8 @@
 package common
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -27,4 +29,24 @@ func WriteFile(path string, content []byte) error {
 	defer file.Close()
 	_, err = file.Write(content)
 	return err
+}
+
+func ReadJSON(path string, data any) error {
+	content, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(content, data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func WriteJSON(path string, data any) error {
+	content, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return WriteFile(path, content)
 }
