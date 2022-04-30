@@ -298,6 +298,28 @@ func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	return c.writer.ReadFrom(r)
 }
 
+func (c *clientConn) UpstreamReader() io.Reader {
+	if c.reader == nil {
+		return c.Conn
+	}
+	return c.reader
+}
+
+func (c *clientConn) ReaderReplaceable() bool {
+	return c.reader != nil
+}
+
+func (c *clientConn) UpstreamWriter() io.Writer {
+	if c.writer == nil {
+		return c.Conn
+	}
+	return c.writer
+}
+
+func (c *clientConn) WriterReplaceable() bool {
+	return c.writer != nil
+}
+
 type clientPacketConn struct {
 	*Method
 	net.Conn
@@ -328,4 +350,20 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		return nil, err
 	}
 	return socks.AddressSerializer.ReadAddrPort(buffer)
+}
+
+func (c *clientPacketConn) UpstreamReader() io.Reader {
+	return c.Conn
+}
+
+func (c *clientPacketConn) ReaderReplaceable() bool {
+	return false
+}
+
+func (c *clientPacketConn) UpstreamWriter() io.Writer {
+	return c.Conn
+}
+
+func (c *clientPacketConn) WriterReplaceable() bool {
+	return false
 }

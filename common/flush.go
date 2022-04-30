@@ -18,16 +18,16 @@ func Flush(writer io.Writer) error {
 			}
 		}
 		if u, ok := writer.(WriterWithUpstream); ok {
-			if u.Replaceable() {
+			if u.WriterReplaceable() {
 				if writerBack == writer {
-				} else if setter, hasSetter := u.Upstream().(UpstreamWriterSetter); hasSetter {
+				} else if setter, hasSetter := u.UpstreamWriter().(UpstreamWriterSetter); hasSetter {
 					setter.SetWriter(writerBack)
-					writer = u.Upstream()
+					writer = u.UpstreamWriter()
 					continue
 				}
 			}
 			writerBack = writer
-			writer = u.Upstream()
+			writer = u.UpstreamWriter()
 		} else {
 			break
 		}
@@ -46,20 +46,20 @@ func FlushVar(writerP *io.Writer) error {
 			}
 		}
 		if u, ok := writer.(WriterWithUpstream); ok {
-			if u.Replaceable() {
+			if u.WriterReplaceable() {
 				if writerBack == writer {
-					writer = u.Upstream()
+					writer = u.UpstreamWriter()
 					writerBack = writer
 					*writerP = writer
 					continue
 				} else if setter, hasSetter := writerBack.(UpstreamWriterSetter); hasSetter {
-					setter.SetWriter(u.Upstream())
-					writer = u.Upstream()
+					setter.SetWriter(u.UpstreamWriter())
+					writer = u.UpstreamWriter()
 					continue
 				}
 			}
 			writerBack = writer
-			writer = u.Upstream()
+			writer = u.UpstreamWriter()
 		} else {
 			break
 		}
@@ -72,11 +72,11 @@ type FlushOnceWriter struct {
 	flushed bool
 }
 
-func (w *FlushOnceWriter) Upstream() io.Writer {
+func (w *FlushOnceWriter) UpstreamWriter() io.Writer {
 	return w.Writer
 }
 
-func (w *FlushOnceWriter) Replaceable() bool {
+func (w *FlushOnceWriter) WriterReplaceable() bool {
 	return w.flushed
 }
 

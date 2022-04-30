@@ -41,15 +41,15 @@ func NewRawReader(upstream io.Reader, cipher cipher.AEAD, buffer []byte, nonce [
 	}
 }
 
-func (r *Reader) Upstream() io.Reader {
+func (r *Reader) UpstreamReader() io.Reader {
 	return r.upstream
 }
 
-func (r *Reader) Replaceable() bool {
+func (r *Reader) ReaderReplaceable() bool {
 	return false
 }
 
-func (r *Reader) SetUpstream(reader io.Reader) {
+func (r *Reader) SetReader(reader io.Reader) {
 	r.upstream = reader
 }
 
@@ -226,11 +226,11 @@ func NewRawWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int, buf
 	}
 }
 
-func (w *Writer) Upstream() io.Writer {
+func (w *Writer) UpstreamWriter() io.Writer {
 	return w.upstream
 }
 
-func (w *Writer) Replaceable() bool {
+func (w *Writer) WriterReplaceable() bool {
 	return false
 }
 
@@ -299,11 +299,11 @@ type BufferedWriter struct {
 	index    int
 }
 
-func (w *BufferedWriter) Upstream() io.Writer {
+func (w *BufferedWriter) UpstreamWriter() io.Writer {
 	return w.upstream
 }
 
-func (w *BufferedWriter) Replaceable() bool {
+func (w *BufferedWriter) WriterReplaceable() bool {
 	return w.index == 0
 }
 

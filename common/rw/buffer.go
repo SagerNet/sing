@@ -12,11 +12,11 @@ type BufferedWriter struct {
 	Buffer *buf.Buffer
 }
 
-func (w *BufferedWriter) Upstream() io.Writer {
+func (w *BufferedWriter) UpstreamWriter() io.Writer {
 	return w.Writer
 }
 
-func (w *BufferedWriter) Replaceable() bool {
+func (w *BufferedWriter) WriterReplaceable() bool {
 	return w.Buffer == nil
 }
 
@@ -85,11 +85,11 @@ type HeaderWriter struct {
 	Header *buf.Buffer
 }
 
-func (w *HeaderWriter) Upstream() io.Writer {
+func (w *HeaderWriter) UpstreamWriter() io.Writer {
 	return w.Writer
 }
 
-func (w *HeaderWriter) Replaceable() bool {
+func (w *HeaderWriter) WriterReplaceable() bool {
 	return w.Header == nil
 }
 

@@ -5,17 +5,17 @@ import (
 )
 
 type ReaderWithUpstream interface {
-	Upstream() io.Reader
-	Replaceable() bool
+	UpstreamReader() io.Reader
+	ReaderReplaceable() bool
 }
 
 type UpstreamReaderSetter interface {
-	SetUpstream(reader io.Reader)
+	SetReader(reader io.Reader)
 }
 
 type WriterWithUpstream interface {
-	Upstream() io.Writer
-	Replaceable() bool
+	UpstreamWriter() io.Writer
+	WriterReplaceable() bool
 }
 
 type UpstreamWriterSetter interface {

@@ -168,22 +168,34 @@ func (c *serverConn) WriteTo(w io.Writer) (n int64, err error) {
 	return c.reader.WriteTo(w)
 }
 
+func (c *serverConn) UpstreamReader() io.Reader {
+	if c.reader == nil {
+		return c.Conn
+	}
+	return c.reader
+}
+
+func (c *serverConn) ReaderReplaceable() bool {
+	return c.reader != nil
+}
+
+func (c *serverConn) UpstreamWriter() io.Writer {
+	if c.writer == nil {
+		return c.Conn
+	}
+	return c.writer
+}
+
+func (c *serverConn) WriterReplaceable() bool {
+	return c.writer != nil
+}
+
 func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	if buffer.Len() < s.keySaltLength {
 		return E.New("bad packet")
 	}
 	key := Kdf(s.key, buffer.To(s.keySaltLength), s.keySaltLength)
 	c := s.constructor(common.Dup(key))
-	/*data := buf.New()
-	packet, err := c.Open(data.Index(0), rw.ZeroBytes[:c.NonceSize()], buffer.From(s.keySaltLength), nil)
-	if err != nil {
-		return err
-	}
-	data.Truncate(len(packet))
-	metadata.Protocol = "shadowsocks"
-	return s.udp.NewPacket(metadata.Source.String(), func() socks.PacketWriter {
-		return &serverPacketWriter{s, conn, metadata.Source}
-	}, data, metadata)*/
 	packet, err := c.Open(buffer.Index(s.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(s.keySaltLength), nil)
 	if err != nil {
 		return err

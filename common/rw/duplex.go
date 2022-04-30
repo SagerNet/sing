@@ -1,6 +1,8 @@
 package rw
 
-import "io"
+import (
+	"github.com/sagernet/sing/common"
+)
 
 type ReadCloser interface {
 	CloseRead() error
@@ -10,16 +12,32 @@ type WriteCloser interface {
 	CloseWrite() error
 }
 
-func CloseRead(conn io.Closer) error {
-	if closer, ok := conn.(ReadCloser); ok {
-		return closer.CloseRead()
+func CloseRead(reader any) error {
+	r := reader
+	for {
+		if closer, ok := r.(ReadCloser); ok {
+			return closer.CloseRead()
+		}
+		if u, ok := r.(common.ReaderWithUpstream); ok {
+			r = u.UpstreamReader()
+			continue
+		}
+		break
 	}
-	return nil
+	return common.Close(reader)
 }
 
-func CloseWrite(conn io.Closer) error {
-	if closer, ok := conn.(WriteCloser); ok {
-		return closer.CloseWrite()
+func CloseWrite(writer any) error {
+	w := writer
+	for {
+		if closer, ok := w.(WriteCloser); ok {
+			return closer.CloseWrite()
+		}
+		if u, ok := w.(common.WriterWithUpstream); ok {
+			w = u.UpstreamWriter()
+			continue
+		}
+		break
 	}
-	return nil
+	return common.Close(writer)
 }

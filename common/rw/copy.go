@@ -25,13 +25,13 @@ func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
 			}
 		}
 		if u, ok := writer.(common.WriterWithUpstream); ok {
-			if u.Replaceable() && writerBack == writer {
-				writer = u.Upstream()
+			if u.WriterReplaceable() && writerBack == writer {
+				writer = u.UpstreamWriter()
 				writerBack = writer
 				writerVar = &writer
 				continue
 			}
-			writer = u.Upstream()
+			writer = u.UpstreamWriter()
 			writerBack = writer
 		} else {
 			break
