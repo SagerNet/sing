@@ -142,6 +142,9 @@ func (i *TrojanInstance) Start() error {
 			return E.CauseF(err, i.id, ": generate certificate")
 		}
 		i.tlsConfig.Certificates = []tls.Certificate{*certificate}
+		acmeManager.RegisterUpdateListener(i.domain, func(certificate *tls.Certificate) {
+			i.tlsConfig.Certificates = []tls.Certificate{*certificate}
+		})
 	}
 
 	tcpListener, err := net.ListenTCP("tcp", &net.TCPAddr{

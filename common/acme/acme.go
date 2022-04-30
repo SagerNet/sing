@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-acme/lego/v4/certcrypto"
@@ -26,10 +27,16 @@ func init() {
 	log.Logger = logrus.StandardLogger()
 }
 
+type CertificateUpdateListener func(certificate *tls.Certificate)
+
 type CertificateManager struct {
 	email    string
 	path     string
 	provider string
+
+	access    sync.Mutex
+	callbacks map[string][]CertificateUpdateListener
+	renew     *time.Ticker
 }
 
 func NewCertificateManager(settings *Settings) *CertificateManager {
@@ -37,10 +44,12 @@ func NewCertificateManager(settings *Settings) *CertificateManager {
 		email:    settings.Email,
 		path:     settings.DataDirectory,
 		provider: settings.DNSProvider,
+		renew:    time.NewTicker(time.Hour * 24),
 	}
 	if m.path == "" {
 		m.path = "acme"
 	}
+	go m.loopRenew()
 	return m
 }
 
@@ -60,17 +69,6 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 	privateKeyPath := c.path + "/" + domain + ".key"
 	certificatePath := c.path + "/" + domain + ".crt"
 	requestPath := c.path + "/" + domain + ".json"
-
-	if common.FileExists(privateKeyPath) && common.FileExists(certificatePath) {
-		keyPair, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
-		if err == nil {
-			x509Cert, err := x509.ParseCertificate(keyPair.Certificate[0])
-			if err == nil {
-				expiresDays := x509Cert.NotAfter.Sub(time.Now()).Hours() / 24
-				logrus.Info("cert ", domain, " expires in ", expiresDays, " days")
-			}
-		}
-	}
 
 	if !common.FileExists(accountKeyPath) {
 		err = writeNewPrivateKey(accountKeyPath)
@@ -123,19 +121,73 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 		}
 	}
 
-	if !common.FileExists(privateKeyPath) {
-		err = writeNewPrivateKey(privateKeyPath)
-		if err != nil {
-			return nil, err
+	var renew bool
+	keyPair, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
+	if err == nil {
+		cert, err := x509.ParseCertificate(keyPair.Certificate[0])
+		if err == nil {
+			keyPair.Leaf = cert
+			expiresDays := cert.NotAfter.Sub(time.Now()).Hours() / 24
+			if expiresDays > 15 {
+				return &keyPair, nil
+			} else {
+				renew = true
+			}
 		}
 	}
 
-	privateKey, err := readPrivateKey(privateKeyPath)
-	if err != nil {
-		return nil, err
+	if renew && common.FileExists(requestPath) {
+		var request Certificate
+		err = common.ReadJSON(requestPath, &request)
+		if err != nil {
+			return nil, err
+		}
+		newCert, err := client.Certificate.Renew((certificate.Resource)(request), true, false, "")
+		if err != nil {
+			return nil, err
+		}
+		err = common.WriteJSON(requestPath, (*Certificate)(newCert))
+		if err != nil {
+			return nil, err
+		}
+		certResponse, err := http.Get(newCert.CertURL)
+		if err != nil {
+			return nil, err
+		}
+		defer certResponse.Body.Close()
+		content, err := ioutil.ReadAll(certResponse.Body)
+		if err != nil {
+			return nil, err
+		}
+		if certResponse.StatusCode != 200 {
+			return nil, E.New("HTTP ", certResponse.StatusCode, ": ", string(content))
+		}
+		err = ioutil.WriteFile(certificatePath, content, 0o644)
+		if err != nil {
+			return nil, err
+		}
+
+		keyPair, err = tls.LoadX509KeyPair(certificatePath, privateKeyPath)
+		if err == nil {
+			return nil, err
+		}
+
+		goto finish
 	}
 
 	if !common.FileExists(certificatePath) {
+		if !common.FileExists(privateKeyPath) {
+			err = writeNewPrivateKey(privateKeyPath)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		privateKey, err := readPrivateKey(privateKeyPath)
+		if err == nil {
+			return &keyPair, nil
+		}
+
 		request := certificate.ObtainRequest{
 			Domains:    []string{domain},
 			Bundle:     true,
@@ -167,58 +219,44 @@ func (c *CertificateManager) GetKeyPair(domain string) (*tls.Certificate, error)
 		}
 	}
 
-	keyPair, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
-	if err != nil {
-		return nil, err
-	}
-
-	cert, err := x509.ParseCertificate(keyPair.Certificate[0])
-	if err == nil {
-		expiresDays := cert.NotAfter.Sub(time.Now()).Hours() / 24
-		if expiresDays > 30 {
-			log.Warnf("test renew cert")
-			// return &keyPair, nil
-		}
-	}
-
-	// renew
-
-	if common.FileExists(requestPath) {
-		var request Certificate
-		err = common.ReadJSON(requestPath, &request)
-		if err != nil {
-			return nil, err
-		}
-		newCert, err := client.Certificate.Renew((certificate.Resource)(request), true, false, "")
-		if err != nil {
-			return nil, err
-		}
-		err = common.WriteJSON(requestPath, (*Certificate)(newCert))
-		if err != nil {
-			return nil, err
-		}
-		certResponse, err := http.Get(newCert.CertURL)
-		if err != nil {
-			return nil, err
-		}
-		defer certResponse.Body.Close()
-		content, err := ioutil.ReadAll(certResponse.Body)
-		if err != nil {
-			return nil, err
-		}
-		if certResponse.StatusCode != 200 {
-			return nil, E.New("HTTP ", certResponse.StatusCode, ": ", string(content))
-		}
-		err = ioutil.WriteFile(certificatePath, content, 0o644)
-		if err != nil {
-			return nil, err
-		}
-	}
+finish:
 	keyPair, err = tls.LoadX509KeyPair(certificatePath, privateKeyPath)
-	if err != nil {
+	if err == nil {
 		return nil, err
 	}
+
+	c.access.Lock()
+	for _, listener := range c.callbacks[domain] {
+		listener(&keyPair)
+	}
+	c.access.Unlock()
+
 	return &keyPair, nil
+}
+
+func (c *CertificateManager) RegisterUpdateListener(domain string, listener CertificateUpdateListener) {
+	c.access.Lock()
+	defer c.access.Unlock()
+
+	if c.callbacks == nil {
+		c.callbacks = make(map[string][]CertificateUpdateListener)
+	}
+	c.callbacks[domain] = append(c.callbacks[domain], listener)
+}
+
+func (c *CertificateManager) loopRenew() {
+	for range c.renew.C {
+		c.access.Lock()
+		domains := make([]string, 0, len(c.callbacks))
+		for domain := range c.callbacks {
+			domains = append(domains, domain)
+		}
+		c.access.Unlock()
+
+		for _, domain := range domains {
+			_, _ = c.GetKeyPair(domain)
+		}
+	}
 }
 
 type acmeUser struct {

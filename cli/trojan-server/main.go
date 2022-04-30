@@ -86,7 +86,10 @@ func run(cmd *cobra.Command, f *flags) {
 		if err != nil {
 			logrus.Fatal(err)
 		}
-		c.certificate = certificate
+		c.tlsConfig.Certificates = []tls.Certificate{*certificate}
+		acmeManager.RegisterUpdateListener(f.ServerName, func(certificate *tls.Certificate) {
+			c.tlsConfig.Certificates = []tls.Certificate{*certificate}
+		})
 	}
 
 	err = c.tcpIn.Start()
@@ -104,9 +107,9 @@ func run(cmd *cobra.Command, f *flags) {
 }
 
 type server struct {
-	tcpIn       *tcp.Listener
-	service     trojan.Service[int]
-	certificate *tls.Certificate
+	tcpIn     *tcp.Listener
+	service   trojan.Service[int]
+	tlsConfig tls.Config
 }
 
 func newServer(f *flags) (*server, error) {
@@ -180,19 +183,14 @@ func newServer(f *flags) (*server, error) {
 func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if metadata.Protocol != "trojan" {
 		logrus.Trace("inbound raw TCP from ", metadata.Source)
-		var tlsConn *tls.Conn
-		if s.certificate == nil {
-			tlsConn = tls.Server(conn, &tls.Config{
-				GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-					return transTLS.GenerateCertificate(info.ServerName)
-				},
-			})
+		if len(s.tlsConfig.Certificates) == 0 {
+			s.tlsConfig.GetCertificate = func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+				return transTLS.GenerateCertificate(info.ServerName)
+			}
 		} else {
-			tlsConn = tls.Server(conn, &tls.Config{
-				Certificates: []tls.Certificate{*s.certificate},
-			})
+			s.tlsConfig.GetCertificate = nil
 		}
-		return s.service.NewConnection(ctx, tlsConn, metadata)
+		return s.service.NewConnection(ctx, tls.Server(conn, &s.tlsConfig), metadata)
 	}
 	destConn, err := network.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
 	if err != nil {
