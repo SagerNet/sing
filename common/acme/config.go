@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-acme/lego/v4/challenge"
 	"github.com/go-acme/lego/v4/log"
-	"github.com/go-acme/lego/v4/providers/dns"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/acme/cloudflare"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type Settings struct {
@@ -34,5 +34,6 @@ func NewDNSChallengeProviderByName(name string) (challenge.Provider, error) {
 	case "cloudflare":
 		return cloudflare.NewDNSProvider()
 	}
-	return dns.NewDNSChallengeProviderByName(name)
+	// return dns.NewDNSChallengeProviderByName(name)
+	return nil, E.New("unsupported dns provider ", name)
 }
