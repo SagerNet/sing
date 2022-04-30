@@ -33,18 +33,22 @@ func New[K comparable](maxAge int64, handler Handler) Service[K] {
 }
 
 func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
+	s.NewContextPacket(context.Background(), key, writer, buffer, metadata)
+}
+
+func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet),
 			remoteAddr: metadata.Source.UDPAddr(),
 			source:     writer(),
 		}
-		c.ctx, c.cancel = context.WithCancel(context.Background())
+		c.ctx, c.cancel = context.WithCancel(ctx)
 		return c
 	})
 	if !loaded {
 		go func() {
-			err := s.handler.NewPacketConnection(c.ctx, c, metadata)
+			err := s.handler.NewPacketConnection(ctx, c, metadata)
 			if err != nil {
 				s.handler.HandleError(err)
 			}

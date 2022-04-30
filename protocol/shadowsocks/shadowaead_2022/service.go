@@ -34,14 +34,14 @@ type Service struct {
 	blockConstructor func(key []byte) cipher.Block
 	udpCipher        cipher.AEAD
 	udpBlockCipher   cipher.Block
-	psk              []byte
+	psk              [KeySaltSize]byte
 	replayFilter     replay.Filter
 	handler          shadowsocks.Handler
 	udpNat           udpnat.Service[uint64]
 	sessions         cache.LruCache[uint64, *serverUDPSession]
 }
 
-func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:         method,
 		psk:          psk,
@@ -51,25 +51,21 @@ func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64
 		sessions:     cache.NewLRU[uint64, *serverUDPSession](udpTimeout, true),
 	}
 
-	if len(psk) != KeySaltSize {
-		return nil, shadowaead.ErrBadKey
-	}
-
 	switch method {
 	case "2022-blake3-aes-128-gcm":
 		s.keyLength = 16
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
-		s.udpBlockCipher = newAES(s.psk)
+		s.udpBlockCipher = newAES(s.psk[:])
 	case "2022-blake3-aes-256-gcm":
 		s.keyLength = 32
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
-		s.udpBlockCipher = newAES(s.psk)
+		s.udpBlockCipher = newAES(s.psk[:])
 	case "2022-blake3-chacha20-poly1305":
 		s.keyLength = 32
 		s.constructor = newChacha20Poly1305
-		s.udpCipher = newXChacha20Poly1305(s.psk)
+		s.udpCipher = newXChacha20Poly1305(s.psk[:])
 	}
 
 	s.udpNat = udpnat.New[uint64](udpTimeout, s)
@@ -87,7 +83,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return E.New("salt not unique")
 	}
 
-	requestKey := Blake3DeriveKey(s.psk, requestSalt, s.keyLength)
+	requestKey := Blake3DeriveKey(s.psk[:], requestSalt, s.keyLength)
 	reader := shadowaead.NewReader(
 		conn,
 		s.constructor(common.Dup(requestKey)),
@@ -135,6 +131,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 	return s.handler.NewConnection(ctx, &serverConn{
 		Service:     s,
 		Conn:        conn,
+		uPSK:        s.psk,
 		reader:      reader,
 		requestSalt: requestSalt,
 	}, metadata)
@@ -143,6 +140,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 type serverConn struct {
 	*Service
 	net.Conn
+	uPSK        [KeySaltSize]byte
 	access      sync.Mutex
 	reader      *shadowaead.Reader
 	writer      *shadowaead.Writer
@@ -150,10 +148,10 @@ type serverConn struct {
 }
 
 func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
-	_salt := make([]byte, KeySaltSize)
-	salt := common.Dup(_salt)
+	var _salt [KeySaltSize]byte
+	salt := common.Dup(_salt[:])
 	common.Must1(io.ReadFull(c.secureRNG, salt))
-	key := Blake3DeriveKey(c.psk, salt, c.keyLength)
+	key := Blake3DeriveKey(c.uPSK[:], salt, c.keyLength)
 	writer := shadowaead.NewWriter(
 		c.Conn,
 		c.constructor(common.Dup(key)),
@@ -165,7 +163,7 @@ func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
 
 	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeServer))
 	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
-	common.Must1(bufferedWriter.Write(c.requestSalt))
+	common.Must1(bufferedWriter.Write(c.requestSalt[:]))
 	c.requestSalt = nil
 
 	if len(payload) > 0 {
@@ -236,7 +234,7 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 	if !loaded {
 		session.remoteSessionId = sessionId
 		if packetHeader != nil {
-			key := Blake3DeriveKey(s.psk, packetHeader[:8], s.keyLength)
+			key := Blake3DeriveKey(s.psk[:], packetHeader[:8], s.keyLength)
 			session.remoteCipher = s.constructor(common.Dup(key))
 		}
 	}
@@ -376,7 +374,7 @@ func (m *Service) newUDPSession() *serverUDPSession {
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
-		key := Blake3DeriveKey(m.psk, sessionId, m.keyLength)
+		key := Blake3DeriveKey(m.psk[:], sessionId, m.keyLength)
 		session.cipher = m.constructor(common.Dup(key))
 	}
 	return session

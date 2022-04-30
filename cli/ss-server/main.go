@@ -173,24 +173,34 @@ func newServer(f *flags) (*server, error) {
 		return nil, E.New("missing method")
 	}
 
-	var key []byte
-	if f.Key != "" {
-		kb, err := base64.StdEncoding.DecodeString(f.Key)
-		if err != nil {
-			return nil, E.Cause(err, "decode key")
-		}
-		key = kb
-	}
-
 	if f.Method == shadowsocks.MethodNone {
 		s.service = shadowsocks.NewNoneService(udpTimeout, s)
 	} else if common.Contains(shadowaead.List, f.Method) {
+		var key []byte
+		if f.Key != "" {
+			kb, err := base64.StdEncoding.DecodeString(f.Key)
+			if err != nil {
+				return nil, E.Cause(err, "decode key")
+			}
+			key = kb
+		}
 		service, err := shadowaead.NewService(f.Method, key, []byte(f.Password), random.Blake3KeyedHash(), false, udpTimeout, s)
 		if err != nil {
 			return nil, err
 		}
 		s.service = service
 	} else if common.Contains(shadowaead_2022.List, f.Method) {
+		var key [shadowaead_2022.KeySaltSize]byte
+		if f.Key != "" {
+			kb, err := base64.StdEncoding.DecodeString(f.Key)
+			if err != nil {
+				return nil, E.Cause(err, "decode key")
+			}
+			if len(kb) != shadowaead_2022.KeySaltSize {
+				return nil, shadowaead.ErrBadKey
+			}
+			copy(key[:], kb)
+		}
 		service, err := shadowaead_2022.NewService(f.Method, key, random.Blake3KeyedHash(), udpTimeout, s)
 		if err != nil {
 			return nil, err

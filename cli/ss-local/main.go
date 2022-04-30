@@ -169,18 +169,6 @@ func newClient(f *flags) (*client, error) {
 	if f.Method == shadowsocks.MethodNone {
 		c.method = shadowsocks.NewNone()
 	} else {
-		var pskList [][]byte
-		if f.Key != "" {
-			keyStrList := strings.Split(f.Key, ":")
-			pskList = make([][]byte, len(keyStrList))
-			for i, keyStr := range keyStrList {
-				key, err := base64.StdEncoding.DecodeString(keyStr)
-				if err != nil {
-					return nil, E.Cause(err, "decode key")
-				}
-				pskList[i] = key
-			}
-		}
 		var rng io.Reader
 		if f.UseSystemRNG {
 			rng = random.System
@@ -191,12 +179,13 @@ func newClient(f *flags) (*client, error) {
 			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
 		}
 		if common.Contains(shadowaead.List, f.Method) {
-			if len(pskList) > 1 {
-				return nil, shadowaead.ErrBadKey
-			}
 			var key []byte
-			if len(pskList) > 0 {
-				key = pskList[0]
+			if f.Key != "" {
+				kb, err := base64.StdEncoding.DecodeString(f.Key)
+				if err != nil {
+					return nil, E.Cause(err, "decode key")
+				}
+				key = kb
 			}
 			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng, false)
 			if err != nil {
@@ -204,6 +193,23 @@ func newClient(f *flags) (*client, error) {
 			}
 			c.method = method
 		} else if common.Contains(shadowaead_2022.List, f.Method) {
+			var pskList [][shadowaead_2022.KeySaltSize]byte
+			if f.Key != "" {
+				keyStrList := strings.Split(f.Key, ":")
+				pskList = make([][shadowaead_2022.KeySaltSize]byte, len(keyStrList))
+				for i, keyStr := range keyStrList {
+					var psk [shadowaead_2022.KeySaltSize]byte
+					kb, err := base64.StdEncoding.DecodeString(keyStr)
+					if err != nil {
+						return nil, E.Cause(err, "decode key")
+					}
+					if len(kb) != shadowaead_2022.KeySaltSize {
+						return nil, shadowaead.ErrBadKey
+					}
+					copy(psk[:], kb)
+					pskList[i] = psk
+				}
+			}
 			method, err := shadowaead_2022.New(f.Method, pskList, rng)
 			if err != nil {
 				return nil, err
