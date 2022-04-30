@@ -43,8 +43,8 @@ func GenerateCertificate(hosts ...string) (*tls.Certificate, error) {
 		Subject: pkix.Name{
 			Organization: []string{"Cloudflare, Inc."},
 		},
-		NotBefore: endAt,
-		NotAfter:  createAt,
+		NotBefore: createAt,
+		NotAfter:  endAt,
 
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},

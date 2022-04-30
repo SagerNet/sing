@@ -94,6 +94,9 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
+	if b.end+len(data) > b.Cap() {
+		panic("buffer overflow")
+	}
 	n = copy(b.data[b.end:], data)
 	b.end += n
 	return
@@ -102,7 +105,7 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 func (b *Buffer) ExtendHeader(size int) []byte {
 	if b.start >= size {
 		b.start -= size
-		return b.data[b.start-size : b.start]
+		return b.data[b.start : b.start+size]
 	} else {
 		/*offset := size - b.start
 		end := b.end + size
@@ -326,7 +329,7 @@ func (b Buffer) Len() int {
 }
 
 func (b Buffer) Cap() int {
-	return cap(b.data)
+	return len(b.data)
 }
 
 func (b Buffer) Bytes() []byte {

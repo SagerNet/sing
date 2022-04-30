@@ -325,7 +325,7 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	}
 	_payload := buf.StackNew()
 	payload := common.Dup(_payload)
-	err = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	err = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	if err != nil {
 		return err
 	}

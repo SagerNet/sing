@@ -44,15 +44,40 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 	err := task.Run(ctx, func() error {
 		defer CloseRead(conn)
 		defer CloseWrite(dest)
-		return common.Error(io.Copy(dest, conn))
+		return common.Error(Copy(dest, conn))
 	}, func() error {
 		defer CloseRead(dest)
 		defer CloseWrite(conn)
-		return common.Error(io.Copy(conn, dest))
+		return common.Error(Copy(conn, dest))
 	})
 	conn.Close()
 	dest.Close()
 	return err
+}
+
+func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
+	if wt, ok := src.(io.WriterTo); ok {
+		return wt.WriteTo(dst)
+	}
+	if rt, ok := dst.(io.ReaderFrom); ok {
+		return rt.ReadFrom(src)
+	}
+	_buffer := buf.StackNew()
+	buffer := common.Dup(_buffer)
+	for {
+		buffer.FullReset()
+		_, err = buffer.ReadFrom(src)
+		if err != nil {
+			break
+		}
+		var cn int
+		cn, err = dst.Write(buffer.Bytes())
+		if err != nil {
+			return
+		}
+		n += int64(cn)
+	}
+	return
 }
 
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {

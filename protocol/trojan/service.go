@@ -133,20 +133,20 @@ process:
 	if command == CommandTCP {
 		return s.handler.NewConnection(&userCtx, conn, metadata)
 	} else {
-		return s.handler.NewPacketConnection(&userCtx, &packetConn{conn}, metadata)
+		return s.handler.NewPacketConnection(&userCtx, &PacketConn{conn}, metadata)
 	}
 }
 
-type packetConn struct {
+type PacketConn struct {
 	net.Conn
 }
 
-func (c *packetConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
-	return ReadPacket(c, buffer)
+func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+	return ReadPacket(c.Conn, buffer)
 }
 
-func (c *packetConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	return WritePacket(c, buffer, destination)
+func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	return WritePacket(c.Conn, buffer, destination)
 }
 
 type Error struct {

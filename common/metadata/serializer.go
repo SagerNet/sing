@@ -62,7 +62,7 @@ func (s *Serializer) AddressLen(addr Addr) int {
 	case AddressFamilyIPv6:
 		return 17
 	default:
-		return 1 + len(addr.Fqdn())
+		return 2 + len(addr.Fqdn())
 	}
 }
 
