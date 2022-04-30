@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/cloudflare/cloudflare-go v0.38.0
+	github.com/go-resty/resty/v2 v2.7.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/geoip2-golang v1.7.0
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
