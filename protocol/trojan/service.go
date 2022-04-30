@@ -19,25 +19,29 @@ type Handler interface {
 	socks.UDPConnectionHandler
 }
 
-type Context struct {
+type Context[K comparable] struct {
 	context.Context
-	User string
+	User K
 	Key  [KeyLength]byte
 }
 
-type Service struct {
+type Service[K comparable] struct {
 	handler Handler
-	keys    map[[56]byte]string
-	users   map[string][56]byte
+	keys    map[[56]byte]K
+	users   map[K][56]byte
 }
 
-func NewService(handler Handler) *Service {
-	return &Service{handler: handler}
+func NewService[K comparable](handler Handler) Service[K] {
+	return Service[K]{
+		handler: handler,
+		keys:    make(map[[56]byte]K),
+		users:   make(map[K][56]byte),
+	}
 }
 
 var ErrUserExists = E.New("user already exists")
 
-func (s *Service) AddUser(user string, password string) error {
+func (s *Service[K]) AddUser(user K, password string) error {
 	if _, loaded := s.users[user]; loaded {
 		return ErrUserExists
 	}
@@ -50,7 +54,7 @@ func (s *Service) AddUser(user string, password string) error {
 	return nil
 }
 
-func (s *Service) RemoveUser(user string) bool {
+func (s *Service[K]) RemoveUser(user K) bool {
 	if key, loaded := s.users[user]; loaded {
 		delete(s.users, user)
 		delete(s.keys, key)
@@ -60,7 +64,12 @@ func (s *Service) RemoveUser(user string) bool {
 	}
 }
 
-func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+func (s *Service[K]) ResetUsers() {
+	s.keys = make(map[[56]byte]K)
+	s.users = make(map[K][56]byte)
+}
+
+func (s *Service[K]) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	var key [KeyLength]byte
 	_, err := io.ReadFull(conn, common.Dup(key[:]))
 	if err != nil {
@@ -79,7 +88,7 @@ returnErr:
 
 process:
 
-	var userCtx Context
+	var userCtx Context[K]
 	userCtx.Context = ctx
 	if user, loaded := s.keys[key]; loaded {
 		userCtx.User = user
@@ -122,9 +131,9 @@ process:
 	metadata.Destination = destination
 
 	if command == CommandTCP {
-		return s.handler.NewConnection(userCtx, conn, metadata)
+		return s.handler.NewConnection(&userCtx, conn, metadata)
 	} else {
-		return s.handler.NewPacketConnection(userCtx, &packetConn{conn}, metadata)
+		return s.handler.NewPacketConnection(&userCtx, &packetConn{conn}, metadata)
 	}
 }
 
