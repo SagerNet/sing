@@ -191,7 +191,7 @@ func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn socks.Pac
 	if err != nil {
 		return err
 	}
-	return socks.CopyNetPacketConn(ctx, udpConn, conn)
+	return socks.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (i *TrojanInstance) loopRequests() {

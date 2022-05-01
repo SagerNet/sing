@@ -206,7 +206,7 @@ func (s *server) NewPacketConnection(ctx context.Context, conn socks.PacketConn,
 	if err != nil {
 		return err
 	}
-	return socks.CopyNetPacketConn(ctx, udpConn, conn)
+	return socks.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (s *server) HandleError(err error) {
