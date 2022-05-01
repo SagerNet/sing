@@ -55,6 +55,7 @@ func main() {
 
 	command.Flags().StringVarP(&f.Server, "server", "s", "", "Set the server’s hostname or IP.")
 	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Set the server’s port number.")
+	command.Flags().StringVarP(&f.ServerName, "server-name", "n", "", "Set the server name.")
 	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Set the local address.")
 	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Set the local port number.")
 	command.Flags().StringVarP(&f.Password, "password", "k", "", "Set the password. The server and the client should use the same password.")
@@ -114,6 +115,9 @@ func newClient(f *flags) (*client, error) {
 		}
 		if flagsNew.ServerPort != 0 && f.ServerPort == 0 {
 			f.ServerPort = flagsNew.ServerPort
+		}
+		if flagsNew.ServerName != "" && f.ServerName == "" {
+			f.ServerName = flagsNew.ServerName
 		}
 		if flagsNew.Bind != "" && f.Bind == "" {
 			f.Bind = flagsNew.Bind
