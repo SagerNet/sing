@@ -41,6 +41,12 @@ func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
 }
 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
+	if pc, inPc := conn.(net.PacketConn); inPc {
+		if destPc, outPc := dest.(net.PacketConn); outPc {
+			return CopyPacketConn(ctx, pc, destPc)
+		}
+	}
+
 	err := task.Run(ctx, func() error {
 		defer CloseRead(conn)
 		defer CloseWrite(dest)
