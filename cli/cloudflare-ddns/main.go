@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	_ "github.com/sagernet/sing/common/log"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

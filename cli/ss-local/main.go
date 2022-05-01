@@ -21,6 +21,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/geoip"
 	"github.com/sagernet/sing/common/geosite"
+	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/redir"

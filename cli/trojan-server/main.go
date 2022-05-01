@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/acme"
 	E "github.com/sagernet/sing/common/exceptions"
+	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"

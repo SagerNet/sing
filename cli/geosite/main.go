@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/geosite"
+	_ "github.com/sagernet/sing/common/log"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
