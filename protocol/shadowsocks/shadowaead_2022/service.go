@@ -73,6 +73,14 @@ func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTi
 }
 
 func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	err := s.newConnection(ctx, conn, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerConnError{Conn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	requestSalt := make([]byte, KeySaltSize)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
@@ -230,6 +238,14 @@ func (c *serverConn) WriterReplaceable() bool {
 }
 
 func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(conn, buffer, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	var packetHeader []byte
 	if s.udpCipher != nil {
 		_, err := s.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)

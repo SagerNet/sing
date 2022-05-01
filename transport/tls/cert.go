@@ -16,7 +16,7 @@ import (
 )
 
 func GenerateCertificate(hosts ...string) (*tls.Certificate, error) {
-	rng := random.Blake3KeyedHash()
+	rng := random.System
 	r := rand.New(rng)
 
 	privateKey, err := rsa.GenerateKey(rng, 2048)

@@ -2,6 +2,8 @@ package shadowsocks
 
 import (
 	"context"
+	"fmt"
+	"net"
 
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -28,4 +30,32 @@ type MultiUserService[U comparable] interface {
 type UserContext[U comparable] struct {
 	context.Context
 	User U
+}
+
+type ServerConnError struct {
+	net.Conn
+	Source *M.AddrPort
+	Cause  error
+}
+
+func (e *ServerConnError) Unwrap() error {
+	return e.Cause
+}
+
+func (e *ServerConnError) Error() string {
+	return fmt.Sprint("shadowsocks: serve TCP from ", e.Source, ": ", e.Cause)
+}
+
+type ServerPacketError struct {
+	socks.PacketConn
+	Source *M.AddrPort
+	Cause  error
+}
+
+func (e *ServerPacketError) Unwrap() error {
+	return e.Cause
+}
+
+func (e *ServerPacketError) Error() string {
+	return fmt.Sprint("shadowsocks: serve UDP from ", e.Source, ": ", e.Cause)
 }

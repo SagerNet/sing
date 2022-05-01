@@ -27,6 +27,7 @@ type PacketConn interface {
 
 	Close() error
 	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
 	SetDeadline(t time.Time) error
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error
@@ -41,6 +42,10 @@ type UDPConnectionHandler interface {
 }
 
 type PacketConnStub struct{}
+
+func (s *PacketConnStub) RemoteAddr() net.Addr {
+	return &common.DummyAddr{}
+}
 
 func (s *PacketConnStub) SetDeadline(t time.Time) error {
 	return os.ErrInvalid
@@ -112,4 +117,8 @@ func (p *PacketConnWrapper) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) 
 
 func (p *PacketConnWrapper) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
 	return common.Error(p.WriteTo(buffer.Bytes(), destination.UDPAddr()))
+}
+
+func (p *PacketConnWrapper) RemoteAddr() net.Addr {
+	return &common.DummyAddr{}
 }

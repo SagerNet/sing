@@ -73,6 +73,14 @@ func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secure
 }
 
 func (s *MultiService[U]) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	err := s.newConnection(ctx, conn, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerConnError{Conn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	requestSalt := make([]byte, KeySaltSize)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
@@ -166,6 +174,14 @@ func (s *MultiService[U]) NewConnection(ctx context.Context, conn net.Conn, meta
 }
 
 func (s *MultiService[U]) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(conn, buffer, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *MultiService[U]) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	packetHeader := buffer.To(aes.BlockSize)
 	s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
 

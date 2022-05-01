@@ -79,6 +79,14 @@ func NewService(method string, key []byte, password []byte, secureRNG io.Reader,
 }
 
 func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	err := s.newConnection(ctx, conn, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerConnError{Conn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	_salt := buf.Make(s.keySaltLength)
 	salt := common.Dup(_salt)
 
@@ -191,6 +199,14 @@ func (c *serverConn) WriterReplaceable() bool {
 }
 
 func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(conn, buffer, metadata)
+	if err != nil {
+		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
+	}
+	return err
+}
+
+func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	if buffer.Len() < s.keySaltLength {
 		return E.New("bad packet")
 	}

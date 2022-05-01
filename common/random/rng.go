@@ -4,18 +4,32 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"io"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"lukechampine.com/blake3"
 )
 
-var System = rand.Reader
+var System = &Source{rand.Reader}
 
-func Blake3KeyedHash() Source {
+var Default = Blake3KeyedHash()
+
+func Blake3KeyedHash() *Source {
 	key := make([]byte, 32)
 	common.Must1(io.ReadFull(System, key))
 	h := blake3.New(1024, key)
-	return Source{h.XOF()}
+	return &Source{&SyncReader{Reader: h.XOF()}}
+}
+
+type SyncReader struct {
+	io.Reader
+	sync.Mutex
+}
+
+func (r *SyncReader) Read(p []byte) (n int, err error) {
+	r.Lock()
+	defer r.Unlock()
+	return r.Reader.Read(p)
 }
 
 const (
