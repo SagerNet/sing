@@ -2,10 +2,125 @@ package rw
 
 import (
 	"io"
+	"net"
+	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 )
+
+type CachedReader interface {
+	common.ReaderWithUpstream
+	ReadCached() *buf.Buffer
+}
+
+type BufferedConn struct {
+	net.Conn
+	Buffer *buf.Buffer
+}
+
+func (c *BufferedConn) ReadCached() *buf.Buffer {
+	buffer := c.Buffer
+	c.Buffer = nil
+	return buffer
+}
+
+func (c *BufferedConn) Read(p []byte) (n int, err error) {
+	if c.Buffer != nil {
+		n, err = c.Buffer.Read(p)
+		if err == nil {
+			return
+		}
+		c.Buffer.Release()
+		c.Buffer = nil
+	}
+	return c.Conn.Read(p)
+}
+
+func (c *BufferedConn) WriteTo(w io.Writer) (n int64, err error) {
+	if c.Buffer != nil {
+		wn, wErr := w.Write(c.Buffer.Bytes())
+		if wErr != nil {
+			c.Buffer.Release()
+			c.Buffer = nil
+		}
+		n += int64(wn)
+	}
+	cn, err := Copy(w, c.Conn)
+	n += cn
+	return
+}
+
+func (c *BufferedConn) SetReadDeadline(t time.Time) error {
+	if c.Buffer != nil && !c.Buffer.IsEmpty() {
+		return nil
+	}
+	return c.Conn.SetReadDeadline(t)
+}
+
+func (c *BufferedConn) ReadFrom(r io.Reader) (n int64, err error) {
+	return Copy(c.Conn, r)
+}
+
+func (c *BufferedConn) UpstreamReader() io.Reader {
+	return c.Conn
+}
+
+func (c *BufferedConn) ReaderReplaceable() bool {
+	return c.Buffer == nil
+}
+
+func (c *BufferedConn) UpstreamWriter() io.Writer {
+	return c.Conn
+}
+
+func (c *BufferedConn) WriterReplaceable() bool {
+	return true
+}
+
+type BufferedReader struct {
+	Reader io.Reader
+	Buffer *buf.Buffer
+}
+
+func (c *BufferedReader) ReadCached() *buf.Buffer {
+	buffer := c.Buffer
+	c.Buffer = nil
+	return buffer
+}
+
+func (r *BufferedReader) Read(p []byte) (n int, err error) {
+	if r.Buffer != nil {
+		n, err = r.Buffer.Read(p)
+		if err == nil {
+			return
+		}
+		r.Buffer.Release()
+		r.Buffer = nil
+	}
+	return r.Reader.Read(p)
+}
+
+func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
+	if r.Buffer != nil {
+		wn, wErr := w.Write(r.Buffer.Bytes())
+		if wErr != nil {
+			return 0, wErr
+		}
+		n += int64(wn)
+	}
+	cn, err := Copy(w, r.Reader)
+	n += cn
+	return
+}
+
+func (w *BufferedReader) UpstreamReader() io.Reader {
+	return w.Reader
+}
+
+func (w *BufferedReader) ReaderReplaceable() bool {
+	return w.Buffer == nil
+}
 
 type BufferedWriter struct {
 	Writer io.Writer
