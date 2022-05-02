@@ -1,6 +1,7 @@
 package mixed
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/redir"
+	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/http"
 	"github.com/sagernet/sing/protocol/socks"
@@ -54,19 +56,20 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	if metadata.Destination != nil {
 		return l.handler.NewConnection(ctx, conn, metadata)
 	}
-	bufConn := buf.NewBufferedConn(conn)
-	header, err := bufConn.Peek(1)
-	if err != nil {
-		return err
-	}
-	switch header[0] {
+	headerType, err := rw.ReadByte(conn)
+	switch headerType {
 	case socks.Version4:
 		return E.New("socks4 request dropped (TODO)")
 	case socks.Version5:
-		return socks.HandleConnection(ctx, bufConn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
+		return socks.HandleConnection0(ctx, conn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
 	}
 
-	request, err := http.ReadRequest(bufConn.Reader())
+	reader := bufio.NewReader(&rw.BufferedReader{
+		Reader: conn,
+		Buffer: buf.As([]byte{headerType}),
+	})
+
+	request, err := http.ReadRequest(reader)
 	if err != nil {
 		return E.Cause(err, "read http request")
 	}
@@ -86,14 +89,28 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 			ContentLength: int64(len(content)),
 			Body:          io.NopCloser(strings.NewReader(content)),
 		}
-		err = response.Write(bufConn)
+		err = response.Write(conn)
 		if err != nil {
 			return E.Cause(err, "write pac response")
 		}
 		return nil
 	}
 
-	return http.HandleRequest(ctx, request, bufConn, l.authenticator, l.handler, metadata)
+	if reader.Buffered() > 0 {
+		_buffer := buf.StackNewSize(reader.Buffered())
+		buffer := common.Dup(_buffer)
+		_, err = buffer.ReadFullFrom(reader, reader.Buffered())
+		if err != nil {
+			return err
+		}
+
+		conn = &rw.BufferedConn{
+			Conn:   conn,
+			Buffer: buffer,
+		}
+	}
+
+	return http.HandleRequest(ctx, request, conn, l.authenticator, l.handler, metadata)
 }
 
 func (l *Listener) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
