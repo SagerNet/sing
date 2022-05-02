@@ -56,6 +56,18 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 	if err != nil {
 		return E.Cause(err, "read socks auth request")
 	}
+	return handleConnection(authRequest, ctx, conn, authenticator, bind, handler, metadata)
+}
+
+func HandleConnection0(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, bind netip.Addr, handler Handler, metadata M.Metadata) error {
+	authRequest, err := ReadAuthRequest0(conn)
+	if err != nil {
+		return E.Cause(err, "read socks auth request")
+	}
+	return handleConnection(authRequest, ctx, conn, authenticator, bind, handler, metadata)
+}
+
+func handleConnection(authRequest *AuthRequest, ctx context.Context, conn net.Conn, authenticator auth.Authenticator, bind netip.Addr, handler Handler, metadata M.Metadata) error {
 	var authMethod byte
 	if authenticator == nil {
 		authMethod = AuthTypeNotRequired
@@ -63,7 +75,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 		authMethod = AuthTypeUsernamePassword
 	}
 	if !common.Contains(authRequest.Methods, authMethod) {
-		err = WriteAuthResponse(conn, &AuthResponse{
+		err := WriteAuthResponse(conn, &AuthResponse{
 			Version: authRequest.Version,
 			Method:  AuthTypeNoAcceptedMethods,
 		})
@@ -71,7 +83,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 			return E.Cause(err, "write socks auth response")
 		}
 	}
-	err = WriteAuthResponse(conn, &AuthResponse{
+	err := WriteAuthResponse(conn, &AuthResponse{
 		Version: authRequest.Version,
 		Method:  authMethod,
 	})

@@ -58,6 +58,22 @@ func ReadAuthRequest(reader io.Reader) (*AuthRequest, error) {
 	return request, nil
 }
 
+func ReadAuthRequest0(reader io.Reader) (*AuthRequest, error) {
+	methodLen, err := rw.ReadByte(reader)
+	if err != nil {
+		return nil, E.Cause(err, "read socks auth methods length")
+	}
+	methods, err := rw.ReadBytes(reader, int(methodLen))
+	if err != nil {
+		return nil, E.CauseF(err, "read socks auth methods, length ", methodLen)
+	}
+	request := &AuthRequest{
+		Version5,
+		methods,
+	}
+	return request, nil
+}
+
 //+----+--------+
 //|VER | METHOD |
 //+----+--------+

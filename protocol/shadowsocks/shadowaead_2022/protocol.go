@@ -15,7 +15,9 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
@@ -46,6 +48,8 @@ const (
 	// golang.org/x/crypto/chacha20poly1305.Overhead
 	overhead = 16
 )
+
+var logger = log.NewLogger("shadowaead (2022)")
 
 var (
 	ErrBadHeaderType         = E.New("bad header type")
@@ -200,26 +204,54 @@ func (m *Method) writeExtendedIdentityHeaders(request *buf.Buffer, salt []byte) 
 	if pskLen < 2 {
 		return
 	}
+	if debug.Enabled {
+		logger.Trace("begin extended identity headers")
+	}
 	for i, psk := range m.pskList {
+		if debug.Enabled {
+			logger.Trace("current psk ", buf.EncodeHexString(psk[:]))
+		}
+
 		keyMaterial := make([]byte, 2*KeySaltSize)
 		copy(keyMaterial, psk[:])
 		copy(keyMaterial[KeySaltSize:], salt)
 		_identitySubkey := buf.Make(m.keyLength)
 		identitySubkey := common.Dup(_identitySubkey)
 		blake3.DeriveKey(identitySubkey, "shadowsocks 2022 identity subkey", keyMaterial)
+
+		if debug.Enabled {
+			logger.Trace("identity subkey ", buf.EncodeHexString(identitySubkey))
+		}
+
 		pskHash := m.pskHash[aes.BlockSize*i : aes.BlockSize*(i+1)]
-		m.blockConstructor(identitySubkey).Encrypt(request.Extend(16), pskHash)
+		if debug.Enabled {
+			logger.Trace("next psk hash ", buf.EncodeHexString(pskHash))
+		}
+
+		header := request.Extend(16)
+		m.blockConstructor(identitySubkey).Encrypt(header, pskHash)
+		if debug.Enabled {
+			logger.Trace("encoded ", buf.EncodeHexString(header))
+		}
 		if i == pskLen-2 {
 			break
 		}
 	}
+	if debug.Enabled {
+		logger.Trace("ended extended identity headers")
+	}
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {
+	if debug.Enabled {
+		logger.Trace("begin client handshake request")
+	}
+
 	salt := make([]byte, KeySaltSize)
 	common.Must1(io.ReadFull(c.method.secureRNG, salt))
 
 	key := Blake3DeriveKey(c.method.psk[:], salt, c.method.keyLength)
+
 	writer := shadowaead.NewWriter(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),
@@ -241,6 +273,10 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	}
 
 	if len(payload) > 0 {
+		if debug.Enabled {
+			logger.Trace("write payload ", len(payload), "B")
+		}
+
 		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(0))
 		if err != nil {
 			return E.Cause(err, "write padding length")
@@ -251,6 +287,9 @@ func (c *clientConn) writeRequest(payload []byte) error {
 		}
 	} else {
 		pLen := rand.Intn(MaxPaddingLength + 1)
+		if debug.Enabled {
+			logger.Trace("write padding ", pLen, "B")
+		}
 		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(pLen))
 		if err != nil {
 			return E.Cause(err, "write padding length")
@@ -264,6 +303,10 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	err = bufferedWriter.Flush()
 	if err != nil {
 		return E.Cause(err, "client handshake")
+	}
+
+	if debug.Enabled {
+		logger.Trace("ended client handshake request")
 	}
 
 	c.requestSalt = salt
@@ -283,6 +326,10 @@ func (c *clientConn) readResponse() error {
 		return nil
 	}
 
+	if debug.Enabled {
+		logger.Trace("begin client handshake response")
+	}
+
 	_salt := make([]byte, KeySaltSize)
 	salt := common.Dup(_salt)
 	_, err := io.ReadFull(c.Conn, salt)
@@ -291,6 +338,7 @@ func (c *clientConn) readResponse() error {
 	}
 
 	if !c.method.replayFilter.Check(salt) {
+		logger.Warn("read salt ", buf.EncodeHexString(salt))
 		return E.New("salt not unique")
 	}
 
@@ -314,7 +362,11 @@ func (c *clientConn) readResponse() error {
 	if err != nil {
 		return err
 	}
+
 	if math.Abs(float64(time.Now().Unix()-int64(epoch))) > 30 {
+		if debug.Enabled {
+			logger.Trace("server timestamp ", time.Unix(int64(epoch), 0).String())
+		}
 		return ErrBadTimestamp
 	}
 
@@ -326,11 +378,18 @@ func (c *clientConn) readResponse() error {
 	}
 
 	if bytes.Compare(requestSalt, c.requestSalt) > 0 {
+		if debug.Enabled {
+			logger.Trace("request salt ", buf.EncodeHexString(requestSalt))
+		}
 		return ErrBadRequestSalt
 	}
 
 	c.requestSalt = nil
 	c.reader = reader
+
+	if debug.Enabled {
+		logger.Trace("ended client handshake response")
+	}
 	return nil
 }
 
@@ -345,6 +404,7 @@ func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
 	if err = c.readResponse(); err != nil {
 		return
 	}
+
 	return c.reader.WriteTo(w)
 }
 
@@ -406,6 +466,10 @@ type clientPacketConn struct {
 }
 
 func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+	if debug.Enabled {
+		logger.Trace("begin client packet")
+	}
+
 	defer buffer.Release()
 	_header := buf.StackNew()
 	header := common.Dup(_header)
@@ -421,23 +485,48 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 		dataIndex = aes.BlockSize
 	}
 
+	packetId := c.session.nextPacketId()
+
+	if debug.Enabled {
+		logger.Trace("session id ", c.session.sessionId)
+		logger.Trace("packet id ", packetId)
+	}
+
 	common.Must(
 		binary.Write(header, binary.BigEndian, c.session.sessionId),
-		binary.Write(header, binary.BigEndian, c.session.nextPacketId()),
+		binary.Write(header, binary.BigEndian, packetId),
 	)
 
 	if c.method.udpCipher == nil && pskLen > 1 {
+		if debug.Enabled {
+			logger.Trace("begin extended identity headers")
+		}
 		for i, psk := range c.method.pskList {
+			if debug.Enabled {
+				logger.Trace("current psk ", buf.EncodeHexString(psk[:]))
+			}
+
 			dataIndex += aes.BlockSize
 			pskHash := c.method.pskHash[aes.BlockSize*i : aes.BlockSize*(i+1)]
+			if debug.Enabled {
+				logger.Trace("next psk hash ", buf.EncodeHexString(pskHash))
+			}
+
 			identityHeader := header.Extend(aes.BlockSize)
 			for textI := 0; textI < aes.BlockSize; textI++ {
 				identityHeader[textI] = pskHash[textI] ^ header.Byte(textI)
 			}
 			c.method.blockConstructor(psk[:]).Encrypt(identityHeader, identityHeader)
+			if debug.Enabled {
+				logger.Trace("encoded ", buf.EncodeHexString(identityHeader))
+			}
+
 			if i == pskLen-2 {
 				break
 			}
+		}
+		if debug.Enabled {
+			logger.Trace("end extended identity headers")
 		}
 	}
 	common.Must(
@@ -462,6 +551,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 		buffer.Extend(c.session.cipher.Overhead())
 		c.method.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
+	logger.Trace("ended client packet")
 	return common.Error(c.Write(buffer.Bytes()))
 }
 

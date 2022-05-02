@@ -1,5 +1,5 @@
 //go:build !debug
 
-package lowmem
+package debug
 
 const Enabled = false

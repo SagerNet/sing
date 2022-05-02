@@ -1,4 +1,4 @@
-package lowmem
+package debug
 
 import (
 	"runtime/debug"

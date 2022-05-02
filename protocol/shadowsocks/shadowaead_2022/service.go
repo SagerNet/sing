@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/cache"
+	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/replay"
@@ -81,10 +82,18 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+	if debug.Enabled {
+		logger.Trace("begin server handshake request")
+	}
+
 	requestSalt := make([]byte, KeySaltSize)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
 		return E.Cause(err, "read request salt")
+	}
+
+	if debug.Enabled {
+		logger.Trace("read salt ", buf.EncodeHexString(requestSalt))
 	}
 
 	if !s.replayFilter.Check(requestSalt) {
@@ -112,6 +121,10 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	if err != nil {
 		return E.Cause(err, "read timestamp")
 	}
+	if debug.Enabled {
+		logger.Trace("client timestamp ", time.Unix(int64(epoch), 0).String())
+	}
+
 	if math.Abs(float64(time.Now().Unix()-int64(epoch))) > 30 {
 		return ErrBadTimestamp
 	}
@@ -120,6 +133,9 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	if err != nil {
 		return E.Cause(err, "read destination")
 	}
+	if debug.Enabled {
+		logger.Trace("destination ", destination)
+	}
 
 	var paddingLen uint16
 	err = binary.Read(reader, binary.BigEndian, &paddingLen)
@@ -127,11 +143,23 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return E.Cause(err, "read padding length")
 	}
 
+	if debug.Enabled {
+		if paddingLen > 0 {
+			logger.Trace("padding ", paddingLen, "B")
+		} else {
+			logger.Trace("no padding")
+		}
+	}
+
 	if paddingLen > 0 {
 		err = reader.Discard(int(paddingLen))
 		if err != nil {
 			return E.Cause(err, "discard padding")
 		}
+	}
+
+	if debug.Enabled {
+		logger.Trace("end server handshake request")
 	}
 
 	metadata.Protocol = "shadowsocks"
