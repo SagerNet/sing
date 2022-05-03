@@ -34,7 +34,7 @@ type Listener struct {
 	bindAddr      netip.Addr
 	handler       Handler
 	authenticator auth.Authenticator
-	udpNat        udpnat.Service[netip.AddrPort]
+	udpNat        *udpnat.Service[netip.AddrPort]
 }
 
 func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transproxy redir.TransproxyMode, udpTimeout int64, handler Handler) *Listener {

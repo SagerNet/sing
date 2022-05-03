@@ -42,14 +42,7 @@ func New(message ...any) error {
 	return errors.New(fmt.Sprint(message...))
 }
 
-func Cause(cause error, message string) Exception {
-	if cause == nil {
-		return nil
-	}
-	return exception{message, cause}
-}
-
-func CauseF(cause error, message ...any) Exception {
+func Cause(cause error, message ...any) Exception {
 	return exception{fmt.Sprint(message), cause}
 }
 

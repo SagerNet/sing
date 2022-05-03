@@ -15,7 +15,7 @@ type AssociateConn struct {
 	dest *M.AddrPort
 }
 
-func NewAssociateConn(conn net.Conn, packetConn net.Conn, destination *M.AddrPort) net.PacketConn {
+func NewAssociateConn(conn net.Conn, packetConn net.Conn, destination *M.AddrPort) *AssociateConn {
 	return &AssociateConn{
 		Conn: packetConn,
 		conn: conn,

@@ -107,7 +107,7 @@ func AddrPortFromNetAddr(netAddr net.Addr) *AddrPort {
 
 func AddrFromIP(ip net.IP) Addr {
 	addr, _ := netip.AddrFromSlice(ip)
-	if addr.Is4() {
+	if addr.Is4() || addr.Is4In6() {
 		return Addr4(addr.As4())
 	} else {
 		return Addr16(addr.As16())
@@ -115,7 +115,7 @@ func AddrFromIP(ip net.IP) Addr {
 }
 
 func AddrFromAddr(addr netip.Addr) Addr {
-	if addr.Is4() {
+	if addr.Is4() && addr.Is4In6() {
 		return Addr4(addr.As4())
 	} else {
 		return Addr16(addr.As16())
@@ -145,7 +145,7 @@ func (a Addr4) Fqdn() string {
 }
 
 func (a Addr4) String() string {
-	return net.IP(a[:]).String()
+	return netip.AddrFrom4(a).String()
 }
 
 type Addr16 [16]byte
@@ -163,7 +163,7 @@ func (a Addr16) Fqdn() string {
 }
 
 func (a Addr16) String() string {
-	return net.IP(a[:]).String()
+	return netip.AddrFrom16(a).String()
 }
 
 type AddrFqdn string

@@ -38,8 +38,8 @@ type Service struct {
 	psk              [KeySaltSize]byte
 	replayFilter     replay.Filter
 	handler          shadowsocks.Handler
-	udpNat           udpnat.Service[uint64]
-	sessions         cache.LruCache[uint64, *serverUDPSession]
+	udpNat           *udpnat.Service[uint64]
+	sessions         *cache.LruCache[uint64, *serverUDPSession]
 }
 
 func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
@@ -49,7 +49,11 @@ func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTi
 		secureRNG:    secureRNG,
 		replayFilter: replay.NewCuckoo(60),
 		handler:      handler,
-		sessions:     cache.NewLRU[uint64, *serverUDPSession](udpTimeout, true),
+		udpNat:       udpnat.New[uint64](udpTimeout, handler),
+		sessions: cache.New[uint64, *serverUDPSession](
+			cache.WithAge[uint64, *serverUDPSession](udpTimeout),
+			cache.WithUpdateAgeOnGet[uint64, *serverUDPSession](),
+		),
 	}
 
 	switch method {
@@ -69,7 +73,6 @@ func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTi
 		s.udpCipher = newXChacha20Poly1305(s.psk[:])
 	}
 
-	s.udpNat = udpnat.New[uint64](udpTimeout, s)
 	return s, nil
 }
 
@@ -444,12 +447,4 @@ func (m *Service) newUDPSession() *serverUDPSession {
 		session.cipher = m.constructor(common.Dup(key))
 	}
 	return session
-}
-
-func (s *Service) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
-	return s.handler.NewPacketConnection(ctx, conn, metadata)
-}
-
-func (s *Service) HandleError(err error) {
-	s.handler.HandleError(err)
 }

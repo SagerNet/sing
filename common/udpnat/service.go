@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -21,13 +22,16 @@ type Handler interface {
 }
 
 type Service[K comparable] struct {
-	nat     cache.LruCache[K, *conn]
+	nat     *cache.LruCache[K, *conn]
 	handler Handler
 }
 
-func New[K comparable](maxAge int64, handler Handler) Service[K] {
-	return Service[K]{
-		nat:     cache.NewLRU[K, *conn](maxAge, true),
+func New[K comparable](maxAge int64, handler Handler) *Service[K] {
+	return &Service[K]{
+		nat: cache.New(
+			cache.WithAge[K, *conn](maxAge),
+			cache.WithUpdateAgeOnGet[K, *conn](),
+		),
 		handler: handler,
 	}
 }
@@ -52,7 +56,16 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 			if err != nil {
 				s.handler.HandleError(err)
 			}
+			c.Close()
+			s.nat.Delete(key)
 		}()
+	}
+	c.access.Lock()
+	if common.Done(c.ctx) {
+		s.nat.Delete(key)
+		c.access.Unlock()
+		s.NewContextPacket(ctx, key, writer, buffer, metadata)
+		return
 	}
 	ctx, done := context.WithCancel(c.ctx)
 	p := packet{
@@ -61,6 +74,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 		destination: metadata.Destination,
 	}
 	c.data <- p
+	c.access.Unlock()
 	<-ctx.Done()
 }
 
@@ -71,6 +85,7 @@ type packet struct {
 }
 
 type conn struct {
+	access     sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
 	data       chan packet
@@ -96,7 +111,11 @@ func (c *conn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
 }
 
 func (c *conn) Close() error {
+	c.access.Lock()
+	defer c.access.Unlock()
+
 	c.cancel()
+	common.Close(c.source)
 	select {
 	case <-c.data:
 		return os.ErrClosed

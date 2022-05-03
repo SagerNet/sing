@@ -27,8 +27,8 @@ type Service struct {
 	key           []byte
 	secureRNG     io.Reader
 	replayFilter  replay.Filter
-	udpNat        udpnat.Service[netip.AddrPort]
 	handler       shadowsocks.Handler
+	udpNat        *udpnat.Service[netip.AddrPort]
 }
 
 func NewService(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
@@ -36,8 +36,8 @@ func NewService(method string, key []byte, password []byte, secureRNG io.Reader,
 		name:      method,
 		secureRNG: secureRNG,
 		handler:   handler,
+		udpNat:    udpnat.New[netip.AddrPort](udpTimeout, handler),
 	}
-	s.udpNat = udpnat.New[netip.AddrPort](udpTimeout, s)
 	if replayFilter {
 		s.replayFilter = replay.NewBloomRing()
 	}
@@ -243,12 +243,4 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.Addr
 	c.Seal(buffer.From(w.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(w.keySaltLength), nil)
 	buffer.Extend(c.Overhead())
 	return w.PacketConn.WritePacket(buffer, w.source)
-}
-
-func (s *Service) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
-	return s.handler.NewPacketConnection(ctx, conn, metadata)
-}
-
-func (s *Service) HandleError(err error) {
-	s.handler.HandleError(err)
 }

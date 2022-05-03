@@ -130,7 +130,7 @@ func (i *TrojanInstance) Start() error {
 
 	trojanConfig, err := i.GetTrojanConfig(context.Background())
 	if err != nil {
-		return E.CauseF(err, i.id, ": read trojan config")
+		return E.Cause(err, i.id, ": read trojan config")
 	}
 
 	if trojanConfig.SNI != "" {
@@ -140,7 +140,7 @@ func (i *TrojanInstance) Start() error {
 	if acmeManager != nil {
 		certificate, err := acmeManager.GetKeyPair(i.domain)
 		if err != nil {
-			return E.CauseF(err, i.id, ": generate certificate")
+			return E.Cause(err, i.id, ": generate certificate")
 		}
 		i.tlsConfig.Certificates = []tls.Certificate{*certificate}
 		acmeManager.RegisterUpdateListener(i.domain, func(certificate *tls.Certificate) {
@@ -152,7 +152,7 @@ func (i *TrojanInstance) Start() error {
 		Port: int(trojanConfig.LocalPort),
 	})
 	if err != nil {
-		return E.CauseF(err, i.id, ": listen at tcp:", trojanConfig.LocalPort, ", check server configuration!")
+		return E.Cause(err, i.id, ": listen at tcp:", trojanConfig.LocalPort, ", check server configuration!")
 	}
 
 	if common.IsEmpty(i.tlsConfig.Certificates) {
@@ -199,7 +199,7 @@ func (i *TrojanInstance) loopRequests() {
 	for {
 		conn, err := i.listener.Accept()
 		if err != nil {
-			logrus.Debug(E.CauseF(err, i.id, ": listener exited"))
+			logrus.Debug(E.Cause(err, i.id, ": listener exited"))
 			return
 		}
 		go func() {
@@ -218,13 +218,13 @@ func (i *TrojanInstance) loopReload() {
 	for range i.reloadTicker.C {
 		err := i.reloadUsers()
 		if err != nil {
-			i.HandleError(E.CauseF(err, "reload user"))
+			i.HandleError(E.Cause(err, "reload user"))
 		}
 		traffics := i.user.ReadTraffics()
 		if len(traffics) > 0 {
 			err = i.ReportTrojanTraffic(context.Background(), traffics)
 			if err != nil {
-				i.HandleError(E.CauseF(err, "report traffic"))
+				i.HandleError(E.Cause(err, "report traffic"))
 			}
 		}
 	}
@@ -234,7 +234,7 @@ func (i *TrojanInstance) reloadUsers() error {
 	logrus.Debug(i.id, ": fetching users...")
 	userList, err := i.GetTrojanUserList(context.Background())
 	if err != nil {
-		return E.CauseF(err, i.id, ": get user list")
+		return E.Cause(err, i.id, ": get user list")
 	}
 	if len(userList.Users) == 0 {
 		logrus.Warn(i.id, ": empty users")
@@ -244,7 +244,7 @@ func (i *TrojanInstance) reloadUsers() error {
 	for id, password := range userList.Users {
 		err = i.service.AddUser(id, password)
 		if err != nil {
-			logrus.Warn(E.CauseF(err, i.id, ": add user"))
+			logrus.Warn(E.Cause(err, i.id, ": add user"))
 		}
 	}
 

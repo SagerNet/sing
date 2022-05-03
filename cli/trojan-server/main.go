@@ -54,14 +54,14 @@ func main() {
 		},
 	}
 
-	command.Flags().StringVarP(&f.Server, "server", "s", "", "Set the server’s hostname or IP.")
-	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Set the server’s port number.")
-	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Set the local address.")
-	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Set the local port number.")
-	command.Flags().StringVarP(&f.Password, "password", "k", "", "Set the password. The server and the client should use the same password.")
-	command.Flags().BoolVarP(&f.Insecure, "insecure", "i", false, "Set insecure.")
+	command.Flags().StringVarP(&f.Server, "server", "s", "", "Store the server’s hostname or IP.")
+	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Store the server’s port number.")
+	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Store the local address.")
+	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Store the local port number.")
+	command.Flags().StringVarP(&f.Password, "password", "k", "", "Store the password. The server and the client should use the same password.")
+	command.Flags().BoolVarP(&f.Insecure, "insecure", "i", false, "Store insecure.")
 	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
-	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Set verbose mode.")
+	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Store verbose mode.")
 
 	err := command.Execute()
 	if err != nil {

@@ -155,7 +155,7 @@ func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort *M.AddrPort) e
 
 type NoneService struct {
 	handler Handler
-	udp     udpnat.Service[netip.AddrPort]
+	udp     *udpnat.Service[netip.AddrPort]
 }
 
 func NewNoneService(udpTimeout int64, handler Handler) Service {

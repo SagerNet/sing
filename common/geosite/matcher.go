@@ -37,7 +37,7 @@ func NewMatcher(domains []string) (*Matcher, error) {
 			domain = domain[7:]
 			pattern, err := regexp.Compile(domain)
 			if err != nil {
-				return nil, E.CauseF(err, "compile regex rule ", domain)
+				return nil, E.Cause(err, "compile regex rule ", domain)
 			}
 			regex = append(regex, pattern)
 		}

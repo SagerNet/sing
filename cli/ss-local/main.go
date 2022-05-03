@@ -69,24 +69,24 @@ func main() {
 		},
 	}
 
-	command.Flags().StringVarP(&f.Server, "server", "s", "", "Set the server’s hostname or IP.")
-	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Set the server’s port number.")
-	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Set the local address.")
-	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Set the local port number.")
-	command.Flags().StringVarP(&f.Password, "password", "k", "", "Set the password. The server and the client should use the same password.")
-	command.Flags().StringVar(&f.Key, "key", "", "Set the key directly. The key should be encoded with URL-safe Base64.")
+	command.Flags().StringVarP(&f.Server, "server", "s", "", "Store the server’s hostname or IP.")
+	command.Flags().Uint16VarP(&f.ServerPort, "server-port", "p", 0, "Store the server’s port number.")
+	command.Flags().StringVarP(&f.Bind, "local-address", "b", "", "Store the local address.")
+	command.Flags().Uint16VarP(&f.LocalPort, "local-port", "l", 0, "Store the local port number.")
+	command.Flags().StringVarP(&f.Password, "password", "k", "", "Store the password. The server and the client should use the same password.")
+	command.Flags().StringVar(&f.Key, "key", "", "Store the key directly. The key should be encoded with URL-safe Base64.")
 
 	var supportedCiphers []string
 	supportedCiphers = append(supportedCiphers, shadowsocks.MethodNone)
 	supportedCiphers = append(supportedCiphers, shadowaead_2022.List...)
 	supportedCiphers = append(supportedCiphers, shadowaead.List...)
 
-	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", "Set the cipher.\n\nSupported ciphers:\n\n"+strings.Join(supportedCiphers, "\n"))
+	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", "Store the cipher.\n\nSupported ciphers:\n\n"+strings.Join(supportedCiphers, "\n"))
 	command.Flags().BoolVar(&f.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
 Only available with Linux kernel > 3.7.0.`)
 	command.Flags().StringVarP(&f.Transproxy, "transproxy", "t", "", "Enable transparent proxy support. [possible values: redirect, tproxy]")
-	command.Flags().IntVar(&f.FWMark, "fwmark", 0, "Set outbound socket mark.")
-	command.Flags().StringVar(&f.Bypass, "bypass", "", "Set bypass country.")
+	command.Flags().IntVar(&f.FWMark, "fwmark", 0, "Store outbound socket mark.")
+	command.Flags().StringVar(&f.Bypass, "bypass", "", "Store bypass country.")
 	command.Flags().StringVarP(&f.ConfigFile, "config", "c", "", "Use a configuration file.")
 	command.Flags().BoolVarP(&f.Verbose, "verbose", "v", false, "Enable verbose mode.")
 	command.Flags().BoolVar(&f.UseSystemRNG, "use-system-rng", false, "Use system random number generator.")
