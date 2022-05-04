@@ -364,9 +364,10 @@ func (c *clientConn) readResponse() error {
 		return err
 	}
 
-	if math.Abs(float64(time.Now().Unix()-int64(epoch))) > 30 {
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
 		if debug.Enabled {
-			logger.Trace("server timestamp ", time.Unix(int64(epoch), 0).String())
+			logger.Trace("server timestamp ", time.Unix(int64(epoch), 0).String(), " diff ", diff)
 		}
 		return ErrBadTimestamp
 	}
@@ -565,6 +566,10 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	}
 	buffer.Truncate(n)
 
+	if debug.Enabled {
+		logger.Trace("begin server packet")
+	}
+
 	var packetHeader []byte
 	if c.method.udpCipher != nil {
 		_, err = c.method.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)
@@ -585,6 +590,11 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	err = binary.Read(buffer, binary.BigEndian, &packetId)
 	if err != nil {
 		return M.Socksaddr{}, err
+	}
+
+	if debug.Enabled {
+		logger.Trace("session id ", sessionId)
+		logger.Trace("packet id ", packetId)
 	}
 
 	var remoteCipher cipher.AEAD
@@ -617,7 +627,12 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
-	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
+
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
+		if debug.Enabled {
+			logger.Trace("server timestamp ", time.Unix(int64(epoch), 0).String(), " diff ", diff)
+		}
 		return M.Socksaddr{}, ErrBadTimestamp
 	}
 
@@ -664,7 +679,15 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		return M.Socksaddr{}, E.Cause(err, "read padding length")
 	}
 	buffer.Advance(int(paddingLength))
-	return socks5.AddressSerializer.ReadAddrPort(buffer)
+
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	if err != nil {
+		return M.Socksaddr{}, err
+	}
+	if debug.Enabled {
+		logger.Trace("ended client packet")
+	}
+	return destination, nil
 }
 
 type udpSession struct {
