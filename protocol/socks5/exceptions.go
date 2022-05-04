@@ -1,4 +1,4 @@
-package socks
+package socks5
 
 import "fmt"
 

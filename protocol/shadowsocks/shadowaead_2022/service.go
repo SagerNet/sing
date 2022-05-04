@@ -18,12 +18,13 @@ import (
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 )
 
@@ -132,7 +133,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return ErrBadTimestamp
 	}
 
-	destination, err := socks.AddressSerializer.ReadAddrPort(reader)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return E.Cause(err, "read destination")
 	}
@@ -268,7 +269,7 @@ func (c *serverConn) WriterReplaceable() bool {
 	return c.writer != nil
 }
 
-func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	err := s.newPacket(conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
@@ -276,7 +277,7 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 	return err
 }
 
-func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	var packetHeader []byte
 	if s.udpCipher != nil {
 		_, err := s.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)
@@ -358,14 +359,14 @@ process:
 	}
 	buffer.Advance(int(paddingLength))
 
-	destination, err := socks.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		goto returnErr
 	}
 	metadata.Destination = destination
 
 	session.remoteAddr = metadata.Source
-	s.udpNat.NewPacket(sessionId, func() socks.PacketWriter {
+	s.udpNat.NewPacket(sessionId, func() N.PacketWriter {
 		return &serverPacketWriter{s, conn, session}
 	}, buffer, metadata)
 	return nil
@@ -373,11 +374,11 @@ process:
 
 type serverPacketWriter struct {
 	*Service
-	socks.PacketConn
+	N.PacketConn
 	session *serverUDPSession
 }
 
-func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
 
 	_header := buf.StackNew()
@@ -400,7 +401,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.Addr
 		binary.Write(header, binary.BigEndian, uint16(0)), // padding length
 	)
 
-	err := socks.AddressSerializer.WriteAddrPort(header, destination)
+	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
@@ -425,7 +426,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.Addr
 type serverUDPSession struct {
 	sessionId       uint64
 	remoteSessionId uint64
-	remoteAddr      *M.AddrPort
+	remoteAddr      M.Socksaddr
 	packetId        uint64
 	cipher          cipher.AEAD
 	remoteCipher    cipher.AEAD

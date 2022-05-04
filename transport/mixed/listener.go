@@ -15,17 +15,18 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/http"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"github.com/sagernet/sing/transport/tcp"
 	"github.com/sagernet/sing/transport/udp"
 )
 
 type Handler interface {
-	socks.Handler
+	socks5.Handler
 }
 
 type Listener struct {
@@ -53,15 +54,15 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, transpro
 }
 
 func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	if metadata.Destination != nil {
+	if metadata.Destination.IsValid() {
 		return l.handler.NewConnection(ctx, conn, metadata)
 	}
 	headerType, err := rw.ReadByte(conn)
 	switch headerType {
-	case socks.Version4:
+	case socks5.Version4:
 		return E.New("socks4 request dropped (TODO)")
-	case socks.Version5:
-		return socks.HandleConnection0(ctx, conn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
+	case socks5.Version5:
+		return socks5.HandleConnection0(ctx, conn, l.authenticator, M.AddrFromNetAddr(conn.LocalAddr()), l.handler, metadata)
 	}
 
 	reader := bufio.NewReader(&rw.BufferedReader{
@@ -75,7 +76,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	}
 
 	if request.Method == "GET" && request.URL.Path == "/proxy.pac" {
-		content := newPAC(M.AddrPortFromNetAddr(conn.LocalAddr()))
+		content := newPAC(M.AddrPortFromNet(conn.LocalAddr()))
 		response := &netHttp.Response{
 			StatusCode: 200,
 			Status:     netHttp.StatusText(200),
@@ -113,8 +114,8 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	return http.HandleRequest(ctx, request, conn, l.authenticator, l.handler, metadata)
 }
 
-func (l *Listener) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	l.udpNat.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
+func (l *Listener) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	l.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &tproxyPacketWriter{metadata.Source.UDPAddr()}
 	}, buffer, metadata)
 	return nil
@@ -124,7 +125,7 @@ type tproxyPacketWriter struct {
 	source *net.UDPAddr
 }
 
-func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	udpConn, err := redir.DialUDP("udp", destination.UDPAddr(), w.source)
 	if err != nil {
 		return E.Cause(err, "tproxy udp write back")

@@ -23,6 +23,7 @@ require (
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
 	google.golang.org/protobuf v1.28.0
+	gvisor.dev/gvisor v0.0.0-20220428010907-8082b77961ba
 	lukechampine.com/blake3 v1.1.7
 )
 
@@ -31,6 +32,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.1 // indirect
 	github.com/dgryski/go-metro v0.0.0-20211217172704-adc40b04c140 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/google/btree v1.0.1 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect

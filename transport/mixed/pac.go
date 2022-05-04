@@ -1,8 +1,10 @@
 package mixed
 
-import M "github.com/sagernet/sing/common/metadata"
+import (
+	"net/netip"
+)
 
-/*func newPAC(proxyAddr *M.AddrPort) string {
+/*func newPAC(proxyAddr M.Socksaddr) string {
 	return `
 function FindProxyForURL(url, host) {
     return "SOCKS5 ` + proxyAddr.String() + `;SOCKS ` + proxyAddr.String() + `; PROXY ` + proxyAddr.String() + `";
@@ -10,7 +12,7 @@ function FindProxyForURL(url, host) {
 }
 */
 
-func newPAC(proxyAddr *M.AddrPort) string {
+func newPAC(proxyAddr netip.AddrPort) string {
 	// TODO: socks4 not supported
 	return `
 function FindProxyForURL(url, host) {

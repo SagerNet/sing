@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"syscall"
@@ -36,19 +37,19 @@ func FWMark(fd uintptr, mark int) error {
 	return syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_MARK, mark)
 }
 
-func GetOriginalDestinationFromOOB(oob []byte) (*M.AddrPort, error) {
+func GetOriginalDestinationFromOOB(oob []byte) (netip.AddrPort, error) {
 	controlMessages, err := unix.ParseSocketControlMessage(oob)
 	if err != nil {
-		return nil, err
+		return netip.AddrPort{}, err
 	}
 	for _, message := range controlMessages {
 		if message.Header.Level == unix.SOL_IP && message.Header.Type == unix.IP_RECVORIGDSTADDR {
-			return M.AddrPortFrom(M.AddrFromIP(message.Data[4:8]), binary.BigEndian.Uint16(message.Data[2:4])), nil
+			return netip.AddrPortFrom(M.AddrFromIP(message.Data[4:8]), binary.BigEndian.Uint16(message.Data[2:4])), nil
 		} else if message.Header.Level == unix.SOL_IPV6 && message.Header.Type == unix.IPV6_RECVORIGDSTADDR {
-			return M.AddrPortFrom(M.AddrFromIP(message.Data[8:24]), binary.BigEndian.Uint16(message.Data[2:4])), nil
+			return netip.AddrPortFrom(M.AddrFromIP(message.Data[8:24]), binary.BigEndian.Uint16(message.Data[2:4])), nil
 		}
 	}
-	return nil, E.New("not found")
+	return netip.AddrPort{}, E.New("not found")
 }
 
 func DialUDP(network string, lAddr *net.UDPAddr, rAddr *net.UDPAddr) (*net.UDPConn, error) {

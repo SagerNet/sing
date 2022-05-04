@@ -8,7 +8,7 @@ import (
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/protocol/socks"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type UserManager struct {
@@ -40,7 +40,7 @@ func (m *UserManager) TrackConnection(userId int, conn net.Conn) net.Conn {
 	return &TrackConn{conn, user}
 }
 
-func (m *UserManager) TrackPacketConnection(userId int, conn socks.PacketConn) socks.PacketConn {
+func (m *UserManager) TrackPacketConnection(userId int, conn N.PacketConn) N.PacketConn {
 	m.access.Lock()
 	defer m.access.Unlock()
 	var user *User
@@ -112,11 +112,11 @@ func (c *TrackConn) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 type TrackPacketConn struct {
-	socks.PacketConn
+	N.PacketConn
 	*User
 }
 
-func (c *TrackPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *TrackPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	destination, err := c.PacketConn.ReadPacket(buffer)
 	if err == nil {
 		atomic.AddUint64(&c.Upload, uint64(buffer.Len()))
@@ -124,7 +124,7 @@ func (c *TrackPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	return destination, err
 }
 
-func (c *TrackPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (c *TrackPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	n := buffer.Len()
 	err := c.PacketConn.WritePacket(buffer, destination)
 	if err == nil {

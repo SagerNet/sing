@@ -7,17 +7,17 @@ import (
 
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/protocol/socks"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type Service interface {
 	M.TCPConnectionHandler
-	socks.UDPHandler
+	N.UDPHandler
 }
 
 type Handler interface {
 	M.TCPConnectionHandler
-	socks.UDPConnectionHandler
+	N.UDPConnectionHandler
 	E.Handler
 }
 
@@ -34,7 +34,7 @@ type UserContext[U comparable] struct {
 
 type ServerConnError struct {
 	net.Conn
-	Source *M.AddrPort
+	Source M.Socksaddr
 	Cause  error
 }
 
@@ -47,8 +47,8 @@ func (e *ServerConnError) Error() string {
 }
 
 type ServerPacketError struct {
-	socks.PacketConn
-	Source *M.AddrPort
+	N.PacketConn
+	Source M.Socksaddr
 	Cause  error
 }
 

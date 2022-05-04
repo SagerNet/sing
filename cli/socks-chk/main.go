@@ -11,7 +11,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/dns/dnsmessage"
@@ -29,11 +29,8 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) {
-	server, err := M.ParseAddress(args[0])
-	if err != nil {
-		logrus.Fatal("invalid server address ", args[0])
-	}
-	err = testSocksTCP(server)
+	server := M.ParseSocksaddr(args[0])
+	err := testSocksTCP(server)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -43,16 +40,16 @@ func run(cmd *cobra.Command, args []string) {
 	}
 }
 
-func testSocksTCP(server *M.AddrPort) error {
+func testSocksTCP(server M.Socksaddr) error {
 	tcpConn, err := net.Dial("tcp", server.String())
 	if err != nil {
 		return err
 	}
-	response, err := socks.ClientHandshake(tcpConn, socks.Version5, socks.CommandConnect, M.AddrPortFrom(M.ParseAddr("1.0.0.1"), 53), "", "")
+	response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandConnect, M.ParseSocksaddrHostPort("1.0.0.1", "53"), "", "")
 	if err != nil {
 		return err
 	}
-	if response.ReplyCode != socks.ReplyCodeSuccess {
+	if response.ReplyCode != socks5.ReplyCodeSuccess {
 		logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
 	}
 
@@ -98,17 +95,17 @@ func testSocksTCP(server *M.AddrPort) error {
 	return nil
 }
 
-func testSocksUDP(server *M.AddrPort) error {
+func testSocksUDP(server M.Socksaddr) error {
 	tcpConn, err := net.Dial("tcp", server.String())
 	if err != nil {
 		return err
 	}
-	dest := M.AddrPortFrom(M.ParseAddr("1.0.0.1"), 53)
-	response, err := socks.ClientHandshake(tcpConn, socks.Version5, socks.CommandUDPAssociate, dest, "", "")
+	dest := M.ParseSocksaddrHostPort("1.0.0.1", "53")
+	response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandUDPAssociate, dest, "", "")
 	if err != nil {
 		return err
 	}
-	if response.ReplyCode != socks.ReplyCodeSuccess {
+	if response.ReplyCode != socks5.ReplyCodeSuccess {
 		logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
 	}
 	var dialer net.Dialer
@@ -116,7 +113,7 @@ func testSocksUDP(server *M.AddrPort) error {
 	if err != nil {
 		return err
 	}
-	assConn := socks.NewAssociateConn(tcpConn, udpConn, dest)
+	assConn := socks5.NewAssociateConn(tcpConn, udpConn, dest)
 	message := &dnsmessage.Message{}
 	message.Header.ID = 1
 	message.Header.RecursionDesired = true

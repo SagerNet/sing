@@ -12,11 +12,12 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -97,7 +98,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 
 	key := Kdf(s.key, salt, s.keySaltLength)
 	reader := NewReader(conn, s.constructor(common.Dup(key)), MaxPacketSize)
-	destination, err := socks.AddressSerializer.ReadAddrPort(reader)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return err
 	}
@@ -198,7 +199,7 @@ func (c *serverConn) WriterReplaceable() bool {
 	return c.writer != nil
 }
 
-func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	err := s.newPacket(conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
@@ -206,7 +207,7 @@ func (s *Service) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 	return err
 }
 
-func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	if buffer.Len() < s.keySaltLength {
 		return E.New("bad packet")
 	}
@@ -219,7 +220,7 @@ func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 	buffer.Advance(s.keySaltLength)
 	buffer.Truncate(len(packet))
 	metadata.Protocol = "shadowsocks"
-	s.udpNat.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
+	s.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &serverPacketWriter{s, conn, metadata.Source}
 	}, buffer, metadata)
 	return nil
@@ -227,14 +228,14 @@ func (s *Service) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata 
 
 type serverPacketWriter struct {
 	*Service
-	socks.PacketConn
-	source *M.AddrPort
+	N.PacketConn
+	source M.Socksaddr
 }
 
-func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	header := buffer.ExtendHeader(w.keySaltLength + socks.AddressSerializer.AddrPortLen(destination))
+func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	header := buffer.ExtendHeader(w.keySaltLength + socks5.AddressSerializer.AddrPortLen(destination))
 	common.Must1(io.ReadFull(w.secureRNG, header[:w.keySaltLength]))
-	err := socks.AddressSerializer.WriteAddrPort(buf.With(header[w.keySaltLength:]), destination)
+	err := socks5.AddressSerializer.WriteAddrPort(buf.With(header[w.keySaltLength:]), destination)
 	if err != nil {
 		return err
 	}

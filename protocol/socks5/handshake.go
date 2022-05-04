@@ -1,4 +1,4 @@
-package socks
+package socks5
 
 import (
 	"io"
@@ -8,7 +8,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
-func ClientHandshake(conn io.ReadWriter, version byte, command byte, destination *M.AddrPort, username string, password string) (*Response, error) {
+func ClientHandshake(conn io.ReadWriter, version byte, command byte, destination M.Socksaddr, username string, password string) (*Response, error) {
 	var method byte
 	if common.IsBlank(username) {
 		method = AuthTypeNotRequired
@@ -56,7 +56,7 @@ func ClientHandshake(conn io.ReadWriter, version byte, command byte, destination
 	return ReadResponse(conn)
 }
 
-func ClientFastHandshake(writer io.Writer, version byte, command byte, destination *M.AddrPort, username string, password string) error {
+func ClientFastHandshake(writer io.Writer, version byte, command byte, destination M.Socksaddr, username string, password string) error {
 	var method byte
 	if common.IsBlank(username) {
 		method = AuthTypeNotRequired

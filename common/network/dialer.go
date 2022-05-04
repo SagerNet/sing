@@ -8,7 +8,7 @@ import (
 )
 
 type ContextDialer interface {
-	DialContext(ctx context.Context, network string, address *M.AddrPort) (net.Conn, error)
+	DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error)
 }
 
 var SystemDialer ContextDialer = &DefaultDialer{}
@@ -21,7 +21,7 @@ func (d *DefaultDialer) ListenUDP(network string, laddr *net.UDPAddr) (*net.UDPC
 	return net.ListenUDP(network, laddr)
 }
 
-func (d *DefaultDialer) DialContext(ctx context.Context, network string, address *M.AddrPort) (net.Conn, error) {
+func (d *DefaultDialer) DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error) {
 	return d.Dialer.DialContext(ctx, network, address.String())
 }
 

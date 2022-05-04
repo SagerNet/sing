@@ -8,12 +8,12 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
-	"github.com/sagernet/sing/protocol/socks"
 )
 
 type Handler interface {
-	socks.UDPHandler
+	N.UDPHandler
 	E.Handler
 }
 
@@ -25,17 +25,24 @@ type Listener struct {
 	tproxy  bool
 }
 
-func (l *Listener) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
-	n, addr, err := l.ReadFromUDP(buffer.FreeBytes())
+func (l *Listener) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	n, addr, err := l.ReadFromUDPAddrPort(buffer.FreeBytes())
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	buffer.Truncate(n)
-	return M.AddrPortFromNetAddr(addr), nil
+	return M.SocksaddrFromNetIP(addr), nil
 }
 
-func (l *Listener) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	return common.Error(l.UDPConn.WriteTo(buffer.Bytes(), destination.UDPAddr()))
+func (l *Listener) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	if destination.Family().IsFqdn() {
+		udpAddr, err := net.ResolveUDPAddr("udp", destination.String())
+		if err != nil {
+			return err
+		}
+		return common.Error(l.UDPConn.WriteTo(buffer.Bytes(), udpAddr))
+	}
+	return common.Error(l.UDPConn.WriteToUDPAddrPort(buffer.Bytes(), destination.AddrPort()))
 }
 
 func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
@@ -88,7 +95,7 @@ func (l *Listener) loop() {
 	data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader).Slice()
 	if !l.tproxy {
 		for {
-			n, addr, err := l.ReadFromUDP(data)
+			n, addr, err := l.ReadFromUDPAddrPort(data)
 			if err != nil {
 				l.handler.HandleError(err)
 				return
@@ -96,7 +103,7 @@ func (l *Listener) loop() {
 			buffer.Resize(buf.ReversedHeader, n)
 			err = l.handler.NewPacket(l, buffer, M.Metadata{
 				Protocol: "udp",
-				Source:   M.AddrPortFromNetAddr(addr),
+				Source:   M.SocksaddrFromNetIP(addr),
 			})
 			if err != nil {
 				l.handler.HandleError(err)
@@ -119,8 +126,8 @@ func (l *Listener) loop() {
 			buffer.Resize(buf.ReversedHeader, n)
 			err = l.handler.NewPacket(l, buffer, M.Metadata{
 				Protocol:    "tproxy",
-				Source:      M.AddrPortFromAddrPort(addr),
-				Destination: destination,
+				Source:      M.SocksaddrFromNetIP(addr),
+				Destination: M.SocksaddrFromNetIP(destination),
 			})
 			if err != nil {
 				l.handler.HandleError(err)

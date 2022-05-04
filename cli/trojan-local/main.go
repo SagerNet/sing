@@ -19,9 +19,9 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/trojan"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sirupsen/logrus"
@@ -148,7 +148,7 @@ func newClient(f *flags) (*client, error) {
 	}
 
 	c := &client{
-		server:   M.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort).String(),
+		server:   netip.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort).String(),
 		key:      trojan.Key(f.Password),
 		sni:      f.ServerName,
 		insecure: f.Insecure,
@@ -319,7 +319,7 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, clientConn, conn)
 }
 
-func (c *client) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	logrus.Info("outbound ", metadata.Protocol, " UDP ", metadata.Source, " ==> ", metadata.Destination)
 
 	tlsConn, err := c.connect(ctx)
@@ -332,7 +332,7 @@ func (c *client) NewPacketConnection(ctx context.Context, conn socks.PacketConn,
 	}
 	return socks.CopyPacketConn(ctx, &trojan.PacketConn{Conn: tlsConn}, conn)*/
 	clientConn := trojan.NewClientPacketConn(tlsConn, c.key)
-	return socks.CopyPacketConn(ctx, clientConn, conn)
+	return N.CopyPacketConn(ctx, clientConn, conn)
 }
 
 func (c *client) HandleError(err error) {

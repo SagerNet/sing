@@ -13,12 +13,8 @@ func LocalAddrs() ([]netip.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return common.Map(common.Filter(common.Map(interfaceAddrs, func(addr net.Addr) M.Addr {
+	return common.Map(interfaceAddrs, func(addr net.Addr) netip.Addr {
 		return M.AddrFromNetAddr(addr)
-	}), func(addr M.Addr) bool {
-		return addr != nil
-	}), func(it M.Addr) netip.Addr {
-		return it.Addr()
 	}), nil
 }
 

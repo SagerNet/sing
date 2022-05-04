@@ -7,8 +7,8 @@ import (
 
 type Metadata struct {
 	Protocol    string
-	Source      *AddrPort
-	Destination *AddrPort
+	Source      Socksaddr
+	Destination Socksaddr
 }
 
 type TCPConnectionHandler interface {

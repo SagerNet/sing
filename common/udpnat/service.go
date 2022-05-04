@@ -13,11 +13,11 @@ import (
 	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/protocol/socks"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type Handler interface {
-	socks.UDPConnectionHandler
+	N.UDPConnectionHandler
 	E.Handler
 }
 
@@ -36,15 +36,16 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 	}
 }
 
-func (s *Service[T]) NewPacket(key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
+func (s *Service[T]) NewPacket(key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
 	s.NewContextPacket(context.Background(), key, writer, buffer, metadata)
 }
 
-func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() socks.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
+func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet),
-			remoteAddr: metadata.Source.UDPAddr(),
+			localAddr:  metadata.Source,
+			remoteAddr: metadata.Destination,
 			source:     writer(),
 		}
 		c.ctx, c.cancel = context.WithCancel(ctx)
@@ -80,7 +81,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 
 type packet struct {
 	data        *buf.Buffer
-	destination *M.AddrPort
+	destination M.Socksaddr
 	done        context.CancelFunc
 }
 
@@ -89,15 +90,16 @@ type conn struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	data       chan packet
-	remoteAddr *net.UDPAddr
-	source     socks.PacketWriter
+	localAddr  M.Socksaddr
+	remoteAddr M.Socksaddr
+	source     N.PacketWriter
 }
 
-func (c *conn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *conn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	select {
 	case p, ok := <-c.data:
 		if !ok {
-			return nil, io.ErrClosedPipe
+			return M.Socksaddr{}, io.ErrClosedPipe
 		}
 		defer p.data.Release()
 		_, err := buffer.ReadFrom(p.data)
@@ -106,7 +108,7 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	}
 }
 
-func (c *conn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return c.source.WritePacket(buffer, destination)
 }
 
@@ -126,7 +128,7 @@ func (c *conn) Close() error {
 }
 
 func (c *conn) LocalAddr() net.Addr {
-	return &common.DummyAddr{}
+	return c.localAddr
 }
 
 func (c *conn) RemoteAddr() net.Addr {

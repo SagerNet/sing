@@ -10,13 +10,14 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 )
 
 type Handler interface {
 	M.TCPConnectionHandler
-	socks.UDPConnectionHandler
+	N.UDPConnectionHandler
 }
 
 type Context[K comparable] struct {
@@ -115,7 +116,7 @@ process:
 		goto returnErr
 	}
 
-	destination, err := socks.AddressSerializer.ReadAddrPort(conn)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(conn)
 	if err != nil {
 		err = E.Cause(err, "read destination")
 		goto returnErr
@@ -141,11 +142,11 @@ type PacketConn struct {
 	net.Conn
 }
 
-func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	return ReadPacket(c.Conn, buffer)
 }
 
-func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return WritePacket(c.Conn, buffer, destination)
 }
 

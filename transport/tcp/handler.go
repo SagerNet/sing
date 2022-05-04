@@ -89,14 +89,14 @@ func (l *Listener) loop() {
 			return
 		}
 		metadata := M.Metadata{
-			Source: M.AddrPortFromNetAddr(tcpConn.RemoteAddr()),
+			Source: M.SocksaddrFromNet(tcpConn.RemoteAddr()),
 		}
 		switch l.trans {
 		case redir.ModeRedirect:
 			destination, err := redir.GetOriginalDestination(tcpConn)
 			if err == nil {
 				metadata.Protocol = "redirect"
-				metadata.Destination = destination
+				metadata.Destination = M.SocksaddrFromNetIP(destination)
 			}
 		case redir.ModeTProxy:
 			lAddr := tcpConn.LocalAddr().(*net.TCPAddr)
@@ -104,7 +104,7 @@ func (l *Listener) loop() {
 
 			if lAddr.Port != l.lAddr.Port || !lAddr.IP.Equal(rAddr.IP) && !lAddr.IP.IsLoopback() && !lAddr.IP.IsPrivate() {
 				metadata.Protocol = "tproxy"
-				metadata.Destination = M.AddrPortFromNetAddr(lAddr)
+				metadata.Destination = M.SocksaddrFromNet(lAddr)
 			}
 		}
 		go func() {

@@ -19,11 +19,12 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/chacha20poly1305"
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 	"lukechampine.com/blake3"
@@ -163,7 +164,7 @@ func (m *Method) KeyLength() int {
 	return m.keyLength
 }
 
-func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
+func (m *Method) DialConn(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
 	shadowsocksConn := &clientConn{
 		Conn:        conn,
 		method:      m,
@@ -172,7 +173,7 @@ func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, err
 	return shadowsocksConn, shadowsocksConn.writeRequest(nil)
 }
 
-func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn {
+func (m *Method) DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.Conn {
 	return &clientConn{
 		Conn:        conn,
 		method:      m,
@@ -180,7 +181,7 @@ func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn 
 	}
 }
 
-func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
+func (m *Method) DialPacketConn(conn net.Conn) N.PacketConn {
 	return &clientPacketConn{conn, m, m.newUDPSession()}
 }
 
@@ -188,7 +189,7 @@ type clientConn struct {
 	net.Conn
 
 	method      *Method
-	destination *M.AddrPort
+	destination M.Socksaddr
 
 	request  sync.Mutex
 	response sync.Mutex
@@ -267,7 +268,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeClient))
 	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
 
-	err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
+	err := socks5.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 	if err != nil {
 		return E.Cause(err, "write destination")
 	}
@@ -465,7 +466,7 @@ type clientPacketConn struct {
 	session *udpSession
 }
 
-func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	if debug.Enabled {
 		logger.Trace("begin client packet")
 	}
@@ -534,7 +535,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 		binary.Write(header, binary.BigEndian, uint64(time.Now().Unix())),
 		binary.Write(header, binary.BigEndian, uint16(0)), // padding length
 	)
-	err := socks.AddressSerializer.WriteAddrPort(header, destination)
+	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
@@ -551,14 +552,16 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 		buffer.Extend(c.session.cipher.Overhead())
 		c.method.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
-	logger.Trace("ended client packet")
+	if debug.Enabled {
+		logger.Trace("ended client packet")
+	}
 	return common.Error(c.Write(buffer.Bytes()))
 }
 
-func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	n, err := c.Read(buffer.FreeBytes())
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	buffer.Truncate(n)
 
@@ -566,7 +569,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	if c.method.udpCipher != nil {
 		_, err = c.method.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)
 		if err != nil {
-			return nil, E.Cause(err, "decrypt packet")
+			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
 		buffer.Advance(PacketNonceSize)
 	} else {
@@ -577,11 +580,11 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	var sessionId, packetId uint64
 	err = binary.Read(buffer, binary.BigEndian, &sessionId)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	err = binary.Read(buffer, binary.BigEndian, &packetId)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 
 	var remoteCipher cipher.AEAD
@@ -596,42 +599,42 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 		}
 		_, err = remoteCipher.Open(buffer.Index(0), packetHeader[4:16], buffer.Bytes(), nil)
 		if err != nil {
-			return nil, E.Cause(err, "decrypt packet")
+			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
 	}
 
 	var headerType byte
 	headerType, err = buffer.ReadByte()
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	if headerType != HeaderTypeServer {
-		return nil, ErrBadHeaderType
+		return M.Socksaddr{}, ErrBadHeaderType
 	}
 
 	var epoch uint64
 	err = binary.Read(buffer, binary.BigEndian, &epoch)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
-		return nil, ErrBadTimestamp
+		return M.Socksaddr{}, ErrBadTimestamp
 	}
 
 	if sessionId == c.session.remoteSessionId {
 		if !c.session.filter.ValidateCounter(packetId, math.MaxUint64) {
-			return nil, ErrPacketIdNotUnique
+			return M.Socksaddr{}, ErrPacketIdNotUnique
 		}
 	} else if sessionId == c.session.lastRemoteSessionId {
 		if !c.session.lastFilter.ValidateCounter(packetId, math.MaxUint64) {
-			return nil, ErrPacketIdNotUnique
+			return M.Socksaddr{}, ErrPacketIdNotUnique
 		}
 		remoteCipher = c.session.lastRemoteCipher
 		c.session.lastRemoteSeen = time.Now().Unix()
 	} else {
 		if c.session.remoteSessionId != 0 {
 			if time.Now().Unix()-c.session.lastRemoteSeen < 60 {
-				return nil, ErrTooManyServerSessions
+				return M.Socksaddr{}, ErrTooManyServerSessions
 			} else {
 				c.session.lastRemoteSessionId = c.session.remoteSessionId
 				c.session.lastFilter = c.session.filter
@@ -648,20 +651,20 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
 	var clientSessionId uint64
 	err = binary.Read(buffer, binary.BigEndian, &clientSessionId)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 
 	if clientSessionId != c.session.sessionId {
-		return nil, ErrBadClientSessionId
+		return M.Socksaddr{}, ErrBadClientSessionId
 	}
 
 	var paddingLength uint16
 	err = binary.Read(buffer, binary.BigEndian, &paddingLength)
 	if err != nil {
-		return nil, E.Cause(err, "read padding length")
+		return M.Socksaddr{}, E.Cause(err, "read padding length")
 	}
 	buffer.Advance(int(paddingLength))
-	return socks.AddressSerializer.ReadAddrPort(buffer)
+	return socks5.AddressSerializer.ReadAddrPort(buffer)
 }
 
 type udpSession struct {

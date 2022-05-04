@@ -13,10 +13,11 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/uot"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -102,7 +103,7 @@ func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata
 		return E.Cause(err, "connect to upstream")
 	}
 
-	_, err = socks.ClientHandshake(upstream, socks.Version5, socks.CommandConnect, metadata.Destination, "", "")
+	_, err = socks5.ClientHandshake(upstream, socks5.Version5, socks5.CommandConnect, metadata.Destination, "", "")
 	if err != nil {
 		return E.Cause(err, "upstream handshake failed")
 	}
@@ -110,19 +111,19 @@ func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata
 	return rw.CopyConn(context.Background(), upstream, conn)
 }
 
-func (c *localClient) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (c *localClient) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	upstream, err := net.Dial("tcp", c.upstream)
 	if err != nil {
 		return E.Cause(err, "connect to upstream")
 	}
 
-	_, err = socks.ClientHandshake(upstream, socks.Version5, socks.CommandConnect, M.AddrPortFrom(M.AddrFromFqdn(uot.UOTMagicAddress), 443), "", "")
+	_, err = socks5.ClientHandshake(upstream, socks5.Version5, socks5.CommandConnect, M.ParseSocksaddrHostPort(uot.UOTMagicAddress, "443"), "", "")
 	if err != nil {
 		return E.Cause(err, "upstream handshake failed")
 	}
 
 	client := uot.NewClientConn(upstream)
-	return socks.CopyPacketConn(ctx, client, conn)
+	return N.CopyPacketConn(ctx, client, conn)
 }
 
 func (c *localClient) OnError(err error) {

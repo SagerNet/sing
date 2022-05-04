@@ -1,4 +1,4 @@
-package socks
+package socks5
 
 import (
 	"context"
@@ -10,12 +10,13 @@ import (
 	"github.com/sagernet/sing/common/auth"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/transport/tcp"
 )
 
 type Handler interface {
 	tcp.Handler
-	UDPConnectionHandler
+	N.UDPConnectionHandler
 }
 
 type Listener struct {
@@ -36,7 +37,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 }
 
 func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(ctx, conn, l.authenticator, M.AddrPortFromNetAddr(conn.LocalAddr()).Addr.Addr(), l.handler, metadata)
+	return HandleConnection(ctx, conn, l.authenticator, M.AddrFromNetAddr(conn.LocalAddr()), l.handler, metadata)
 }
 
 func (l *Listener) Start() error {
@@ -117,7 +118,7 @@ func handleConnection(authRequest *AuthRequest, ctx context.Context, conn net.Co
 		err = WriteResponse(conn, &Response{
 			Version:   request.Version,
 			ReplyCode: ReplyCodeSuccess,
-			Bind:      M.AddrPortFromNetAddr(conn.LocalAddr()),
+			Bind:      M.SocksaddrFromNet(conn.LocalAddr()),
 		})
 		if err != nil {
 			return E.Cause(err, "write socks response")
@@ -138,7 +139,7 @@ func handleConnection(authRequest *AuthRequest, ctx context.Context, conn net.Co
 		err = WriteResponse(conn, &Response{
 			Version:   request.Version,
 			ReplyCode: ReplyCodeSuccess,
-			Bind:      M.AddrPortFromNetAddr(udpConn.LocalAddr()),
+			Bind:      M.SocksaddrFromNet(udpConn.LocalAddr()),
 		})
 		if err != nil {
 			return E.Cause(err, "write socks response")

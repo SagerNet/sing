@@ -18,9 +18,8 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/network"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/trojan"
 	transTLS "github.com/sagernet/sing/transport/tls"
 	"github.com/sirupsen/logrus"
@@ -177,14 +176,14 @@ func (i *TrojanInstance) NewConnection(ctx context.Context, conn net.Conn, metad
 	userCtx := ctx.(*trojan.Context[int])
 	conn = i.user.TrackConnection(userCtx.User, conn)
 	logrus.Info(i.id, ": user ", userCtx.User, " TCP ", metadata.Source, " ==> ", metadata.Destination)
-	destConn, err := network.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
+	destConn, err := N.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
 	if err != nil {
 		return err
 	}
 	return rw.CopyConn(ctx, conn, destConn)
 }
 
-func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	userCtx := ctx.(*trojan.Context[int])
 	conn = i.user.TrackPacketConnection(userCtx.User, conn)
 	logrus.Info(i.id, ": user ", userCtx.User, " UDP ", metadata.Source, " ==> ", metadata.Destination)
@@ -192,7 +191,7 @@ func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn socks.Pac
 	if err != nil {
 		return err
 	}
-	return socks.CopyNetPacketConn(ctx, conn, udpConn)
+	return N.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (i *TrojanInstance) loopRequests() {
@@ -205,7 +204,7 @@ func (i *TrojanInstance) loopRequests() {
 		go func() {
 			hErr := i.service.NewConnection(context.Background(), conn, M.Metadata{
 				Protocol: "tls",
-				Source:   M.AddrPortFromNetAddr(conn.RemoteAddr()),
+				Source:   M.SocksaddrFromNet(conn.RemoteAddr()),
 			})
 			if hErr != nil {
 				i.HandleError(hErr)

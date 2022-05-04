@@ -5,10 +5,9 @@ package redir
 import (
 	"errors"
 	"net"
-
-	M "github.com/sagernet/sing/common/metadata"
+	"net/netip"
 )
 
-func GetOriginalDestination(conn net.Conn) (destination *M.AddrPort, err error) {
-	return nil, errors.New("unsupported platform")
+func GetOriginalDestination(conn net.Conn) (destination netip.AddrPort, err error) {
+	return netip.AddrPort{}, errors.New("unsupported platform")
 }

@@ -13,10 +13,11 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"lukechampine.com/blake3"
 )
 
@@ -140,7 +141,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return ErrBadTimestamp
 	}
 
-	destination, err := socks.AddressSerializer.ReadAddrPort(reader)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return E.Cause(err, "read destination")
 	}
@@ -173,7 +174,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}, metadata)
 }
 
-func (s *MultiService[U]) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *MultiService[U]) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	err := s.newPacket(conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
@@ -181,7 +182,7 @@ func (s *MultiService[U]) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, m
 	return err
 }
 
-func (s *MultiService[U]) newPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	packetHeader := buffer.To(aes.BlockSize)
 	s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
 
@@ -272,7 +273,7 @@ process:
 	}
 	buffer.Advance(int(paddingLength))
 
-	destination, err := socks.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		goto returnErr
 	}
@@ -284,7 +285,7 @@ process:
 	userCtx.Context = context.Background()
 	userCtx.User = user
 
-	s.udpNat.NewContextPacket(&userCtx, sessionId, func() socks.PacketWriter {
+	s.udpNat.NewContextPacket(&userCtx, sessionId, func() N.PacketWriter {
 		return &serverPacketWriter{s.Service, conn, session}
 	}, buffer, metadata)
 	return nil

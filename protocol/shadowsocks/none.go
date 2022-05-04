@@ -10,8 +10,9 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/udpnat"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 )
 
 const MethodNone = "none"
@@ -30,7 +31,7 @@ func (m *NoneMethod) KeyLength() int {
 	return 0
 }
 
-func (m *NoneMethod) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
+func (m *NoneMethod) DialConn(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
 	shadowsocksConn := &noneConn{
 		Conn:        conn,
 		handshake:   true,
@@ -39,14 +40,14 @@ func (m *NoneMethod) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn,
 	return shadowsocksConn, shadowsocksConn.clientHandshake()
 }
 
-func (m *NoneMethod) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn {
+func (m *NoneMethod) DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.Conn {
 	return &noneConn{
 		Conn:        conn,
 		destination: destination,
 	}
 }
 
-func (m *NoneMethod) DialPacketConn(conn net.Conn) socks.PacketConn {
+func (m *NoneMethod) DialPacketConn(conn net.Conn) N.PacketConn {
 	return &nonePacketConn{conn}
 }
 
@@ -55,11 +56,11 @@ type noneConn struct {
 
 	access      sync.Mutex
 	handshake   bool
-	destination *M.AddrPort
+	destination M.Socksaddr
 }
 
 func (c *noneConn) clientHandshake() error {
-	err := socks.AddressSerializer.WriteAddrPort(c.Conn, c.destination)
+	err := socks5.AddressSerializer.WriteAddrPort(c.Conn, c.destination)
 	if err != nil {
 		return err
 	}
@@ -87,7 +88,7 @@ func (c *noneConn) Write(b []byte) (n int, err error) {
 		_buffer := buf.StackNew()
 		buffer := common.Dup(_buffer)
 
-		err = socks.AddressSerializer.WriteAddrPort(buffer, c.destination)
+		err = socks5.AddressSerializer.WriteAddrPort(buffer, c.destination)
 		if err != nil {
 			return
 		}
@@ -132,19 +133,19 @@ type nonePacketConn struct {
 	net.Conn
 }
 
-func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	_, err := buffer.ReadFrom(c)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
-	return socks.AddressSerializer.ReadAddrPort(buffer)
+	return socks5.AddressSerializer.ReadAddrPort(buffer)
 }
 
-func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort *M.AddrPort) error {
+func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort M.Socksaddr) error {
 	defer buffer.Release()
 	_header := buf.StackNewMax()
 	header := common.Dup(_header)
-	err := socks.AddressSerializer.WriteAddrPort(header, addrPort)
+	err := socks5.AddressSerializer.WriteAddrPort(header, addrPort)
 	if err != nil {
 		header.Release()
 		return err
@@ -167,7 +168,7 @@ func NewNoneService(udpTimeout int64, handler Handler) Service {
 }
 
 func (s *NoneService) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	destination, err := socks.AddressSerializer.ReadAddrPort(conn)
+	destination, err := socks5.AddressSerializer.ReadAddrPort(conn)
 	if err != nil {
 		return err
 	}
@@ -176,34 +177,34 @@ func (s *NoneService) NewConnection(ctx context.Context, conn net.Conn, metadata
 	return s.handler.NewConnection(ctx, conn, metadata)
 }
 
-func (s *NoneService) NewPacket(conn socks.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	destination, err := socks.AddressSerializer.ReadAddrPort(buffer)
+func (s *NoneService) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return err
 	}
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
-	s.udp.NewPacket(metadata.Source.AddrPort(), func() socks.PacketWriter {
+	s.udp.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &nonePacketWriter{conn, metadata.Source}
 	}, buffer, metadata)
 	return nil
 }
 
 type nonePacketWriter struct {
-	socks.PacketConn
-	sourceAddr *M.AddrPort
+	N.PacketConn
+	sourceAddr M.Socksaddr
 }
 
-func (s *nonePacketWriter) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	header := buf.With(buffer.ExtendHeader(socks.AddressSerializer.AddrPortLen(destination)))
-	err := socks.AddressSerializer.WriteAddrPort(header, destination)
+func (s *nonePacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	header := buf.With(buffer.ExtendHeader(socks5.AddressSerializer.AddrPortLen(destination)))
+	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
 	return s.PacketConn.WritePacket(buffer, s.sourceAddr)
 }
 
-func (s *NoneService) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (s *NoneService) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	return s.handler.NewPacketConnection(ctx, conn, metadata)
 }
 

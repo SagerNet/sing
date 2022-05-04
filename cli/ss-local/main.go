@@ -23,6 +23,7 @@ import (
 	"github.com/sagernet/sing/common/geosite"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
@@ -30,7 +31,6 @@ import (
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
-	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sagernet/sing/transport/system"
 	"github.com/sirupsen/logrus"
@@ -101,7 +101,7 @@ Only available with Linux kernel > 3.7.0.`)
 type client struct {
 	*mixed.Listener
 	*geosite.Matcher
-	server *M.AddrPort
+	server M.Socksaddr
 	method shadowsocks.Method
 	dialer net.Dialer
 	bypass string
@@ -163,7 +163,7 @@ func newClient(f *flags) (*client, error) {
 	}
 
 	c := &client{
-		server: M.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort),
+		server: M.SocksaddrFromAddrPort(M.ParseAddr(f.Server), f.ServerPort),
 		bypass: f.Bypass,
 	}
 
@@ -294,7 +294,7 @@ func newClient(f *flags) (*client, error) {
 	return c, nil
 }
 
-func bypass(conn net.Conn, destination *M.AddrPort) error {
+func bypass(conn net.Conn, destination M.Socksaddr) error {
 	logrus.Info("BYPASS ", conn.RemoteAddr(), " ==> ", destination)
 	serverConn, err := net.Dial("tcp", destination.String())
 	if err != nil {
@@ -313,12 +313,12 @@ func bypass(conn net.Conn, destination *M.AddrPort) error {
 
 func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	if c.bypass != "" {
-		if metadata.Destination.Addr.Family().IsFqdn() {
-			if c.Match(metadata.Destination.Addr.Fqdn()) {
+		if metadata.Destination.Family().IsFqdn() {
+			if c.Match(metadata.Destination.Fqdn) {
 				return bypass(conn, metadata.Destination)
 			}
 		} else {
-			if geoip.Match(c.bypass, metadata.Destination.Addr.Addr().AsSlice()) {
+			if geoip.Match(c.bypass, metadata.Destination.Addr.AsSlice()) {
 				return bypass(conn, metadata.Destination)
 			}
 		}
@@ -354,14 +354,14 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, serverConn, conn)
 }
 
-func (c *client) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	logrus.Info("outbound ", metadata.Protocol, " UDP ", metadata.Source, " ==> ", metadata.Destination)
 	udpConn, err := c.dialer.DialContext(ctx, "udp", c.server.String())
 	if err != nil {
 		return err
 	}
 	serverConn := c.method.DialPacketConn(udpConn)
-	return socks.CopyPacketConn(ctx, serverConn, conn)
+	return N.CopyPacketConn(ctx, serverConn, conn)
 }
 
 func run(cmd *cobra.Command, flags *flags) {

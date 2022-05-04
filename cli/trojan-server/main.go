@@ -17,9 +17,8 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/network"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/trojan"
 	"github.com/sagernet/sing/transport/tcp"
 	transTLS "github.com/sagernet/sing/transport/tls"
@@ -193,7 +192,7 @@ func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 		}
 		return s.service.NewConnection(ctx, tls.Server(conn, &s.tlsConfig), metadata)
 	}
-	destConn, err := network.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
+	destConn, err := N.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
 	if err != nil {
 		return err
 	}
@@ -201,13 +200,13 @@ func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	return rw.CopyConn(ctx, conn, destConn)
 }
 
-func (s *server) NewPacketConnection(ctx context.Context, conn socks.PacketConn, metadata M.Metadata) error {
+func (s *server) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	logrus.Info("inbound UDP ", metadata.Source, " ==> ", metadata.Destination)
 	udpConn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return err
 	}
-	return socks.CopyNetPacketConn(ctx, conn, udpConn)
+	return N.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (s *server) HandleError(err error) {

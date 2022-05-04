@@ -45,13 +45,8 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 			if portStr == "" {
 				portStr = "80"
 			}
-			destination, err := M.ParseAddrPort(request.URL.Hostname(), portStr)
-			if err != nil {
-				if err != nil {
-					return err
-				}
-			}
-			_, err = fmt.Fprintf(conn, "HTTP/%d.%d %03d %s\r\n\r\n", request.ProtoMajor, request.ProtoMinor, http.StatusOK, "Connection established")
+			destination := M.ParseSocksaddrHostPort(request.URL.Hostname(), portStr)
+			_, err := fmt.Fprintf(conn, "HTTP/%d.%d %03d %s\r\n\r\n", request.ProtoMajor, request.ProtoMinor, http.StatusOK, "Connection established")
 			if err != nil {
 				return E.Cause(err, "write http response")
 			}
@@ -87,17 +82,11 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 						if network != "tcp" && network != "tcp4" && network != "tcp6" {
 							return nil, E.New("unsupported network ", network)
 						}
-
-						destination, err := M.ParseAddress(address)
-						if err != nil {
-							return nil, err
-						}
-
+						metadata.Destination = M.ParseSocksaddr(address)
+						metadata.Protocol = "http"
 						left, right := net.Pipe()
 						go func() {
-							metadata.Destination = destination
-							metadata.Protocol = "http"
-							err = handler.NewConnection(ctx, right, metadata)
+							err := handler.NewConnection(ctx, right, metadata)
 							if err != nil {
 								handler.HandleError(&tcp.Error{Conn: right, Cause: err})
 							}

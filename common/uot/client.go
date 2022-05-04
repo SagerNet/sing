@@ -18,23 +18,23 @@ func NewClientConn(conn net.Conn) *ClientConn {
 	return &ClientConn{conn}
 }
 
-func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	destination, err := AddrParser.ReadAddrPort(c)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	var length uint16
 	err = binary.Read(c, binary.BigEndian, &length)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	if buffer.FreeLen() < int(length) {
-		return nil, io.ErrShortBuffer
+		return M.Socksaddr{}, io.ErrShortBuffer
 	}
 	return destination, common.Error(buffer.ReadFullFrom(c, int(length)))
 }
 
-func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
+func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	err := AddrParser.WriteAddrPort(c, destination)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (c *ClientConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *ClientConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	err = AddrParser.WriteAddrPort(c, M.AddrPortFromNetAddr(addr))
+	err = AddrParser.WriteAddrPort(c, M.SocksaddrFromNet(addr))
 	if err != nil {
 		return
 	}

@@ -47,8 +47,8 @@ func (c *ServerConn) loopInput() {
 		if err != nil {
 			break
 		}
-		if destination.Addr.Family().IsFqdn() {
-			ip, err := LookupAddress(destination.Addr.Fqdn())
+		if destination.Family().IsFqdn() {
+			ip, err := LookupAddress(destination.Fqdn)
 			if err != nil {
 				break
 			}
@@ -81,8 +81,7 @@ func (c *ServerConn) loopOutput() {
 		if err != nil {
 			break
 		}
-		destination := M.AddrPortFromNetAddr(addr)
-		err = AddrParser.WriteAddrPort(c.outputWriter, destination)
+		err = AddrParser.WriteAddrPort(c.outputWriter, M.SocksaddrFromNet(addr))
 		if err != nil {
 			break
 		}

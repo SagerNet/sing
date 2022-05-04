@@ -12,10 +12,11 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
-	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/hkdf"
 )
@@ -138,7 +139,7 @@ func (m *Method) WriteResponse(upstream io.Writer) (io.Writer, error) {
 	return NewWriter(upstream, m.constructor(common.Dup(key)), MaxPacketSize), nil
 }
 
-func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, error) {
+func (m *Method) DialConn(conn net.Conn, destination M.Socksaddr) (net.Conn, error) {
 	shadowsocksConn := &clientConn{
 		Conn:        conn,
 		method:      m,
@@ -147,7 +148,7 @@ func (m *Method) DialConn(conn net.Conn, destination *M.AddrPort) (net.Conn, err
 	return shadowsocksConn, shadowsocksConn.writeRequest(nil)
 }
 
-func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn {
+func (m *Method) DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.Conn {
 	return &clientConn{
 		Conn:        conn,
 		method:      m,
@@ -155,7 +156,7 @@ func (m *Method) DialEarlyConn(conn net.Conn, destination *M.AddrPort) net.Conn 
 	}
 }
 
-func (m *Method) DialPacketConn(conn net.Conn) socks.PacketConn {
+func (m *Method) DialPacketConn(conn net.Conn) N.PacketConn {
 	return &clientPacketConn{m, conn}
 }
 
@@ -186,7 +187,7 @@ type clientConn struct {
 	net.Conn
 
 	method      *Method
-	destination *M.AddrPort
+	destination M.Socksaddr
 
 	access sync.Mutex
 	reader *Reader
@@ -209,7 +210,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	bufferedWriter := writer.BufferedWriter(header.Len())
 
 	if len(payload) > 0 {
-		err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
+		err := socks5.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 		if err != nil {
 			return err
 		}
@@ -219,7 +220,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 			return err
 		}
 	} else {
-		err := socks.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
+		err := socks5.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
 		if err != nil {
 			return err
 		}
@@ -325,10 +326,10 @@ type clientPacketConn struct {
 	net.Conn
 }
 
-func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPort) error {
-	header := buffer.ExtendHeader(c.keySaltLength + socks.AddressSerializer.AddrPortLen(destination))
+func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	header := buffer.ExtendHeader(c.keySaltLength + socks5.AddressSerializer.AddrPortLen(destination))
 	common.Must1(io.ReadFull(c.secureRNG, header[:c.keySaltLength]))
-	err := socks.AddressSerializer.WriteAddrPort(buf.With(header[c.keySaltLength:]), destination)
+	err := socks5.AddressSerializer.WriteAddrPort(buf.With(header[c.keySaltLength:]), destination)
 	if err != nil {
 		return err
 	}
@@ -339,17 +340,17 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination *M.AddrPo
 	return common.Error(c.Write(buffer.Bytes()))
 }
 
-func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (*M.AddrPort, error) {
+func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	n, err := c.Read(buffer.FreeBytes())
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	buffer.Truncate(n)
 	err = c.DecodePacket(buffer)
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
-	return socks.AddressSerializer.ReadAddrPort(buffer)
+	return socks5.AddressSerializer.ReadAddrPort(buffer)
 }
 
 func (c *clientPacketConn) UpstreamReader() io.Reader {

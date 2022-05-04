@@ -1,9 +1,9 @@
-package socks
+package socks5
 
 import (
 	"bytes"
 	"io"
-	"net"
+	"net/netip"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -203,7 +203,7 @@ func ReadUsernamePasswordAuthResponse(reader io.Reader) (*UsernamePasswordAuthRe
 type Request struct {
 	Version     byte
 	Command     byte
-	Destination *M.AddrPort
+	Destination M.Socksaddr
 }
 
 func WriteRequest(writer io.Writer, request *Request) error {
@@ -262,7 +262,7 @@ func ReadRequest(reader io.Reader) (*Request, error) {
 type Response struct {
 	Version   byte
 	ReplyCode ReplyCode
-	Bind      *M.AddrPort
+	Bind      M.Socksaddr
 }
 
 func WriteResponse(writer io.Writer, response *Response) error {
@@ -278,8 +278,10 @@ func WriteResponse(writer io.Writer, response *Response) error {
 	if err != nil {
 		return err
 	}
-	if response.Bind == nil {
-		return AddressSerializer.WriteAddrPort(writer, M.AddrPortFrom(M.AddrFromIP(net.IPv4zero), 0))
+	if !response.Bind.IsValid() {
+		return AddressSerializer.WriteAddrPort(writer, M.Socksaddr{
+			Addr: netip.IPv4Unspecified(),
+		})
 	}
 	return AddressSerializer.WriteAddrPort(writer, response.Bind)
 }
@@ -320,7 +322,7 @@ func ReadResponse(reader io.Reader) (*Response, error) {
 
 type AssociatePacket struct {
 	Fragment    byte
-	Destination *M.AddrPort
+	Destination M.Socksaddr
 	Data        []byte
 }
 
