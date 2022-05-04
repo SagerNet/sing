@@ -7,6 +7,7 @@ import (
 )
 
 func init() {
+	logrus.SetLevel(logrus.TraceLevel)
 	logrus.StandardLogger().Formatter.(*logrus.TextFormatter).ForceColors = true
 	logrus.AddHook(new(TaggedHook))
 }
