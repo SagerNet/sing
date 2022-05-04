@@ -4,8 +4,10 @@ import (
 	"archive/tar"
 	_ "embed"
 	"encoding/hex"
+	"github.com/sagernet/sing"
+	"github.com/sagernet/sing/common/log"
+	"github.com/spf13/cobra"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,33 +21,54 @@ import (
 	"github.com/u-root/u-root/pkg/ldd"
 )
 
+var logger = log.NewLogger("libpack")
+
+var packageName string
+var executablePath string
+var outputPath string
+
 func main() {
-	err := run0()
-	if err != nil {
-		logrus.Fatal(err)
+	command := &cobra.Command{
+		Use:     "libpack",
+		Version: sing.VersionStr,
+		Run:     run0,
+	}
+	command.Flags().StringVarP(&executablePath, "input", "i", "", "input path (required)")
+	command.MarkFlagRequired("file")
+	command.Flags().StringVarP(&outputPath, "output", "o", "", "output path (default: input path)")
+	command.Flags().StringVarP(&packageName, "package", "p", "", "package name (default: executable name)")
+
+	if err := command.Execute(); err != nil {
+		logger.Fatal(err)
 	}
 }
 
-func run0() error {
+func run0(cmd *cobra.Command, args []string) {
+	err := run1()
+	if err != nil {
+		logger.Fatal(err)
+	}
+}
+
+func run1() error {
 	os.Setenv("LD_LIBRARY_PATH", os.ExpandEnv("$LD_LIBRARY_PATH:/usr/local/lib:$PWD"))
 
-	if len(os.Args) == 1 {
-		logrus.Fatal("missing executable path")
-	}
-
-	realPath, err := filepath.Abs(os.Args[1])
+	realPath, err := filepath.Abs(executablePath)
 	if err != nil {
-		return E.Cause(err, os.Args[1], " not found")
-	}
-
-	if len(os.Args) == 2 {
-		os.Args = append(os.Args, realPath)
+		return E.Cause(err, executablePath, " not found")
 	}
 
 	realName := filepath.Base(realPath)
 
-	output := os.Args[2]
-	output, err = filepath.Abs(output)
+	if outputPath == "" {
+		outputPath = realPath
+	}
+
+	if packageName == "" {
+		packageName = realName
+	}
+
+	outputPath, err = filepath.Abs(outputPath)
 	if err != nil {
 		return err
 	}
@@ -100,26 +123,7 @@ func run0() error {
 	})
 	for _, lib := range libs {
 		libName := filepath.Base(lib.FullName)
-		var linkName string
-		if lib.FileInfo.Mode()&fs.ModeSymlink != 0 {
-			linkName, err = os.Readlink(lib.FullName)
-			if err != nil {
-				return err
-			}
-			linkName = filepath.Base(libName)
-			if libName == linkName {
-				continue
-			}
-			logrus.Info(">> ", libName, " => ", linkName)
-		} else {
-			logrus.Info(">> ", libName)
-		}
-		header, err := tar.FileInfoHeader(lib.FileInfo, linkName)
-		if err != nil {
-			return err
-		}
-		header.Name = libName
-		err = tarWriter.WriteHeader(header)
+		header, err := tar.FileInfoHeader(lib.FileInfo, "")
 		if err != nil {
 			return err
 		}
@@ -127,10 +131,61 @@ func run0() error {
 		if err != nil {
 			return err
 		}
-		_, err = io.CopyN(tarWriter, libFile, header.Size)
-		libFile.Close()
-		if err != nil {
-			return err
+		if strings.HasPrefix(libName, "libc") {
+			logger.Info(">> ", libName)
+
+			header.Name = libName
+			err = tarWriter.WriteHeader(header)
+			if err != nil {
+				return err
+			}
+			_, err = io.CopyN(tarWriter, libFile, header.Size)
+			if err != nil {
+				return err
+			}
+			libFile.Close()
+			continue
+		} else {
+			cacheFile, err := os.Create(cachePath + "/" + libName)
+			if err != nil {
+				return err
+			}
+			_, err = io.CopyN(cacheFile, libFile, header.Size)
+			if err != nil {
+				return err
+			}
+			libFile.Close()
+			cacheFile.Close()
+			err = runAs(cachePath, "strip", "-s", libName)
+			if err != nil {
+				return err
+			}
+			cacheFile, err = os.Open(cachePath + "/" + libName)
+			if err != nil {
+				return err
+			}
+			libInfo, err := cacheFile.Stat()
+			if err != nil {
+				return err
+			}
+
+			if libName == realName {
+				libName = packageName
+			}
+
+			logger.Info(">> ", libName)
+
+			header.Name = libName
+			header.Size = libInfo.Size()
+			err = tarWriter.WriteHeader(header)
+			if err != nil {
+				return err
+			}
+			_, err = io.CopyN(tarWriter, cacheFile, header.Size)
+			if err != nil {
+				return err
+			}
+			cacheFile.Close()
 		}
 	}
 	err = tarWriter.Close()
@@ -170,7 +225,7 @@ import (
 var content []byte
 
 const (
-	execName = "`+realName+`"
+	execName = "`+packageName+`"
 	hash     = "`+hex.EncodeToString(hash)+`"
 )
 
@@ -252,7 +307,8 @@ func main0() error {
 	if err != nil {
 		return err
 	}
-	err = runAs(cachePath, "go", "build", "-o", output, "-trimpath", "-ldflags", "-s -w -buildid=", ".")
+	logrus.Info(">> ", outputPath)
+	err = runAs(cachePath, "go", "build", "-o", outputPath, "-trimpath", "-ldflags", "-s -w -buildid=", ".")
 	if err != nil {
 		return err
 	}
@@ -260,16 +316,6 @@ func main0() error {
 }
 
 func runAs(dir string, name string, args ...string) error {
-	var argc []string
-	for _, arg := range args {
-		if strings.Contains(arg, " ") {
-			argc = append(argc, "\"", arg, "\"")
-		} else {
-			argc = append(argc, arg)
-		}
-	}
-	logrus.Info(">> ", name, " ", strings.Join(argc, " "))
-
 	command := exec.Command(name, args...)
 	command.Dir = dir
 	command.Stdout = os.Stdout
