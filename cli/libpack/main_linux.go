@@ -50,6 +50,11 @@ func run0(cmd *cobra.Command, args []string) {
 	}
 }
 
+var skipPaths = []string{
+	"/usr/lib",
+	"/usr/lib64",
+}
+
 func run1() error {
 	os.Setenv("LD_LIBRARY_PATH", os.ExpandEnv("$LD_LIBRARY_PATH:/usr/local/lib:$PWD"))
 
@@ -99,10 +104,12 @@ func run1() error {
 			ldName = it.Name()
 			return false
 		}
-		/*if strings.HasPrefix(it.FullName, "/usr/lib") {
-			logrus.Info("skipped ", it.FullName)
-			return false
-		}*/
+		for _, path := range skipPaths {
+			if strings.HasPrefix(it.FullName, path) {
+				logrus.Info(">> skipped ", it.FullName)
+				return false
+			}
+		}
 		return true
 	})
 	if ldName == "" {
