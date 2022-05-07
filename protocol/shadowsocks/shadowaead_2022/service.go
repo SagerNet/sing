@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,6 +111,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		s.constructor(common.Dup(requestKey)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(requestKey)
 
 	headerType, err := rw.ReadByte(reader)
 	if err != nil {
@@ -192,11 +194,13 @@ func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
 	salt := common.Dup(_salt[:])
 	common.Must1(io.ReadFull(c.secureRNG, salt))
 	key := Blake3DeriveKey(c.uPSK[:], salt, c.keyLength)
+	runtime.KeepAlive(_salt)
 	writer := shadowaead.NewWriter(
 		c.Conn,
 		c.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(key)
 	header := writer.Buffer()
 	header.Write(salt)
 	bufferedWriter := writer.BufferedWriter(header.Len())
@@ -306,6 +310,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 		if packetHeader != nil {
 			key := Blake3DeriveKey(s.psk[:], packetHeader[:8], s.keyLength)
 			session.remoteCipher = s.constructor(common.Dup(key))
+			runtime.KeepAlive(key)
 		}
 	}
 	goto process
@@ -382,6 +387,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 	defer buffer.Release()
 
 	_header := buf.StackNew()
+	defer runtime.KeepAlive(_header)
 	header := common.Dup(_header)
 
 	var dataIndex int
@@ -446,6 +452,7 @@ func (m *Service) newUDPSession() *serverUDPSession {
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
 		key := Blake3DeriveKey(m.psk[:], sessionId, m.keyLength)
 		session.cipher = m.constructor(common.Dup(key))
+		runtime.KeepAlive(key)
 	}
 	return session
 }

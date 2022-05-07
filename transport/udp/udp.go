@@ -3,6 +3,7 @@ package udp
 import (
 	"net"
 	"net/netip"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -91,6 +92,7 @@ func (l *Listener) Close() error {
 
 func (l *Listener) loop() {
 	_buffer := buf.StackNewMax()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader).Slice()
 	if !l.tproxy {
@@ -111,6 +113,7 @@ func (l *Listener) loop() {
 		}
 	} else {
 		_oob := make([]byte, 1024)
+		defer runtime.KeepAlive(_oob)
 		oob := common.Dup(_oob)
 		for {
 			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(data, oob)

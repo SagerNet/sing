@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -231,6 +232,7 @@ func (m *Method) writeExtendedIdentityHeaders(request *buf.Buffer, salt []byte) 
 
 		header := request.Extend(16)
 		m.blockConstructor(identitySubkey).Encrypt(header, pskHash)
+		runtime.KeepAlive(_identitySubkey)
 		if debug.Enabled {
 			logger.Trace("encoded ", buf.EncodeHexString(header))
 		}
@@ -252,12 +254,12 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	common.Must1(io.ReadFull(c.method.secureRNG, salt))
 
 	key := Blake3DeriveKey(c.method.psk[:], salt, c.method.keyLength)
-
 	writer := shadowaead.NewWriter(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(key)
 
 	header := writer.Buffer()
 	header.Write(salt)
@@ -344,11 +346,13 @@ func (c *clientConn) readResponse() error {
 	}
 
 	key := Blake3DeriveKey(c.method.psk[:], salt, c.method.keyLength)
+	runtime.KeepAlive(_salt)
 	reader := shadowaead.NewReader(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(key)
 
 	headerType, err := rw.ReadByte(reader)
 	if err != nil {
@@ -385,6 +389,7 @@ func (c *clientConn) readResponse() error {
 		}
 		return ErrBadRequestSalt
 	}
+	runtime.KeepAlive(_requestSalt)
 
 	c.requestSalt = nil
 	c.reader = reader
@@ -472,10 +477,21 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 		logger.Trace("begin client packet")
 	}
 
-	defer buffer.Release()
-	_header := buf.StackNew()
-	header := common.Dup(_header)
+	var hdrLen int
+	if c.method.udpCipher != nil {
+		hdrLen = PacketNonceSize
+	}
+	hdrLen += 16 // packet header
 	pskLen := len(c.method.pskList)
+	if c.method.udpCipher == nil && pskLen > 1 {
+		hdrLen += (pskLen - 1) * aes.BlockSize
+	}
+	hdrLen += 1 // header type
+	hdrLen += 8 // timestamp
+	hdrLen += 1 // padding length
+	hdrLen += socks5.AddressSerializer.AddrPortLen(destination)
+	header := buf.With(buffer.ExtendHeader(hdrLen))
+
 	var dataIndex int
 	if c.method.udpCipher != nil {
 		common.Must1(header.ReadFullFrom(c.method.secureRNG, PacketNonceSize))
@@ -540,7 +556,6 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	if err != nil {
 		return err
 	}
-	buffer = buffer.WriteBufferAtFirst(header)
 	if err != nil {
 		return err
 	}
@@ -606,6 +621,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		} else {
 			key := Blake3DeriveKey(c.method.psk[:], packetHeader[:8], c.method.keyLength)
 			remoteCipher = c.method.constructor(common.Dup(key))
+			runtime.KeepAlive(key)
 		}
 		_, err = remoteCipher.Open(buffer.Index(0), packetHeader[4:16], buffer.Bytes(), nil)
 		if err != nil {
@@ -717,6 +733,7 @@ func (m *Method) newUDPSession() *udpSession {
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
 		key := Blake3DeriveKey(m.psk[:], sessionId, m.keyLength)
 		session.cipher = m.constructor(common.Dup(key))
+		runtime.KeepAlive(key)
 	}
 	return session
 }

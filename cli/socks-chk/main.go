@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -129,6 +130,7 @@ func testSocksUDP(server M.Socksaddr) error {
 		Port: 53,
 	}))
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must2(buffer.ReadPacketFrom(assConn))
 	common.Must(message.Unpack(buffer.Bytes()))

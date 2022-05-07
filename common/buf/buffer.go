@@ -119,7 +119,7 @@ func (b *Buffer) ExtendHeader(size int) []byte {
 	}
 }
 
-func (b *Buffer) WriteBufferAtFirst(buffer *Buffer) *Buffer {
+func (b *Buffer) _WriteBufferAtFirst(buffer *Buffer) *Buffer {
 	size := buffer.Len()
 	if b.start >= size {
 		n := copy(b.data[b.start-size:b.start], buffer.Bytes())
@@ -140,7 +140,7 @@ func (b *Buffer) WriteBufferAtFirst(buffer *Buffer) *Buffer {
 	}
 }
 
-func (b *Buffer) WriteAtFirst(data []byte) (n int, err error) {
+func (b *Buffer) _WriteAtFirst(data []byte) (n int, err error) {
 	size := len(data)
 	if b.start >= size {
 		n = copy(b.data[b.start-size:b.start], data)

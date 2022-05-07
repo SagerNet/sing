@@ -4,9 +4,6 @@ import (
 	"archive/tar"
 	_ "embed"
 	"encoding/hex"
-	"github.com/sagernet/sing"
-	"github.com/sagernet/sing/common/log"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"os/exec"
@@ -15,17 +12,22 @@ import (
 	"strings"
 
 	"github.com/klauspost/compress/zstd"
+	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/log"
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/u-root/u-root/pkg/ldd"
 )
 
 var logger = log.NewLogger("libpack")
 
-var packageName string
-var executablePath string
-var outputPath string
+var (
+	packageName    string
+	executablePath string
+	outputPath     string
+)
 
 func main() {
 	command := &cobra.Command{

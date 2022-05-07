@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"runtime"
 	"sync"
 
 	"github.com/sagernet/sing/common"
@@ -95,6 +96,7 @@ func (c *noneConn) Write(b []byte) (n int, err error) {
 
 		bufN, _ := buffer.Write(b)
 		_, err = c.Conn.Write(buffer.Bytes())
+		runtime.KeepAlive(_buffer)
 		if err != nil {
 			return
 		}
@@ -141,17 +143,27 @@ func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	return socks5.AddressSerializer.ReadAddrPort(buffer)
 }
 
-func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, addrPort M.Socksaddr) error {
-	defer buffer.Release()
-	_header := buf.StackNewMax()
-	header := common.Dup(_header)
-	err := socks5.AddressSerializer.WriteAddrPort(header, addrPort)
+func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	headerLen := socks5.AddressSerializer.AddrPortLen(destination)
+	var header *buf.Buffer
+	var writeHeader bool
+	if buffer.Start() >= headerLen {
+		header = buf.With(buffer.ExtendHeader(headerLen))
+	} else {
+		_buffer := buf.StackNewSize(buffer.Len() + headerLen)
+		defer runtime.KeepAlive(_buffer)
+		header = common.Dup(_buffer)
+		writeHeader = true
+	}
+	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
-		header.Release()
 		return err
 	}
-	buffer = buffer.WriteBufferAtFirst(header)
-	return common.Error(buffer.WriteTo(c))
+	if writeHeader {
+		return common.Error(header.WriteTo(c))
+	} else {
+		return common.Error(buffer.WriteTo(c))
+	}
 }
 
 type NoneService struct {

@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 
 	"github.com/sagernet/sing/common"
@@ -80,8 +81,10 @@ func New(method string, key []byte, password []byte, secureRNG io.Reader, replay
 }
 
 func Kdf(key, iv []byte, keyLength int) []byte {
+	info := []byte("ss-subkey")
 	subKey := buf.Make(keyLength)
-	kdf := hkdf.New(sha1.New, key, iv, []byte("ss-subkey"))
+	kdf := hkdf.New(sha1.New, key, iv, common.Dup(info))
+	runtime.KeepAlive(info)
 	common.Must1(io.ReadFull(kdf, common.Dup(subKey)))
 	return subKey
 }
@@ -113,6 +116,7 @@ func (m *Method) KeyLength() int {
 
 func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
 	_salt := buf.Make(m.keySaltLength)
+	defer runtime.KeepAlive(_salt)
 	salt := common.Dup(_salt)
 	_, err := io.ReadFull(upstream, salt)
 	if err != nil {
@@ -124,11 +128,13 @@ func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
 		}
 	}
 	key := Kdf(m.key, salt, m.keySaltLength)
+	defer runtime.KeepAlive(key)
 	return NewReader(upstream, m.constructor(common.Dup(key)), MaxPacketSize), nil
 }
 
 func (m *Method) WriteResponse(upstream io.Writer) (io.Writer, error) {
 	_salt := buf.Make(m.keySaltLength)
+	defer runtime.KeepAlive(_salt)
 	salt := common.Dup(_salt)
 	common.Must1(io.ReadFull(m.secureRNG, salt))
 	_, err := upstream.Write(salt)
@@ -163,6 +169,7 @@ func (m *Method) DialPacketConn(conn net.Conn) N.PacketConn {
 func (m *Method) EncodePacket(buffer *buf.Buffer) error {
 	key := Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength)
 	c := m.constructor(common.Dup(key))
+	runtime.KeepAlive(key)
 	c.Seal(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	buffer.Extend(c.Overhead())
 	return nil
@@ -174,6 +181,7 @@ func (m *Method) DecodePacket(buffer *buf.Buffer) error {
 	}
 	key := Kdf(m.key, buffer.To(m.keySaltLength), m.keySaltLength)
 	c := m.constructor(common.Dup(key))
+	runtime.KeepAlive(key)
 	packet, err := c.Open(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
 	if err != nil {
 		return err
@@ -200,11 +208,13 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	common.Must1(io.ReadFull(c.method.secureRNG, salt))
 
 	key := Kdf(c.method.key, salt, c.method.keySaltLength)
+	runtime.KeepAlive(_salt)
 	writer := NewWriter(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(key)
 	header := writer.Buffer()
 	header.Write(salt)
 	bufferedWriter := writer.BufferedWriter(header.Len())
@@ -240,6 +250,7 @@ func (c *clientConn) readResponse() error {
 		return nil
 	}
 	_salt := buf.Make(c.method.keySaltLength)
+	defer runtime.KeepAlive(_salt)
 	salt := common.Dup(_salt)
 	_, err := io.ReadFull(c.Conn, salt)
 	if err != nil {
@@ -251,6 +262,7 @@ func (c *clientConn) readResponse() error {
 		}
 	}
 	key := Kdf(c.method.key, salt, c.method.keySaltLength)
+	defer runtime.KeepAlive(key)
 	c.reader = NewReader(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),

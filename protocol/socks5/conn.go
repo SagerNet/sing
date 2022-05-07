@@ -2,6 +2,7 @@ package socks5
 
 import (
 	"net"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -44,6 +45,7 @@ func (c *AssociateConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 func (c *AssociateConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 	err = AddressSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
@@ -66,6 +68,7 @@ func (c *AssociateConn) Read(b []byte) (n int, err error) {
 
 func (c *AssociateConn) Write(b []byte) (n int, err error) {
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 	err = AddressSerializer.WriteAddrPort(buffer, c.dest)
@@ -134,6 +137,7 @@ func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err erro
 
 func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 
@@ -156,6 +160,7 @@ func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
 
 func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -149,9 +150,11 @@ func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr
 	var writeHeader bool
 	if len(payload) > 0 && headerLen+len(payload) < 65535 {
 		buffer := buf.Make(headerLen + len(payload))
+		defer runtime.KeepAlive(buffer)
 		header = buf.With(common.Dup(buffer))
 	} else {
 		buffer := buf.Make(headerLen)
+		defer runtime.KeepAlive(buffer)
 		header = buf.With(common.Dup(buffer))
 		writeHeader = true
 	}
@@ -185,6 +188,7 @@ func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Soc
 		header = buf.With(payload.ExtendHeader(headerLen))
 	} else {
 		buffer := buf.Make(headerLen)
+		defer runtime.KeepAlive(buffer)
 		header = buf.With(common.Dup(buffer))
 		writeHeader = true
 	}
@@ -246,6 +250,7 @@ func WritePacket(conn net.Conn, buffer *buf.Buffer, destination M.Socksaddr) err
 	} else {
 		writeHeader = true
 		_buffer := buf.Make(headerOverload)
+		defer runtime.KeepAlive(_buffer)
 		header = buf.With(common.Dup(_buffer))
 	}
 	common.Must(socks5.AddressSerializer.WriteAddrPort(header, destination))

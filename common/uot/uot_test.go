@@ -2,6 +2,7 @@ package uot
 
 import (
 	"net"
+	"runtime"
 	"testing"
 
 	"github.com/sagernet/sing/common"
@@ -30,6 +31,7 @@ func TestServerConn(t *testing.T) {
 		Port: 53,
 	}))
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must2(buffer.ReadPacketFrom(clientConn))
 	common.Must(message.Unpack(buffer.Bytes()))

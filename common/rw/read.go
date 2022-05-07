@@ -2,6 +2,7 @@ package rw
 
 import (
 	"io"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -63,6 +64,7 @@ func ReadFrom0(readerFrom ReaderFromWriter, reader io.Reader) (n int64, err erro
 
 func CopyOnce(dest io.Writer, src io.Reader) (n int64, err error) {
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	n, err = buffer.ReadFrom(src)
 	if err != nil {

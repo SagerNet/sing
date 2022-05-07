@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -88,6 +89,7 @@ func (t *Stack) Close() error {
 
 func (t *Stack) tunLoop() {
 	_buffer := buf.Make(t.tunMtu)
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	for {
 		n, err := t.tunFile.Read(buffer)

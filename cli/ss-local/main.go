@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -350,7 +351,7 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	if err != nil {
 		return E.Cause(err, "client handshake")
 	}
-
+	runtime.KeepAlive(_payload)
 	return rw.CopyConn(ctx, serverConn, conn)
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"runtime"
 	"sync"
 
 	"github.com/sagernet/sing/common"
@@ -89,6 +90,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	_salt := buf.Make(s.keySaltLength)
+	defer runtime.KeepAlive(_salt)
 	salt := common.Dup(_salt)
 
 	_, err := io.ReadFull(conn, salt)
@@ -127,11 +129,14 @@ func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
 	common.Must1(io.ReadFull(c.secureRNG, salt))
 
 	key := Kdf(c.key, salt, c.keySaltLength)
+	runtime.KeepAlive(_salt)
+
 	writer := NewWriter(
 		c.Conn,
 		c.constructor(common.Dup(key)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(key)
 
 	header := writer.Buffer()
 	header.Write(salt)
@@ -213,6 +218,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 	}
 	key := Kdf(s.key, buffer.To(s.keySaltLength), s.keySaltLength)
 	c := s.constructor(common.Dup(key))
+	runtime.KeepAlive(key)
 	packet, err := c.Open(buffer.Index(s.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(s.keySaltLength), nil)
 	if err != nil {
 		return err
@@ -241,6 +247,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 	}
 	key := Kdf(w.key, buffer.To(w.keySaltLength), w.keySaltLength)
 	c := w.constructor(common.Dup(key))
+	runtime.KeepAlive(key)
 	c.Seal(buffer.From(w.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(w.keySaltLength), nil)
 	buffer.Extend(c.Overhead())
 	return w.PacketConn.WritePacket(buffer, w.source)

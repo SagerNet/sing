@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"runtime"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -106,6 +107,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	identitySubkey := common.Dup(_identitySubkey)
 	blake3.DeriveKey(identitySubkey, "shadowsocks 2022 identity subkey", keyMaterial)
 	s.blockConstructor(identitySubkey).Decrypt(eiHeader, eiHeader)
+	runtime.KeepAlive(_identitySubkey)
 
 	var user U
 	var uPSK [KeySaltSize]byte
@@ -122,6 +124,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		s.constructor(common.Dup(requestKey)),
 		MaxPacketSize,
 	)
+	runtime.KeepAlive(requestSalt)
 
 	headerType, err := rw.ReadByte(reader)
 	if err != nil {
@@ -220,6 +223,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 		session.remoteSessionId = sessionId
 		key := Blake3DeriveKey(uPSK[:], packetHeader[:8], s.keyLength)
 		session.remoteCipher = s.constructor(common.Dup(key))
+		runtime.KeepAlive(key)
 	}
 
 	goto process
@@ -299,5 +303,6 @@ func (m *MultiService[U]) newUDPSession(uPSK [KeySaltSize]byte) *serverUDPSessio
 	binary.BigEndian.PutUint64(sessionId, session.sessionId)
 	key := Blake3DeriveKey(uPSK[:], sessionId, m.keyLength)
 	session.cipher = m.constructor(common.Dup(key))
+	runtime.KeepAlive(key)
 	return session
 }

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -69,6 +70,7 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 		return rt.ReadFrom(src)
 	}
 	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	for {
 		buffer.FullReset()
@@ -89,6 +91,7 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.PacketConn) error {
 	return task.Run(ctx, func() error {
 		_buffer := buf.With(make([]byte, buf.UDPBufferSize))
+		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
 		for {
 			n, addr, err := conn.ReadFrom(buffer.FreeBytes())
@@ -104,6 +107,7 @@ func CopyPacketConn(ctx context.Context, conn net.PacketConn, outPacketConn net.
 		}
 	}, func() error {
 		_buffer := buf.With(make([]byte, buf.UDPBufferSize))
+		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
 		for {
 			n, addr, err := outPacketConn.ReadFrom(buffer.FreeBytes())

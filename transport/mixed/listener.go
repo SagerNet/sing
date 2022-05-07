@@ -7,6 +7,7 @@ import (
 	"net"
 	netHttp "net/http"
 	"net/netip"
+	"runtime"
 	"strings"
 
 	"github.com/sagernet/sing"
@@ -99,6 +100,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 
 	if reader.Buffered() > 0 {
 		_buffer := buf.StackNewSize(reader.Buffered())
+		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
 		_, err = buffer.ReadFullFrom(reader, reader.Buffered())
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -63,6 +64,7 @@ func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error
 		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(dest)
 		_buffer := buf.StackNewMax()
+		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
 		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
 		for {
@@ -81,6 +83,7 @@ func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error
 		defer rw.CloseRead(dest)
 		defer rw.CloseWrite(conn)
 		_buffer := buf.StackNewMax()
+		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
 		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
 		for {
