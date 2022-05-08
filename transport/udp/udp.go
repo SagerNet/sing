@@ -43,7 +43,7 @@ func (l *Listener) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) erro
 		}
 		return common.Error(l.UDPConn.WriteTo(buffer.Bytes(), udpAddr))
 	}
-	return common.Error(l.UDPConn.WriteToUDPAddrPort(buffer.Bytes(), destination.AddrPort()))
+	return common.Error(l.UDPConn.WriteToUDP(buffer.Bytes(), destination.UDPAddr()))
 }
 
 func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {

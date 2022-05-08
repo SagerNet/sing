@@ -10,7 +10,6 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/task"
 )
 
@@ -59,10 +58,9 @@ func (s *PacketConnStub) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
 
-func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error {
+func CopyPacketConn(ctx context.Context, conn PacketConn, dest PacketConn) error {
+	defer common.Close(conn, dest)
 	return task.Run(ctx, func() error {
-		defer rw.CloseRead(conn)
-		defer rw.CloseWrite(dest)
 		_buffer := buf.StackNewMax()
 		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
@@ -80,8 +78,6 @@ func CopyPacketConn(ctx context.Context, dest PacketConn, conn PacketConn) error
 			}
 		}
 	}, func() error {
-		defer rw.CloseRead(dest)
-		defer rw.CloseWrite(conn)
 		_buffer := buf.StackNewMax()
 		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
@@ -130,7 +126,7 @@ func (w *UDPConnWrapper) WritePacket(buffer *buf.Buffer, destination M.Socksaddr
 		}
 		return common.Error(w.UDPConn.WriteTo(buffer.Bytes(), udpAddr))
 	}
-	return common.Error(w.UDPConn.WriteToUDPAddrPort(buffer.Bytes(), destination.AddrPort()))
+	return common.Error(w.UDPConn.WriteToUDP(buffer.Bytes(), destination.UDPAddr()))
 }
 
 type PacketConnWrapper struct {
