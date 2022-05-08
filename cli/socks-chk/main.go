@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/binary"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
+	"os"
 	"runtime"
 
+	"github.com/lucas-clemente/quic-go"
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	_ "github.com/sagernet/sing/common/log"
@@ -36,6 +41,10 @@ func run(cmd *cobra.Command, args []string) {
 		logrus.Fatal(err)
 	}
 	err = testSocksUDP(server)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	err = testSocksQuic(server)
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -141,5 +150,46 @@ func testSocksUDP(server M.Socksaddr) error {
 
 	udpConn.Close()
 	tcpConn.Close()
+	return nil
+}
+
+func testSocksQuic(server M.Socksaddr) error {
+	client := &http.Client{
+		Transport: &http3.RoundTripper{
+			Dial: func(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+				udpAddr, err := net.ResolveUDPAddr(network, addr)
+				if err != nil {
+					return nil, err
+				}
+				tcpConn, err := net.Dial("tcp", server.String())
+				if err != nil {
+					return nil, err
+				}
+				destination := M.SocksaddrFromNetIP(udpAddr.AddrPort())
+				response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandUDPAssociate, destination, "", "")
+				if err != nil {
+					return nil, err
+				}
+				if response.ReplyCode != socks5.ReplyCodeSuccess {
+					logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
+				}
+				var dialer net.Dialer
+				udpConn, err := dialer.DialContext(context.Background(), "udp", response.Bind.String())
+				if err != nil {
+					return nil, err
+				}
+				assConn := socks5.NewAssociateConn(tcpConn, udpConn, destination)
+				host := M.ParseSocksaddr(addr).AddrString()
+				logrus.Trace(host)
+				return quic.DialEarlyContext(ctx, assConn, udpAddr, host, tlsCfg, cfg)
+			},
+		},
+	}
+	// qResponse, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
+	qResponse, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
+	if err != nil {
+		return err
+	}
+	qResponse.Write(os.Stderr)
 	return nil
 }

@@ -166,6 +166,7 @@ func handleConnection(authRequest *AuthRequest, ctx context.Context, conn net.Co
 			if err != nil {
 				handler.HandleError(err)
 			}
+			conn.Close()
 		}()
 		return common.Error(io.Copy(io.Discard, conn))
 	default:

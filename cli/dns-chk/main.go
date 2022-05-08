@@ -4,9 +4,12 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
+	"os"
 	"runtime"
 
+	"github.com/lucas-clemente/quic-go/http3"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	_ "github.com/sagernet/sing/common/log"
@@ -31,6 +34,10 @@ func run(cmd *cobra.Command, args []string) {
 		logrus.Fatal(err)
 	}
 	err = testSocksUDP()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	err = testQuic()
 	if err != nil {
 		logrus.Fatal(err)
 	}
@@ -110,5 +117,17 @@ func testSocksUDP() error {
 	}
 
 	udpConn.Close()
+	return nil
+}
+
+func testQuic() error {
+	client := &http.Client{
+		Transport: &http3.RoundTripper{},
+	}
+	qResponse, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
+	if err != nil {
+		return err
+	}
+	qResponse.Write(os.Stderr)
 	return nil
 }

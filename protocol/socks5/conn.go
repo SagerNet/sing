@@ -16,6 +16,12 @@ type AssociateConn struct {
 	dest M.Socksaddr
 }
 
+func (c AssociateConn) Close() error {
+	c.conn.Close()
+	c.Conn.Close()
+	return nil
+}
+
 func NewAssociateConn(conn net.Conn, packetConn net.Conn, destination M.Socksaddr) *AssociateConn {
 	return &AssociateConn{
 		Conn: packetConn,
