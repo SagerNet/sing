@@ -50,6 +50,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 			localAddr:  metadata.Source,
 			remoteAddr: metadata.Destination,
 			source:     writer(),
+			fastClose:  metadata.Destination.Port == 53,
 		}
 		c.ctx, c.cancel = context.WithCancel(ctx)
 		return c
@@ -96,6 +97,7 @@ type conn struct {
 	localAddr  M.Socksaddr
 	remoteAddr M.Socksaddr
 	source     N.PacketWriter
+	fastClose  bool
 }
 
 func (c *conn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
@@ -112,6 +114,9 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	if c.fastClose {
+		defer c.Close()
+	}
 	return c.source.WritePacket(buffer, destination)
 }
 
