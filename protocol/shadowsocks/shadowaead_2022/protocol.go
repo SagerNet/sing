@@ -431,7 +431,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	}
 	hdrLen += 1 // header type
 	hdrLen += 8 // timestamp
-	hdrLen += 1 // padding length
+	hdrLen += 2 // padding length
 	hdrLen += socks5.AddressSerializer.AddrPortLen(destination)
 	header := buf.With(buffer.ExtendHeader(hdrLen))
 
@@ -505,6 +505,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
 		buffer.Advance(PacketNonceSize)
+		buffer.Truncate(buffer.Len() - c.method.udpCipher.Overhead())
 	} else {
 		packetHeader = buffer.To(aes.BlockSize)
 		c.method.udpBlockCipher.Decrypt(packetHeader, packetHeader)
@@ -535,6 +536,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		if err != nil {
 			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
+		buffer.Truncate(buffer.Len() - remoteCipher.Overhead())
 	}
 
 	var headerType byte

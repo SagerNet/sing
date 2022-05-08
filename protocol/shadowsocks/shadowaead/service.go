@@ -225,7 +225,14 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 	}
 	buffer.Advance(s.keySaltLength)
 	buffer.Truncate(len(packet))
+
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	if err != nil {
+		return err
+	}
+
 	metadata.Protocol = "shadowsocks"
+	metadata.Destination = destination
 	s.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &serverPacketWriter{s, conn, metadata.Source}
 	}, buffer, metadata)

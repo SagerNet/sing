@@ -140,7 +140,8 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	if err != nil {
 		return E.Cause(err, "read timestamp")
 	}
-	if math.Abs(float64(time.Now().Unix()-int64(epoch))) > 30 {
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
 		return ErrBadTimestamp
 	}
 
@@ -246,6 +247,7 @@ process:
 			err = E.Cause(err, "decrypt packet")
 			goto returnErr
 		}
+		buffer.Truncate(buffer.Len() - session.remoteCipher.Overhead())
 	}
 
 	var headerType byte

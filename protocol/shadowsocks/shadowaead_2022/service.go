@@ -262,6 +262,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 			return E.Cause(err, "decrypt packet header")
 		}
 		buffer.Advance(PacketNonceSize)
+		buffer.Truncate(buffer.Len() - s.udpCipher.Overhead())
 	} else {
 		packetHeader = buffer.To(aes.BlockSize)
 		s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
@@ -306,6 +307,7 @@ process:
 			err = E.Cause(err, "decrypt packet")
 			goto returnErr
 		}
+		buffer.Truncate(buffer.Len() - session.remoteCipher.Overhead())
 	}
 
 	var headerType byte
@@ -324,7 +326,8 @@ process:
 	if err != nil {
 		goto returnErr
 	}
-	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
 		err = ErrBadTimestamp
 		goto returnErr
 	}
@@ -357,11 +360,17 @@ type serverPacketWriter struct {
 }
 
 func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
-
-	_header := buf.StackNew()
-	defer runtime.KeepAlive(_header)
-	header := common.Dup(_header)
+	var hdrLen int
+	if w.udpCipher != nil {
+		hdrLen = PacketNonceSize
+	}
+	hdrLen += 16 // packet header
+	hdrLen += 1  // header type
+	hdrLen += 8  // timestamp
+	hdrLen += 8  // remote session id
+	hdrLen += 2  // padding length
+	hdrLen += socks5.AddressSerializer.AddrPortLen(destination)
+	header := buf.With(buffer.ExtendHeader(hdrLen))
 
 	var dataIndex int
 	if w.udpCipher != nil {
@@ -385,21 +394,16 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 		return err
 	}
 
-	_, err = header.Write(buffer.Bytes())
-	if err != nil {
-		return err
-	}
-
 	if w.udpCipher != nil {
-		w.udpCipher.Seal(header.Index(dataIndex), header.To(dataIndex), header.From(dataIndex), nil)
-		header.Extend(w.udpCipher.Overhead())
+		w.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
+		buffer.Extend(w.udpCipher.Overhead())
 	} else {
-		packetHeader := header.To(aes.BlockSize)
-		w.session.cipher.Seal(header.Index(dataIndex), packetHeader[4:16], header.From(dataIndex), nil)
-		header.Extend(w.session.cipher.Overhead())
+		packetHeader := buffer.To(aes.BlockSize)
+		w.session.cipher.Seal(buffer.Index(dataIndex), packetHeader[4:16], buffer.From(dataIndex), nil)
+		buffer.Extend(w.session.cipher.Overhead())
 		w.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
-	return w.PacketConn.WritePacket(header, w.session.remoteAddr)
+	return w.PacketConn.WritePacket(buffer, w.session.remoteAddr)
 }
 
 type serverUDPSession struct {
