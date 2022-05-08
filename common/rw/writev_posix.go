@@ -1,3 +1,5 @@
+//go:build !windows
+
 package rw
 
 import (
@@ -8,10 +10,8 @@ import (
 func WriteV(fd uintptr, data ...[]byte) (int, error) {
 	iovecs := make([]syscall.Iovec, len(data))
 	for i := range iovecs {
-		iovecs[i] = syscall.Iovec{
-			Base: &data[i][0],
-			Len:  uint64(len(data[i])),
-		}
+		iovecs[i].Base = &data[i][0]
+		iovecs[i].SetLen(len(data[i]))
 	}
 	var (
 		r uintptr
