@@ -149,3 +149,21 @@ func (p *PacketConnWrapper) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) 
 func (p *PacketConnWrapper) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return common.Error(p.WriteTo(buffer.Bytes(), destination.UDPAddr()))
 }
+
+type BindPacketConn struct {
+	net.PacketConn
+	Addr net.Addr
+}
+
+func (c *BindPacketConn) Read(b []byte) (n int, err error) {
+	n, _, err = c.ReadFrom(b)
+	return
+}
+
+func (c *BindPacketConn) Write(b []byte) (n int, err error) {
+	return c.WriteTo(b, c.Addr)
+}
+
+func (c *BindPacketConn) RemoteAddr() net.Addr {
+	return c.Addr
+}
