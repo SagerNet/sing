@@ -6,7 +6,7 @@ require (
 	github.com/cloudflare/cloudflare-go v0.38.0
 	github.com/go-acme/lego/v4 v4.6.0
 	github.com/go-resty/resty/v2 v2.7.0
-	github.com/klauspost/compress v1.15.2
+	github.com/klauspost/compress v1.15.3
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/geoip2-golang v1.7.0
 	github.com/refraction-networking/utls v1.1.0
@@ -18,7 +18,7 @@ require (
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
 	github.com/v2fly/v2ray-core/v5 v5.0.6
 	github.com/vishvananda/netlink v1.2.0-beta
-	golang.org/x/crypto v0.0.0-20220427172511-eb4f295cb31f
+	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
