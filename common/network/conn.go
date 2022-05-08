@@ -32,6 +32,11 @@ type PacketConn interface {
 	SetWriteDeadline(t time.Time) error
 }
 
+type NetPacketConn interface {
+	net.PacketConn
+	PacketConn
+}
+
 type UDPHandler interface {
 	NewPacket(conn PacketConn, buffer *buf.Buffer, metadata M.Metadata) error
 }

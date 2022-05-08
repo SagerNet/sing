@@ -12,6 +12,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/socks5"
 )
@@ -48,7 +49,7 @@ func (m *NoneMethod) DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.C
 	}
 }
 
-func (m *NoneMethod) DialPacketConn(conn net.Conn) N.PacketConn {
+func (m *NoneMethod) DialPacketConn(conn net.Conn) N.NetPacketConn {
 	return &nonePacketConn{conn}
 }
 
@@ -117,14 +118,13 @@ direct:
 
 func (c *noneConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if !c.handshake {
-		panic("missing client handshake")
+		return rw.ReadFrom0(c, r)
 	}
 	return c.Conn.(io.ReaderFrom).ReadFrom(r)
 }
 
 func (c *noneConn) WriteTo(w io.Writer) (n int64, err error) {
 	return io.Copy(w, c.Conn)
-	// return c.Conn.(io.WriterTo).WriteTo(w)
 }
 
 func (c *noneConn) RemoteAddr() net.Addr {
@@ -144,26 +144,43 @@ func (c *nonePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *nonePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	headerLen := socks5.AddressSerializer.AddrPortLen(destination)
-	var header *buf.Buffer
-	var writeHeader bool
-	if buffer.Start() >= headerLen {
-		header = buf.With(buffer.ExtendHeader(headerLen))
-	} else {
-		_buffer := buf.StackNewSize(buffer.Len() + headerLen)
-		defer runtime.KeepAlive(_buffer)
-		header = common.Dup(_buffer)
-		writeHeader = true
-	}
+	header := buf.With(buffer.ExtendHeader(socks5.AddressSerializer.AddrPortLen(destination)))
 	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
-	if writeHeader {
-		return common.Error(header.WriteTo(c))
-	} else {
-		return common.Error(buffer.WriteTo(c))
+	return common.Error(buffer.WriteTo(c))
+}
+
+func (c *nonePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, err = c.Read(p)
+	if err != nil {
+		return
 	}
+	buffer := buf.With(p[:n])
+	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	if err != nil {
+		return
+	}
+	addr = destination.UDPAddr()
+	n = copy(p, buffer.Bytes())
+	return
+}
+
+func (c *nonePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	destination := M.SocksaddrFromNet(addr)
+	_buffer := buf.Make(socks5.AddressSerializer.AddrPortLen(destination) + len(p))
+	defer runtime.KeepAlive(_buffer)
+	buffer := buf.With(common.Dup(_buffer))
+	err = socks5.AddressSerializer.WriteAddrPort(buffer, destination)
+	if err != nil {
+		return
+	}
+	_, err = buffer.Write(p)
+	if err != nil {
+		return
+	}
+	return len(p), nil
 }
 
 type NoneService struct {

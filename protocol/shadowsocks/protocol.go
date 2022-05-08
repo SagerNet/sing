@@ -16,7 +16,7 @@ type Method interface {
 	KeyLength() int
 	DialConn(conn net.Conn, destination M.Socksaddr) (net.Conn, error)
 	DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.Conn
-	DialPacketConn(conn net.Conn) N.PacketConn
+	DialPacketConn(conn net.Conn) N.NetPacketConn
 }
 
 func Key(password []byte, keySize int) []byte {

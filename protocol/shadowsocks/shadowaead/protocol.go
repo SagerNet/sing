@@ -162,7 +162,7 @@ func (m *Method) DialEarlyConn(conn net.Conn, destination M.Socksaddr) net.Conn 
 	}
 }
 
-func (m *Method) DialPacketConn(conn net.Conn) N.PacketConn {
+func (m *Method) DialPacketConn(conn net.Conn) N.NetPacketConn {
 	return &clientPacketConn{m, conn}
 }
 
@@ -363,6 +363,48 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		return M.Socksaddr{}, err
 	}
 	return socks5.AddressSerializer.ReadAddrPort(buffer)
+}
+
+func (c *clientPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, err = c.Read(p)
+	if err != nil {
+		return
+	}
+	b := buf.With(p[:n])
+	err = c.DecodePacket(b)
+	if err != nil {
+		return
+	}
+	destination, err := socks5.AddressSerializer.ReadAddrPort(b)
+	if err != nil {
+		return
+	}
+	addr = destination.UDPAddr()
+	n = copy(p, b.Bytes())
+	return
+}
+
+func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	_buffer := buf.StackNew()
+	defer runtime.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	err = socks5.AddressSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
+	if err != nil {
+		return
+	}
+	_, err = buffer.Write(p)
+	if err != nil {
+		return
+	}
+	err = c.EncodePacket(buffer)
+	if err != nil {
+		return
+	}
+	_, err = c.Write(buffer.Bytes())
+	if err != nil {
+		return
+	}
+	return len(p), nil
 }
 
 func (c *clientPacketConn) UpstreamReader() io.Reader {
