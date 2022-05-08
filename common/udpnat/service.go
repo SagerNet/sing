@@ -31,6 +31,9 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 		nat: cache.New(
 			cache.WithAge[K, *conn](maxAge),
 			cache.WithUpdateAgeOnGet[K, *conn](),
+			cache.WithEvict[K, *conn](func(key K, conn *conn) {
+				conn.Close()
+			}),
 		),
 		handler: handler,
 	}
@@ -68,7 +71,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 		s.NewContextPacket(ctx, key, writer, buffer, metadata)
 		return
 	}
-	ctx, done := context.WithCancel(c.ctx)
+	packetCtx, done := context.WithCancel(c.ctx)
 	p := packet{
 		done:        done,
 		data:        buffer,
@@ -76,7 +79,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 	}
 	c.data <- p
 	c.access.Unlock()
-	<-ctx.Done()
+	<-packetCtx.Done()
 }
 
 type packet struct {
@@ -117,7 +120,6 @@ func (c *conn) Close() error {
 	defer c.access.Unlock()
 
 	c.cancel()
-	common.Close(c.source)
 	select {
 	case <-c.data:
 		return os.ErrClosed
