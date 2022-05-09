@@ -30,9 +30,9 @@ type MultiService[U comparable] struct {
 	uPSKHashR map[[aes.BlockSize]byte]U
 }
 
-func (s *MultiService[U]) AddUser(user U, key []byte) {
+func (s *MultiService[U]) AddUser(user U, key [KeySaltSize]byte) {
 	var uPSKHash [aes.BlockSize]byte
-	hash512 := blake3.Sum512(key)
+	hash512 := blake3.Sum512(key[:])
 	copy(uPSKHash[:], hash512[:])
 
 	if oldHash, loaded := s.uPSKHash[user]; loaded {
@@ -42,9 +42,7 @@ func (s *MultiService[U]) AddUser(user U, key []byte) {
 	s.uPSKHash[user] = uPSKHash
 	s.uPSKHashR[uPSKHash] = user
 
-	var uPSK [KeySaltSize]byte
-	copy(uPSK[:], key)
-	s.uPSK[user] = uPSK
+	s.uPSK[user] = key
 }
 
 func (s *MultiService[U]) RemoveUser(user U) {
@@ -55,7 +53,7 @@ func (s *MultiService[U]) RemoveUser(user U) {
 	delete(s.uPSKHash, user)
 }
 
-func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.MultiUserService[U], error) {
+func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (*MultiService[U], error) {
 	switch method {
 	case "2022-blake3-aes-128-gcm":
 	case "2022-blake3-aes-256-gcm":
@@ -70,6 +68,10 @@ func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secure
 
 	s := &MultiService[U]{
 		Service: ss.(*Service),
+
+		uPSK:      make(map[U][KeySaltSize]byte),
+		uPSKHash:  make(map[U][aes.BlockSize]byte),
+		uPSKHashR: make(map[[aes.BlockSize]byte]U),
 	}
 	return s, nil
 }
@@ -266,7 +268,8 @@ process:
 	if err != nil {
 		goto returnErr
 	}
-	if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
 		err = ErrBadTimestamp
 		goto returnErr
 	}

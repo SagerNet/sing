@@ -74,7 +74,7 @@ func New(method string, pskList [][KeySaltSize]byte, secureRNG io.Reader) (shado
 	}
 
 	if len(pskList) > 1 {
-		pskHash := make([]byte, len(pskList)-1*aes.BlockSize)
+		pskHash := make([]byte, (len(pskList)-1)*aes.BlockSize)
 		for i, psk := range pskList {
 			if i == 0 {
 				continue

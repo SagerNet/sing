@@ -21,12 +21,6 @@ type Handler interface {
 	E.Handler
 }
 
-type MultiUserService[U comparable] interface {
-	Service
-	AddUser(user U, key []byte)
-	RemoveUser(user U)
-}
-
 type UserContext[U comparable] struct {
 	context.Context
 	User U

@@ -119,7 +119,8 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return E.Cause(err, "read timestamp")
 	}
 
-	if math.Abs(float64(time.Now().Unix()-int64(epoch))) > 30 {
+	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
+	if diff > 30 {
 		return ErrBadTimestamp
 	}
 
