@@ -38,7 +38,7 @@ func ReadBytes(reader io.Reader, size int) ([]byte, error) {
 func ReadString(reader io.Reader, size int) (string, error) {
 	b, err := ReadBytes(reader, size)
 	if err != nil {
-		return common.EmptyString, err
+		return "", err
 	}
 	return string(b), nil
 }

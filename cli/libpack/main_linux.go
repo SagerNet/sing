@@ -36,7 +36,7 @@ func main() {
 		Run:     run0,
 	}
 	command.Flags().StringVarP(&executablePath, "input", "i", "", "input path (required)")
-	command.MarkFlagRequired("file")
+	command.MarkFlagRequired("input")
 	command.Flags().StringVarP(&outputPath, "output", "o", "", "output path (default: input path)")
 	command.Flags().StringVarP(&packageName, "package", "p", "", "package name (default: executable name)")
 

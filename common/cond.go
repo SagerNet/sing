@@ -103,11 +103,11 @@ func IsNotEmpty[T any](array []T) bool {
 }
 
 func IsBlank(str string) bool {
-	return strings.TrimSpace(str) == EmptyString
+	return strings.TrimSpace(str) == ""
 }
 
 func IsNotBlank(str string) bool {
-	return strings.TrimSpace(str) != EmptyString
+	return strings.TrimSpace(str) != ""
 }
 
 func Error(_ any, err error) error {

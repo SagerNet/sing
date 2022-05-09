@@ -1,7 +1,5 @@
 package common
 
-const EmptyString = ""
-
 type DummyAddr struct{}
 
 func (d *DummyAddr) Network() string {

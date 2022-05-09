@@ -163,7 +163,7 @@ func (s *Serializer) ReadAddrPort(reader io.Reader) (destination Socksaddr, err 
 func ReadString(reader io.Reader) (string, error) {
 	strLen, err := rw.ReadByte(reader)
 	if err != nil {
-		return common.EmptyString, err
+		return "", err
 	}
 	return rw.ReadString(reader, int(strLen))
 }

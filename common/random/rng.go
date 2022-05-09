@@ -12,13 +12,13 @@ import (
 
 var System = &Source{rand.Reader}
 
-var Default = Blake3KeyedHash()
+var Default = &Source{&SyncReader{Reader: Blake3KeyedHash()}}
 
-func Blake3KeyedHash() *Source {
+func Blake3KeyedHash() io.Reader {
 	key := make([]byte, 32)
 	common.Must1(io.ReadFull(System, key))
 	h := blake3.New(1024, key)
-	return &Source{&SyncReader{Reader: h.XOF()}}
+	return h.XOF()
 }
 
 type SyncReader struct {
