@@ -7,14 +7,12 @@ import (
 	"io"
 	"net"
 	"runtime"
-	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/socks5"
@@ -35,13 +33,10 @@ var (
 	ErrMissingPassword = E.New("missing password")
 )
 
-func New(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool) (shadowsocks.Method, error) {
+func New(method string, key []byte, password []byte, secureRNG io.Reader) (shadowsocks.Method, error) {
 	m := &Method{
 		name:      method,
 		secureRNG: secureRNG,
-	}
-	if replayFilter {
-		m.replayFilter = replay.NewBloomRing()
 	}
 	switch method {
 	case "aes-128-gcm":
@@ -103,7 +98,6 @@ type Method struct {
 	constructor   func(key []byte) cipher.AEAD
 	key           []byte
 	secureRNG     io.Reader
-	replayFilter  replay.Filter
 }
 
 func (m *Method) Name() string {
@@ -121,11 +115,6 @@ func (m *Method) ReadRequest(upstream io.Reader) (io.Reader, error) {
 	_, err := io.ReadFull(upstream, salt)
 	if err != nil {
 		return nil, E.Cause(err, "read salt")
-	}
-	if m.replayFilter != nil {
-		if !m.replayFilter.Check(salt) {
-			return nil, E.New("salt not unique")
-		}
 	}
 	key := Kdf(m.key, salt, m.keySaltLength)
 	defer runtime.KeepAlive(key)
@@ -197,7 +186,6 @@ type clientConn struct {
 	method      *Method
 	destination M.Socksaddr
 
-	access sync.Mutex
 	reader *Reader
 	writer *Writer
 }
@@ -256,11 +244,6 @@ func (c *clientConn) readResponse() error {
 	if err != nil {
 		return err
 	}
-	if c.method.replayFilter != nil {
-		if !c.method.replayFilter.Check(salt) {
-			return E.New("salt not unique")
-		}
-	}
 	key := Kdf(c.method.key, salt, c.method.keySaltLength)
 	defer runtime.KeepAlive(key)
 	c.reader = NewReader(
@@ -287,13 +270,6 @@ func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
 
 func (c *clientConn) Write(p []byte) (n int, err error) {
 	if c.writer != nil {
-		return c.writer.Write(p)
-	}
-
-	c.access.Lock()
-
-	if c.writer != nil {
-		c.access.Unlock()
 		return c.writer.Write(p)
 	}
 

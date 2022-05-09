@@ -14,7 +14,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/replay"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
@@ -28,20 +27,16 @@ type Service struct {
 	constructor   func(key []byte) cipher.AEAD
 	key           []byte
 	secureRNG     io.Reader
-	replayFilter  replay.Filter
 	handler       shadowsocks.Handler
 	udpNat        *udpnat.Service[netip.AddrPort]
 }
 
-func NewService(method string, key []byte, password []byte, secureRNG io.Reader, replayFilter bool, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, key []byte, password []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:      method,
 		secureRNG: secureRNG,
 		handler:   handler,
 		udpNat:    udpnat.New[netip.AddrPort](udpTimeout, handler),
-	}
-	if replayFilter {
-		s.replayFilter = replay.NewBloomRing()
 	}
 	switch method {
 	case "aes-128-gcm":

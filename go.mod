@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/cloudflare/cloudflare-go v0.38.0
+	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d
 	github.com/go-acme/lego/v4 v4.6.0
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/klauspost/compress v1.15.3
@@ -16,7 +17,6 @@ require (
 	github.com/spf13/cobra v1.4.0
 	github.com/u-root/u-root v0.8.1-0.20220504042106-94cc250573fb
 	github.com/ulikunitz/xz v0.5.10
-	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
 	github.com/v2fly/v2ray-core/v5 v5.0.6
 	github.com/vishvananda/netlink v1.2.0-beta
 	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122
@@ -49,7 +49,6 @@ require (
 	github.com/onsi/ginkgo v1.16.4 // indirect
 	github.com/oschwald/maxminddb-golang v1.9.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect

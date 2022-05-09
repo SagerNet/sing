@@ -125,7 +125,11 @@ func SocksaddrFromNet(ap net.Addr) Socksaddr {
 	if socksAddr, ok := ap.(Socksaddr); ok {
 		return socksAddr
 	}
-	return SocksaddrFromNetIP(AddrPortFromNet(ap))
+	addr := SocksaddrFromNetIP(AddrPortFromNet(ap))
+	if addr.IsValid() {
+		return addr
+	}
+	return ParseSocksaddr(ap.String())
 }
 
 func AddrFromNetAddr(netAddr net.Addr) netip.Addr {

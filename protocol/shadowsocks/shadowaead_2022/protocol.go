@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -188,9 +187,6 @@ type clientConn struct {
 	method      *Method
 	destination M.Socksaddr
 
-	request  sync.Mutex
-	response sync.Mutex
-
 	requestSalt []byte
 
 	reader *shadowaead.Reader
@@ -283,13 +279,6 @@ func (c *clientConn) readResponse() error {
 		return nil
 	}
 
-	c.response.Lock()
-	defer c.response.Unlock()
-
-	if c.reader != nil {
-		return nil
-	}
-
 	_salt := make([]byte, KeySaltSize)
 	salt := common.Dup(_salt)
 	_, err := io.ReadFull(c.Conn, salt)
@@ -358,36 +347,24 @@ func (c *clientConn) WriteTo(w io.Writer) (n int64, err error) {
 	if err = c.readResponse(); err != nil {
 		return
 	}
-
 	return c.reader.WriteTo(w)
 }
 
 func (c *clientConn) Write(p []byte) (n int, err error) {
-	if c.writer != nil {
-		return c.writer.Write(p)
+	if c.writer == nil {
+		err = c.writeRequest(p)
+		if err == nil {
+			n = len(p)
+		}
+		return
 	}
-
-	c.request.Lock()
-
-	if c.writer != nil {
-		c.request.Unlock()
-		return c.writer.Write(p)
-	}
-
-	defer c.request.Unlock()
-
-	err = c.writeRequest(p)
-	if err == nil {
-		n = len(p)
-	}
-	return
+	return c.writer.Write(p)
 }
 
 func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if c.writer == nil {
 		return rw.ReadFrom0(c, r)
 	}
-
 	return c.writer.ReadFrom(r)
 }
 

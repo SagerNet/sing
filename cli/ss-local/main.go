@@ -32,6 +32,7 @@ import (
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
+	"github.com/sagernet/sing/protocol/shadowsocks/shadowstream"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sagernet/sing/transport/system"
 	"github.com/sirupsen/logrus"
@@ -81,6 +82,7 @@ func main() {
 	supportedCiphers = append(supportedCiphers, shadowsocks.MethodNone)
 	supportedCiphers = append(supportedCiphers, shadowaead_2022.List...)
 	supportedCiphers = append(supportedCiphers, shadowaead.List...)
+	supportedCiphers = append(supportedCiphers, shadowstream.List...)
 
 	command.Flags().StringVarP(&f.Method, "encrypt-method", "m", "", "Store the cipher.\n\nSupported ciphers:\n\n"+strings.Join(supportedCiphers, "\n"))
 	command.Flags().BoolVar(&f.TCPFastOpen, "fast-open", false, `Enable TCP fast open.
@@ -180,7 +182,7 @@ func newClient(f *flags) (*client, error) {
 		if f.ReducedSaltEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
 		}
-		if common.Contains(shadowaead.List, f.Method) {
+		if common.Contains(shadowstream.List, f.Method) {
 			var key []byte
 			if f.Key != "" {
 				kb, err := base64.StdEncoding.DecodeString(f.Key)
@@ -189,7 +191,21 @@ func newClient(f *flags) (*client, error) {
 				}
 				key = kb
 			}
-			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng, false)
+			method, err := shadowstream.New(f.Method, key, []byte(f.Password), rng)
+			if err != nil {
+				return nil, err
+			}
+			c.method = method
+		} else if common.Contains(shadowaead.List, f.Method) {
+			var key []byte
+			if f.Key != "" {
+				kb, err := base64.StdEncoding.DecodeString(f.Key)
+				if err != nil {
+					return nil, E.Cause(err, "decode key")
+				}
+				key = kb
+			}
+			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng)
 			if err != nil {
 				return nil, err
 			}
