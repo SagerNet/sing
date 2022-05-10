@@ -212,6 +212,7 @@ func (s *server) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Met
 }
 
 func (s *server) HandleError(err error) {
+	common.Close(err)
 	if E.IsClosed(err) {
 		return
 	}
