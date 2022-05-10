@@ -18,7 +18,6 @@ import (
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks5"
 	"lukechampine.com/blake3"
 )
 
@@ -147,7 +146,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return ErrBadTimestamp
 	}
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return E.Cause(err, "read destination")
 	}
@@ -282,7 +281,7 @@ process:
 	}
 	buffer.Advance(int(paddingLength))
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		goto returnErr
 	}

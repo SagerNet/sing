@@ -17,7 +17,6 @@ import (
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
-	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -95,7 +94,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 
 	key := Kdf(s.key, salt, s.keySaltLength)
 	reader := NewReader(conn, s.constructor(common.Dup(key)), MaxPacketSize)
-	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return err
 	}
@@ -221,7 +220,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 	buffer.Advance(s.keySaltLength)
 	buffer.Truncate(len(packet))
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return err
 	}
@@ -241,9 +240,9 @@ type serverPacketWriter struct {
 }
 
 func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	header := buffer.ExtendHeader(w.keySaltLength + socks5.AddressSerializer.AddrPortLen(destination))
+	header := buffer.ExtendHeader(w.keySaltLength + M.SocksaddrSerializer.AddrPortLen(destination))
 	common.Must1(io.ReadFull(w.secureRNG, header[:w.keySaltLength]))
-	err := socks5.AddressSerializer.WriteAddrPort(buf.With(header[w.keySaltLength:]), destination)
+	err := M.SocksaddrSerializer.WriteAddrPort(buf.With(header[w.keySaltLength:]), destination)
 	if err != nil {
 		return err
 	}

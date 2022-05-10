@@ -12,7 +12,6 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks5"
 )
 
 type Handler interface {
@@ -116,7 +115,7 @@ process:
 		goto returnErr
 	}
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(conn)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(conn)
 	if err != nil {
 		err = E.Cause(err, "read destination")
 		goto returnErr

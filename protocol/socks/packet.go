@@ -1,4 +1,4 @@
-package socks5
+package socks
 
 import (
 	"net"
@@ -8,6 +8,12 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 )
+
+//+----+------+------+----------+----------+----------+
+//|RSV | FRAG | ATYP | DST.ADDR | DST.PORT |   DATA   |
+//+----+------+------+----------+----------+----------+
+//| 2  |  1   |  1   | Variable |    2     | Variable |
+//+----+------+------+----------+----------+----------+
 
 type AssociateConn struct {
 	net.Conn
@@ -40,7 +46,7 @@ func (c *AssociateConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		return
 	}
 	reader := buf.As(p[3:n])
-	destination, err := AddressSerializer.ReadAddrPort(reader)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return
 	}
@@ -54,7 +60,7 @@ func (c *AssociateConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
-	err = AddressSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
 	if err != nil {
 		return
 	}
@@ -77,7 +83,7 @@ func (c *AssociateConn) Write(b []byte) (n int, err error) {
 	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
-	err = AddressSerializer.WriteAddrPort(buffer, c.dest)
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
 	if err != nil {
 		return
 	}
@@ -96,14 +102,14 @@ func (c *AssociateConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	}
 	buffer.Truncate(int(n))
 	buffer.Advance(3)
-	return AddressSerializer.ReadAddrPort(buffer)
+	return M.SocksaddrSerializer.ReadAddrPort(buffer)
 }
 
 func (c *AssociateConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	header := buf.With(buffer.ExtendHeader(3 + AddressSerializer.AddrPortLen(destination)))
+	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must(header.WriteZeroN(3))
-	common.Must(AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	return common.Error(c.Conn.Write(buffer.Bytes()))
 }
 
@@ -132,7 +138,7 @@ func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err erro
 		return
 	}
 	reader := buf.As(p[3:n])
-	destination, err := AddressSerializer.ReadAddrPort(reader)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return
 	}
@@ -147,7 +153,7 @@ func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 
-	err = AddressSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
 	if err != nil {
 		return
 	}
@@ -170,7 +176,7 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 	buffer := common.Dup(_buffer)
 	common.Must(buffer.WriteZeroN(3))
 
-	err = AddressSerializer.WriteAddrPort(buffer, c.dest)
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
 	if err != nil {
 		return
 	}
@@ -190,14 +196,14 @@ func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error
 	c.addr = addr
 	buffer.Truncate(n)
 	buffer.Advance(3)
-	dest, err := AddressSerializer.ReadAddrPort(buffer)
+	dest, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	return dest, err
 }
 
 func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	header := buf.With(buffer.ExtendHeader(3 + AddressSerializer.AddrPortLen(destination)))
+	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must(header.WriteZeroN(3))
-	common.Must(AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	return common.Error(c.PacketConn.WriteTo(buffer.Bytes(), c.addr))
 }

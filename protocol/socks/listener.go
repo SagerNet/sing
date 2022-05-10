@@ -1,4 +1,4 @@
-package socks5
+package socks
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func NewListener(bind netip.AddrPort, authenticator auth.Authenticator, handler 
 }
 
 func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	return HandleConnection(ctx, conn, l.authenticator, M.AddrFromNetAddr(conn.LocalAddr()), l.handler, metadata)
+	return HandleConnection(ctx, conn, l.authenticator, l.handler, metadata)
 }
 
 func (l *Listener) Start() error {

@@ -17,7 +17,8 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/protocol/socks5"
+	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/dns/dnsmessage"
@@ -25,7 +26,7 @@ import (
 
 func main() {
 	command := &cobra.Command{
-		Use:  "socks-chk address:port",
+		Use:  "socks-chk [socks4/4a/5://]address:port",
 		Args: cobra.ExactArgs(1),
 		Run:  run,
 	}
@@ -35,32 +36,28 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) {
-	server := M.ParseSocksaddr(args[0])
-	err := testSocksTCP(server)
+	client, err := socks.NewClientFromURL(N.SystemDialer, args[0])
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = testSocksUDP(server)
+	err = testSocksTCP(client)
 	if err != nil {
 		logrus.Fatal(err)
 	}
-	err = testSocksQuic(server)
+	err = testSocksUDP(client)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	err = testSocksQuic(client)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 }
 
-func testSocksTCP(server M.Socksaddr) error {
-	tcpConn, err := net.Dial("tcp", server.String())
+func testSocksTCP(client *socks.Client) error {
+	tcpConn, err := client.DialContext(context.Background(), "tcp", M.ParseSocksaddrHostPort("1.0.0.1", "53"))
 	if err != nil {
 		return err
-	}
-	response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandConnect, M.ParseSocksaddrHostPort("1.0.0.1", "53"), "", "")
-	if err != nil {
-		return err
-	}
-	if response.ReplyCode != socks5.ReplyCodeSuccess {
-		logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
 	}
 
 	message := &dnsmessage.Message{}
@@ -105,25 +102,12 @@ func testSocksTCP(server M.Socksaddr) error {
 	return nil
 }
 
-func testSocksUDP(server M.Socksaddr) error {
-	tcpConn, err := net.Dial("tcp", server.String())
+func testSocksUDP(client *socks.Client) error {
+	udpConn, err := client.DialContext(context.Background(), "udp", M.ParseSocksaddrHostPort("1.0.0.1", "53"))
 	if err != nil {
 		return err
 	}
-	dest := M.ParseSocksaddrHostPort("1.0.0.1", "53")
-	response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandUDPAssociate, dest, "", "")
-	if err != nil {
-		return err
-	}
-	if response.ReplyCode != socks5.ReplyCodeSuccess {
-		logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
-	}
-	var dialer net.Dialer
-	udpConn, err := dialer.DialContext(context.Background(), "udp", response.Bind.String())
-	if err != nil {
-		return err
-	}
-	assConn := socks5.NewAssociateConn(tcpConn, udpConn, dest)
+
 	message := &dnsmessage.Message{}
 	message.Header.ID = 1
 	message.Header.RecursionDesired = true
@@ -134,14 +118,11 @@ func testSocksUDP(server M.Socksaddr) error {
 	})
 	packet, err := message.Pack()
 	common.Must(err)
-	common.Must1(assConn.WriteTo(packet, &net.UDPAddr{
-		IP:   net.IPv4(1, 0, 0, 1),
-		Port: 53,
-	}))
+	common.Must1(udpConn.Write(packet))
 	_buffer := buf.StackNew()
 	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
-	common.Must2(buffer.ReadPacketFrom(assConn))
+	common.Must1(buffer.ReadFrom(udpConn))
 	common.Must(message.Unpack(buffer.Bytes()))
 
 	for _, answer := range message.Answers {
@@ -149,44 +130,26 @@ func testSocksUDP(server M.Socksaddr) error {
 	}
 
 	udpConn.Close()
-	tcpConn.Close()
 	return nil
 }
 
-func testSocksQuic(server M.Socksaddr) error {
-	client := &http.Client{
+func testSocksQuic(client *socks.Client) error {
+	httpClient := &http.Client{
 		Transport: &http3.RoundTripper{
 			Dial: func(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 				udpAddr, err := net.ResolveUDPAddr(network, addr)
 				if err != nil {
 					return nil, err
 				}
-				tcpConn, err := net.Dial("tcp", server.String())
+				conn, err := client.DialContext(context.Background(), network, M.SocksaddrFromNet(udpAddr))
 				if err != nil {
 					return nil, err
 				}
-				destination := M.SocksaddrFromNetIP(udpAddr.AddrPort())
-				response, err := socks5.ClientHandshake(tcpConn, socks5.Version5, socks5.CommandUDPAssociate, destination, "", "")
-				if err != nil {
-					return nil, err
-				}
-				if response.ReplyCode != socks5.ReplyCodeSuccess {
-					logrus.Fatal("socks tcp handshake failure: ", response.ReplyCode)
-				}
-				var dialer net.Dialer
-				udpConn, err := dialer.DialContext(context.Background(), "udp", response.Bind.String())
-				if err != nil {
-					return nil, err
-				}
-				assConn := socks5.NewAssociateConn(tcpConn, udpConn, destination)
-				host := M.ParseSocksaddr(addr).AddrString()
-				logrus.Trace(host)
-				return quic.DialEarlyContext(ctx, assConn, udpAddr, host, tlsCfg, cfg)
+				return quic.DialEarlyContext(ctx, conn.(net.PacketConn), udpAddr, M.ParseSocksaddr(addr).AddrString(), tlsCfg, cfg)
 			},
 		},
 	}
-	// qResponse, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
-	qResponse, err := client.Get("https://cloudflare.com/cdn-cgi/trace")
+	qResponse, err := httpClient.Get("https://cloudflare.com/cdn-cgi/trace")
 	if err != nil {
 		return err
 	}

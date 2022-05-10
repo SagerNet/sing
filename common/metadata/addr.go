@@ -30,19 +30,13 @@ func (ap Socksaddr) IsValid() bool {
 
 func (ap Socksaddr) Family() Family {
 	if ap.Addr.IsValid() {
-		if ap.Addr.Is4() {
+		if ap.Addr.Is4() || ap.Addr.Is4In6() {
 			return AddressFamilyIPv4
 		} else {
 			return AddressFamilyIPv6
 		}
 	}
-	if ap.Fqdn != "" {
-		return AddressFamilyFqdn
-	} else if ap.Addr.Is4() || ap.Addr.Is4In6() {
-		return AddressFamilyIPv4
-	} else {
-		return AddressFamilyIPv6
-	}
+	return AddressFamilyFqdn
 }
 
 func (ap Socksaddr) AddrString() string {

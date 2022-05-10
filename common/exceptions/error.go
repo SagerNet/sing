@@ -43,7 +43,7 @@ func New(message ...any) error {
 }
 
 func Cause(cause error, message ...any) Exception {
-	return exception{fmt.Sprint(message), cause}
+	return exception{fmt.Sprint(message...), cause}
 }
 
 func IsClosed(err error) bool {

@@ -50,7 +50,7 @@ func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
 	if addr.Addr.IsValid() {
 		err = rw.WriteBytes(writer, addr.Addr.AsSlice())
 	} else {
-		err = WriteString(writer, "fqdn", addr.Fqdn)
+		err = WriteSocksString(writer, addr.Fqdn)
 	}
 	return err
 }
@@ -100,7 +100,7 @@ func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
 	family := s.familyMap[af]
 	switch family {
 	case AddressFamilyFqdn:
-		fqdn, err := ReadString(reader)
+		fqdn, err := ReadSockString(reader)
 		if err != nil {
 			return Socksaddr{}, E.Cause(err, "read fqdn")
 		}
@@ -160,7 +160,7 @@ func (s *Serializer) ReadAddrPort(reader io.Reader) (destination Socksaddr, err 
 	return addr, nil
 }
 
-func ReadString(reader io.Reader) (string, error) {
+func ReadSockString(reader io.Reader) (string, error) {
 	strLen, err := rw.ReadByte(reader)
 	if err != nil {
 		return "", err
@@ -168,10 +168,10 @@ func ReadString(reader io.Reader) (string, error) {
 	return rw.ReadString(reader, int(strLen))
 }
 
-func WriteString(writer io.Writer, op string, str string) error {
+func WriteSocksString(writer io.Writer, str string) error {
 	strLen := len(str)
 	if strLen > 255 {
-		return &StringTooLongException{op, strLen}
+		return E.New("fqdn too long")
 	}
 	err := rw.WriteByte(writer, byte(strLen))
 	if err != nil {

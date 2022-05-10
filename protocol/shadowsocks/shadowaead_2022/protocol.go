@@ -22,7 +22,6 @@ import (
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/chacha20poly1305"
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 	"lukechampine.com/blake3"
@@ -238,7 +237,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeClient))
 	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
 
-	err := socks5.AddressSerializer.WriteAddrPort(bufferedWriter, c.destination)
+	err := M.SocksaddrSerializer.WriteAddrPort(bufferedWriter, c.destination)
 	if err != nil {
 		return E.Cause(err, "write destination")
 	}
@@ -409,7 +408,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	hdrLen += 1 // header type
 	hdrLen += 8 // timestamp
 	hdrLen += 2 // padding length
-	hdrLen += socks5.AddressSerializer.AddrPortLen(destination)
+	hdrLen += M.SocksaddrSerializer.AddrPortLen(destination)
 	header := buf.With(buffer.ExtendHeader(hdrLen))
 
 	var dataIndex int
@@ -449,7 +448,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 		binary.Write(header, binary.BigEndian, uint64(time.Now().Unix())),
 		binary.Write(header, binary.BigEndian, uint16(0)), // padding length
 	)
-	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
+	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
@@ -580,7 +579,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	}
 	buffer.Advance(int(paddingLength))
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
@@ -614,7 +613,7 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	overHead += 1 // header type
 	overHead += 8 // timestamp
 	overHead += 2 // padding length
-	overHead += socks5.AddressSerializer.AddrPortLen(destination)
+	overHead += M.SocksaddrSerializer.AddrPortLen(destination)
 
 	_buffer := buf.Make(overHead + len(p))
 	defer runtime.KeepAlive(_buffer)
@@ -657,7 +656,7 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		binary.Write(buffer, binary.BigEndian, uint64(time.Now().Unix())),
 		binary.Write(buffer, binary.BigEndian, uint16(0)), // padding length
 	)
-	err = socks5.AddressSerializer.WriteAddrPort(buffer, destination)
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, destination)
 	if err != nil {
 		return
 	}

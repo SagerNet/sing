@@ -18,7 +18,6 @@ import (
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks5"
 	"golang.org/x/crypto/blowfish"
 	"golang.org/x/crypto/cast5"
 	"golang.org/x/crypto/chacha20"
@@ -227,7 +226,7 @@ type clientConn struct {
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {
-	_buffer := buf.Make(c.method.keyLength + socks5.AddressSerializer.AddrPortLen(c.destination) + len(payload))
+	_buffer := buf.Make(c.method.keyLength + M.SocksaddrSerializer.AddrPortLen(c.destination) + len(payload))
 	defer runtime.KeepAlive(_buffer)
 	buffer := buf.With(common.Dup(_buffer))
 
@@ -241,7 +240,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	}
 	runtime.KeepAlive(key)
 
-	err = socks5.AddressSerializer.WriteAddrPort(buffer, c.destination)
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.destination)
 	if err != nil {
 		return err
 	}
@@ -326,9 +325,9 @@ type clientPacketConn struct {
 }
 
 func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	header := buf.With(buffer.ExtendHeader(c.keyLength + socks5.AddressSerializer.AddrPortLen(destination)))
+	header := buf.With(buffer.ExtendHeader(c.keyLength + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must1(header.ReadFullFrom(c.secureRNG, c.keyLength))
-	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
+	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}
@@ -352,7 +351,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	}
 	stream.XORKeyStream(buffer.From(c.keyLength), buffer.From(c.keyLength))
 	buffer.Advance(c.keyLength)
-	return socks5.AddressSerializer.ReadAddrPort(buffer)
+	return M.SocksaddrSerializer.ReadAddrPort(buffer)
 }
 
 func (c *clientPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
@@ -366,7 +365,7 @@ func (c *clientPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 	}
 	buffer := buf.With(p[c.keyLength:n])
 	stream.XORKeyStream(buffer.Bytes(), buffer.Bytes())
-	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return
 	}
@@ -377,11 +376,11 @@ func (c *clientPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 
 func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	destination := M.SocksaddrFromNet(addr)
-	_buffer := buf.Make(c.keyLength + socks5.AddressSerializer.AddrPortLen(destination) + len(p))
+	_buffer := buf.Make(c.keyLength + M.SocksaddrSerializer.AddrPortLen(destination) + len(p))
 	defer runtime.KeepAlive(_buffer)
 	buffer := buf.With(common.Dup(_buffer))
 	common.Must1(buffer.ReadFullFrom(c.secureRNG, c.keyLength))
-	err = socks5.AddressSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
 	if err != nil {
 		return
 	}

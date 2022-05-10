@@ -24,7 +24,6 @@ import (
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/socks5"
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 )
 
@@ -124,7 +123,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return ErrBadTimestamp
 	}
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(reader)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return E.Cause(err, "read destination")
 	}
@@ -341,7 +340,7 @@ process:
 	}
 	buffer.Advance(int(paddingLength))
 
-	destination, err := socks5.AddressSerializer.ReadAddrPort(buffer)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		goto returnErr
 	}
@@ -370,7 +369,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 	hdrLen += 8  // timestamp
 	hdrLen += 8  // remote session id
 	hdrLen += 2  // padding length
-	hdrLen += socks5.AddressSerializer.AddrPortLen(destination)
+	hdrLen += M.SocksaddrSerializer.AddrPortLen(destination)
 	header := buf.With(buffer.ExtendHeader(hdrLen))
 
 	var dataIndex int
@@ -390,7 +389,7 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 		binary.Write(header, binary.BigEndian, uint16(0)), // padding length
 	)
 
-	err := socks5.AddressSerializer.WriteAddrPort(header, destination)
+	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
 	if err != nil {
 		return err
 	}

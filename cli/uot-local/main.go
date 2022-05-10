@@ -17,7 +17,7 @@ import (
 	"github.com/sagernet/sing/common/redir"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/uot"
-	"github.com/sagernet/sing/protocol/socks5"
+	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -73,7 +73,12 @@ func run(cmd *cobra.Command, args []string) {
 		logrus.Fatal("unknown transproxy mode ", transproxy)
 	}
 
-	client := &localClient{upstream: args[1]}
+	socks, err := socks.NewClientFromURL(N.SystemDialer, args[1])
+	if err != nil {
+		logrus.Fatal(err)
+	}
+
+	client := &localClient{upstream: socks}
 	client.Listener = mixed.NewListener(bind, nil, transproxyMode, 300, client)
 
 	err = client.Start()
@@ -92,38 +97,29 @@ func run(cmd *cobra.Command, args []string) {
 
 type localClient struct {
 	*mixed.Listener
-	upstream string
+	upstream *socks.Client
 }
 
 func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	logrus.Info("CONNECT ", conn.RemoteAddr(), " ==> ", metadata.Destination)
+	logrus.Info("inbound ", metadata.Protocol, " TCP ", metadata.Source, " ==> ", metadata.Destination)
 
-	upstream, err := net.Dial("tcp", c.upstream)
+	upstream, err := c.upstream.DialContext(ctx, "tcp", metadata.Destination)
 	if err != nil {
-		return E.Cause(err, "connect to upstream")
+		return err
 	}
 
-	_, err = socks5.ClientHandshake(upstream, socks5.Version5, socks5.CommandConnect, metadata.Destination, "", "")
-	if err != nil {
-		return E.Cause(err, "upstream handshake failed")
-	}
-
-	return rw.CopyConn(context.Background(), upstream, conn)
+	return rw.CopyConn(context.Background(), conn, upstream)
 }
 
 func (c *localClient) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
-	upstream, err := net.Dial("tcp", c.upstream)
+	logrus.Info("inbound ", metadata.Protocol, " UDP ", metadata.Source, " ==> ", metadata.Destination)
+
+	upstream, err := c.upstream.DialContext(ctx, "tcp", metadata.Destination)
 	if err != nil {
-		return E.Cause(err, "connect to upstream")
+		return err
 	}
 
-	_, err = socks5.ClientHandshake(upstream, socks5.Version5, socks5.CommandConnect, M.ParseSocksaddrHostPort(uot.UOTMagicAddress, "443"), "", "")
-	if err != nil {
-		return E.Cause(err, "upstream handshake failed")
-	}
-
-	client := uot.NewClientConn(upstream)
-	return N.CopyPacketConn(ctx, client, conn)
+	return N.CopyPacketConn(ctx, conn, uot.NewClientConn(upstream))
 }
 
 func (c *localClient) OnError(err error) {

@@ -21,13 +21,15 @@ import (
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/http"
-	"github.com/sagernet/sing/protocol/socks5"
+	"github.com/sagernet/sing/protocol/socks"
+	"github.com/sagernet/sing/protocol/socks/socks4"
+	"github.com/sagernet/sing/protocol/socks/socks5"
 	"github.com/sagernet/sing/transport/tcp"
 	"github.com/sagernet/sing/transport/udp"
 )
 
 type Handler interface {
-	socks5.Handler
+	socks.Handler
 }
 
 type Listener struct {
@@ -60,10 +62,8 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	}
 	headerType, err := rw.ReadByte(conn)
 	switch headerType {
-	case socks5.Version4:
-		return E.New("socks4 request dropped (TODO)")
-	case socks5.Version5:
-		return socks5.HandleConnection0(ctx, conn, l.authenticator, M.AddrFromNetAddr(conn.LocalAddr()), l.handler, metadata)
+	case socks4.Version, socks5.Version:
+		return socks.HandleConnection0(ctx, conn, headerType, l.authenticator, l.handler, metadata)
 	}
 
 	reader := bufio.NewReader(&rw.BufferedReader{

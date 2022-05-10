@@ -13,7 +13,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/protocol/socks5"
 )
 
 const (
@@ -127,7 +126,7 @@ func ClientHandshakeRaw(conn net.Conn, key [KeyLength]byte, command byte, destin
 	if err != nil {
 		return err
 	}
-	err = socks5.AddressSerializer.WriteAddrPort(conn, destination)
+	err = M.SocksaddrSerializer.WriteAddrPort(conn, destination)
 	if err != nil {
 		return err
 	}
@@ -145,7 +144,7 @@ func ClientHandshakeRaw(conn net.Conn, key [KeyLength]byte, command byte, destin
 }
 
 func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr, payload []byte) error {
-	headerLen := KeyLength + socks5.AddressSerializer.AddrPortLen(destination) + 5
+	headerLen := KeyLength + M.SocksaddrSerializer.AddrPortLen(destination) + 5
 	var header *buf.Buffer
 	var writeHeader bool
 	if len(payload) > 0 && headerLen+len(payload) < 65535 {
@@ -161,7 +160,7 @@ func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr
 	common.Must1(header.Write(key[:]))
 	common.Must1(header.Write(CRLF))
 	common.Must(header.WriteByte(CommandTCP))
-	common.Must(socks5.AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must1(header.Write(CRLF))
 	common.Must1(header.Write(payload))
 
@@ -180,7 +179,7 @@ func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr
 }
 
 func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr, payload *buf.Buffer) error {
-	headerLen := KeyLength + 2*socks5.AddressSerializer.AddrPortLen(destination) + 9
+	headerLen := KeyLength + 2*M.SocksaddrSerializer.AddrPortLen(destination) + 9
 	payloadLen := payload.Len()
 	var header *buf.Buffer
 	var writeHeader bool
@@ -195,9 +194,9 @@ func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Soc
 	common.Must1(header.Write(key[:]))
 	common.Must1(header.Write(CRLF))
 	common.Must(header.WriteByte(CommandUDP))
-	common.Must(socks5.AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must1(header.Write(CRLF))
-	common.Must(socks5.AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must(binary.Write(header, binary.BigEndian, uint16(payloadLen)))
 	common.Must1(header.Write(CRLF))
 
@@ -216,7 +215,7 @@ func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Soc
 }
 
 func ReadPacket(conn net.Conn, buffer *buf.Buffer) (M.Socksaddr, error) {
-	destination, err := socks5.AddressSerializer.ReadAddrPort(conn)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(conn)
 	if err != nil {
 		return M.Socksaddr{}, E.Cause(err, "read destination")
 	}
@@ -241,7 +240,7 @@ func ReadPacket(conn net.Conn, buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func WritePacket(conn net.Conn, buffer *buf.Buffer, destination M.Socksaddr) error {
-	headerOverload := socks5.AddressSerializer.AddrPortLen(destination) + 4
+	headerOverload := M.SocksaddrSerializer.AddrPortLen(destination) + 4
 	var header *buf.Buffer
 	var writeHeader bool
 	bufferLen := buffer.Len()
@@ -253,7 +252,7 @@ func WritePacket(conn net.Conn, buffer *buf.Buffer, destination M.Socksaddr) err
 		defer runtime.KeepAlive(_buffer)
 		header = buf.With(common.Dup(_buffer))
 	}
-	common.Must(socks5.AddressSerializer.WriteAddrPort(header, destination))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must(binary.Write(header, binary.BigEndian, uint16(bufferLen)))
 	common.Must1(header.Write(CRLF))
 	if writeHeader {
