@@ -3,7 +3,7 @@ module github.com/sagernet/sing
 go 1.18
 
 require (
-	github.com/cloudflare/cloudflare-go v0.38.0
+	github.com/cloudflare/cloudflare-go v0.39.0
 	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d
 	github.com/go-acme/lego/v4 v4.6.0
 	github.com/go-resty/resty/v2 v2.7.0

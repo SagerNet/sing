@@ -35,5 +35,6 @@ sudo systemctl start ss
 ## Uninstall
 
 ```shell
-cli/ss-server/uninstal.sh
+sudo systemctl stop ss
+cli/ss-server/uninstall.sh
 ```
