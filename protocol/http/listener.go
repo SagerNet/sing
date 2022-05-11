@@ -45,7 +45,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 			if portStr == "" {
 				portStr = "80"
 			}
-			destination := M.ParseSocksaddrHostPort(request.URL.Hostname(), portStr)
+			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), portStr)
 			_, err := fmt.Fprintf(conn, "HTTP/%d.%d %03d %s\r\n\r\n", request.ProtoMajor, request.ProtoMinor, http.StatusOK, "Connection established")
 			if err != nil {
 				return E.Cause(err, "write http response")

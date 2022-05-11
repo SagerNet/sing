@@ -94,7 +94,7 @@ func run(cmd *cobra.Command, f *flags) {
 
 type client struct {
 	*mixed.Listener
-	server   string
+	server   M.Socksaddr
 	key      [trojan.KeyLength]byte
 	sni      string
 	insecure bool
@@ -149,7 +149,7 @@ func newClient(f *flags) (*client, error) {
 	}
 
 	c := &client{
-		server:   netip.AddrPortFrom(M.ParseAddr(f.Server), f.ServerPort).String(),
+		server:   M.ParseSocksaddrHostPort(f.Server, f.ServerPort),
 		key:      trojan.Key(f.Password),
 		sni:      f.ServerName,
 		insecure: f.Insecure,
@@ -174,7 +174,7 @@ func newClient(f *flags) (*client, error) {
 }
 
 func (c *client) connect(ctx context.Context) (*cTLS.Conn, error) {
-	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.server)
+	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (c *client) connect(ctx context.Context) (*cTLS.Conn, error) {
 }
 
 func (c *client) connectUTLS(ctx context.Context) (*tls.UConn, error) {
-	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.server)
+	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.server.String())
 	if err != nil {
 		return nil, err
 	}

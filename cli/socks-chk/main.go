@@ -55,7 +55,7 @@ func run(cmd *cobra.Command, args []string) {
 }
 
 func testSocksTCP(client *socks.Client) error {
-	tcpConn, err := client.DialContext(context.Background(), "tcp", M.ParseSocksaddrHostPort("1.0.0.1", "53"))
+	tcpConn, err := client.DialContext(context.Background(), "tcp", M.ParseSocksaddrHostPort("1.0.0.1", 53))
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func testSocksTCP(client *socks.Client) error {
 }
 
 func testSocksUDP(client *socks.Client) error {
-	udpConn, err := client.DialContext(context.Background(), "udp", M.ParseSocksaddrHostPort("1.0.0.1", "53"))
+	udpConn, err := client.DialContext(context.Background(), "udp", M.ParseSocksaddrHostPort("1.0.0.1", 53))
 	if err != nil {
 		return err
 	}

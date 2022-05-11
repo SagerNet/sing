@@ -166,7 +166,7 @@ func newClient(f *flags) (*client, error) {
 	}
 
 	c := &client{
-		server: M.SocksaddrFromAddrPort(M.ParseAddr(f.Server), f.ServerPort),
+		server: M.ParseSocksaddrHostPort(f.Server, f.ServerPort),
 		bypass: f.Bypass,
 	}
 

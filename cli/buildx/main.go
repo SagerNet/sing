@@ -2,14 +2,15 @@ package main
 
 import (
 	"archive/tar"
-	"github.com/klauspost/compress/zip"
-	"github.com/sagernet/sing/common/log"
-	"github.com/spf13/cobra"
-	"github.com/ulikunitz/xz"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/klauspost/compress/zip"
+	"github.com/sagernet/sing/common/log"
+	"github.com/spf13/cobra"
+	"github.com/ulikunitz/xz"
 )
 
 var logger = log.NewLogger("buildx")
@@ -120,7 +121,7 @@ func buildOne(app string, appPath string, outputDir string, release bool) error 
 		if err != nil {
 			return err
 		}
-		err = os.MkdirAll("bin", 0755)
+		err = os.MkdirAll("bin", 0o755)
 		if err != nil {
 			return err
 		}

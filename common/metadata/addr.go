@@ -181,10 +181,28 @@ func ParseSocksaddr(address string) Socksaddr {
 	if err != nil {
 		return Socksaddr{}
 	}
-	return ParseSocksaddrHostPort(host, port)
+	return ParseSocksaddrHostPortStr(host, port)
 }
 
-func ParseSocksaddrHostPort(host string, portStr string) Socksaddr {
+func ParseSocksaddrHostPort(host string, port uint16) Socksaddr {
+	netAddr, err := netip.ParseAddr(host)
+	if netAddr.Is4In6() {
+		netAddr = netip.AddrFrom4(netAddr.As4())
+	}
+	if err != nil {
+		return Socksaddr{
+			Fqdn: host,
+			Port: port,
+		}
+	} else {
+		return Socksaddr{
+			Addr: netAddr,
+			Port: port,
+		}
+	}
+}
+
+func ParseSocksaddrHostPortStr(host string, portStr string) Socksaddr {
 	port, _ := strconv.Atoi(portStr)
 	netAddr, err := netip.ParseAddr(host)
 	if netAddr.Is4In6() {
