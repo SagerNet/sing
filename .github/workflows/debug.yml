@@ -16,28 +16,6 @@ jobs:
   build:
     name: Debug build
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [ windows, linux, darwin ]
-        goarch: [ amd64, 386 ]
-        exclude:
-          - goarch: 386
-            goos: darwin
-        include:
-          - goos: darwin
-            goarch: arm64
-          - goos: linux
-            goarch: arm64
-          - goos: windows
-            goarch: arm64
-          - goos: android
-            goarch: arm64
-      fail-fast: false
-    env:
-      GOOS: ${{ matrix.goos }}
-      GOARCH: ${{ matrix.goarch }}
-      GOARM: ${{ matrix.goarm }}
-      CGO_ENABLED: 0
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -48,4 +26,4 @@ jobs:
         with:
           go-version: 1.18.1
       - name: Build
-        run: go build -v ./...
+        run: make

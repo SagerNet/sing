@@ -7,7 +7,7 @@ require (
 	github.com/dgryski/go-camellia v0.0.0-20191119043421-69a8a13fb23d
 	github.com/go-acme/lego/v4 v4.6.0
 	github.com/go-resty/resty/v2 v2.7.0
-	github.com/klauspost/compress v1.15.3
+	github.com/klauspost/compress v1.15.4
 	github.com/lucas-clemente/quic-go v0.27.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/geoip2-golang v1.7.0
@@ -19,7 +19,7 @@ require (
 	github.com/ulikunitz/xz v0.5.10
 	github.com/v2fly/v2ray-core/v5 v5.0.6
 	github.com/vishvananda/netlink v1.2.0-beta
-	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122
+	golang.org/x/crypto v0.0.0-20220511200225-c6db032c6c88
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
 	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
