@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
+cd $(dirname "$0")
 export GOAMD64=v3
-
 git fetch || exit 1
 git reset origin/main --hard || exit 1
 git clean -fdx || exit 1
