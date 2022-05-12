@@ -99,7 +99,7 @@ func (l *Listener) loop() {
 		for {
 			n, addr, err := l.ReadFromUDPAddrPort(data)
 			if err != nil {
-				l.handler.HandleError(err)
+				l.handler.HandleError(E.New("udp listener closed: ", err))
 				return
 			}
 			buffer.Resize(buf.ReversedHeader, n)
@@ -118,13 +118,13 @@ func (l *Listener) loop() {
 		for {
 			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(data, oob)
 			if err != nil {
-				l.handler.HandleError(err)
+				l.handler.HandleError(E.New("udp listener closed: ", err))
 				return
 			}
 			destination, err := redir.GetOriginalDestinationFromOOB(oob[:oobN])
 			if err != nil {
 				l.handler.HandleError(E.Cause(err, "get original destination"))
-				return
+				continue
 			}
 			buffer.Resize(buf.ReversedHeader, n)
 			err = l.handler.NewPacket(l, buffer, M.Metadata{

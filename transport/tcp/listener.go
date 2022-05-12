@@ -83,8 +83,9 @@ func (l *Listener) Close() error {
 
 func (l *Listener) loop() {
 	for {
-		tcpConn, err := l.Accept()
+		tcpConn, err := l.AcceptTCP()
 		if err != nil {
+			l.handler.HandleError(E.New("tcp listener closed: ", err))
 			l.Close()
 			return
 		}
