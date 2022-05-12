@@ -41,7 +41,6 @@ func (e *ServerConnError) Error() string {
 }
 
 type ServerPacketError struct {
-	N.PacketConn
 	Source M.Socksaddr
 	Cause  error
 }

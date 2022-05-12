@@ -67,7 +67,6 @@ var List = []string{
 func New(method string, pskList [][]byte, password string, secureRNG io.Reader) (shadowsocks.Method, error) {
 	m := &Method{
 		name:         method,
-		pskList:      pskList,
 		secureRNG:    secureRNG,
 		replayFilter: replay.NewCuckoo(60),
 	}
@@ -125,6 +124,7 @@ func New(method string, pskList [][]byte, password string, secureRNG io.Reader) 
 		m.udpCipher = newXChacha20Poly1305(pskList[0])
 	}
 
+	m.pskList = pskList
 	return m, nil
 }
 
@@ -479,9 +479,6 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	if err != nil {
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	if c.udpCipher != nil {
 		c.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
 		buffer.Extend(c.udpCipher.Overhead())
@@ -684,9 +681,6 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		binary.Write(buffer, binary.BigEndian, uint16(0)), // padding length
 	)
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, destination)
-	if err != nil {
-		return
-	}
 	if err != nil {
 		return
 	}

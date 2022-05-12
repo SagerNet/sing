@@ -71,17 +71,14 @@ func NewService(method string, psk []byte, password string, secureRNG io.Reader,
 		s.constructor = newChacha20Poly1305
 	}
 
-	if len(psk) == s.keySaltLength {
-		s.psk = psk
-	} else if len(psk) != 0 {
-		if len(psk) < s.keySaltLength {
-			return nil, shadowsocks.ErrBadKey
-		}
-		s.psk = Key(psk, s.keySaltLength)
+	if len(psk) < s.keySaltLength {
+		return nil, shadowsocks.ErrBadKey
+	} else if len(psk) > s.keySaltLength {
+		psk = Key(psk, s.keySaltLength)
 	} else if password == "" {
 		return nil, ErrMissingPasswordPSK
 	} else {
-		s.psk = Key([]byte(password), s.keySaltLength)
+		psk = Key([]byte(password), s.keySaltLength)
 	}
 
 	switch method {
@@ -93,6 +90,7 @@ func NewService(method string, psk []byte, password string, secureRNG io.Reader,
 		s.udpCipher = newXChacha20Poly1305(psk)
 	}
 
+	s.psk = psk
 	return s, nil
 }
 
@@ -271,7 +269,7 @@ func (c *serverConn) WriterReplaceable() bool {
 func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	err := s.newPacket(conn, buffer, metadata)
 	if err != nil {
-		err = &shadowsocks.ServerPacketError{PacketConn: conn, Source: metadata.Source, Cause: err}
+		err = &shadowsocks.ServerPacketError{Source: metadata.Source, Cause: err}
 	}
 	return err
 }
