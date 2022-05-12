@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -32,6 +31,7 @@ import (
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
+	"github.com/sagernet/sing/protocol/shadowsocks/shadowimpl"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowstream"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sagernet/sing/transport/system"
@@ -182,53 +182,11 @@ func newClient(f *flags) (*client, error) {
 		if f.ReducedSaltEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{Reader: rng}
 		}
-		if common.Contains(shadowstream.List, f.Method) {
-			var key []byte
-			if f.Key != "" {
-				kb, err := base64.StdEncoding.DecodeString(f.Key)
-				if err != nil {
-					return nil, E.Cause(err, "decode key")
-				}
-				key = kb
-			}
-			method, err := shadowstream.New(f.Method, key, []byte(f.Password), rng)
-			if err != nil {
-				return nil, err
-			}
-			c.method = method
-		} else if common.Contains(shadowaead.List, f.Method) {
-			var key []byte
-			if f.Key != "" {
-				kb, err := base64.StdEncoding.DecodeString(f.Key)
-				if err != nil {
-					return nil, E.Cause(err, "decode key")
-				}
-				key = kb
-			}
-			method, err := shadowaead.New(f.Method, key, []byte(f.Password), rng)
-			if err != nil {
-				return nil, err
-			}
-			c.method = method
-		} else if common.Contains(shadowaead_2022.List, f.Method) {
-			var pskList [][]byte
-			if f.Key != "" {
-				keyStrList := strings.Split(f.Key, ":")
-				pskList = make([][]byte, len(keyStrList))
-				for i, keyStr := range keyStrList {
-					kb, err := base64.StdEncoding.DecodeString(keyStr)
-					if err != nil {
-						return nil, E.Cause(err, "decode key")
-					}
-					pskList[i] = kb
-				}
-			}
-			method, err := shadowaead_2022.New(f.Method, pskList, rng)
-			if err != nil {
-				return nil, err
-			}
-			c.method = method
+		method, err := shadowimpl.FetchMethod(f.Method, f.Key, f.Password, rng)
+		if err != nil {
+			return nil, err
 		}
+		c.method = method
 	}
 
 	c.dialer.Control = func(network, address string, c syscall.RawConn) error {

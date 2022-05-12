@@ -53,7 +53,7 @@ type Method struct {
 	secureRNG          io.Reader
 }
 
-func New(method string, key []byte, password []byte, secureRNG io.Reader) (shadowsocks.Method, error) {
+func New(method string, key []byte, password string, secureRNG io.Reader) (shadowsocks.Method, error) {
 	m := &Method{
 		name:      method,
 		secureRNG: secureRNG,
@@ -167,11 +167,11 @@ func New(method string, key []byte, password []byte, secureRNG io.Reader) (shado
 	if len(key) == m.keyLength {
 		m.key = key
 	} else if len(key) > 0 {
-		return nil, shadowaead.ErrBadKey
-	} else if len(password) > 0 {
-		m.key = shadowsocks.Key(password, m.keyLength)
+		return nil, shadowsocks.ErrBadKey
+	} else if password != "" {
+		m.key = shadowsocks.Key([]byte(password), m.keyLength)
 	} else {
-		return nil, shadowaead.ErrMissingPassword
+		return nil, shadowsocks.ErrMissingPassword
 	}
 	return m, nil
 }

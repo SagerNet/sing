@@ -29,7 +29,7 @@ func TestMultiService(t *testing.T) {
 	random.Default.Read(uPSK[:])
 	multiService.AddUser("my user", uPSK[:])
 
-	client, err := shadowaead_2022.New(method, [][]byte{iPSK[:], uPSK[:]}, random.Default)
+	client, err := shadowaead_2022.New(method, [][]byte{iPSK[:], uPSK[:]}, "", random.Default)
 	if err != nil {
 		t.Fatal(err)
 	}

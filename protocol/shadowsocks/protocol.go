@@ -7,8 +7,14 @@ import (
 	"math/rand"
 	"net"
 
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+)
+
+var (
+	ErrBadKey          = E.New("shadowsocks: bad key")
+	ErrMissingPassword = E.New("shadowsocks: missing password")
 )
 
 type Method interface {

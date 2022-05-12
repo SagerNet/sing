@@ -27,12 +27,7 @@ var List = []string{
 	"xchacha20-ietf-poly1305",
 }
 
-var (
-	ErrBadKey          = E.New("shadowsocks: bad key")
-	ErrMissingPassword = E.New("shadowsocks: missing password")
-)
-
-func New(method string, key []byte, password []byte, secureRNG io.Reader) (shadowsocks.Method, error) {
+func New(method string, key []byte, password string, secureRNG io.Reader) (shadowsocks.Method, error) {
 	m := &Method{
 		name:      method,
 		secureRNG: secureRNG,
@@ -65,11 +60,11 @@ func New(method string, key []byte, password []byte, secureRNG io.Reader) (shado
 	if len(key) == m.keySaltLength {
 		m.key = key
 	} else if len(key) > 0 {
-		return nil, ErrBadKey
-	} else if len(password) > 0 {
-		m.key = shadowsocks.Key(password, m.keySaltLength)
+		return nil, shadowsocks.ErrBadKey
+	} else if password == "" {
+		return nil, shadowsocks.ErrMissingPassword
 	} else {
-		return nil, ErrMissingPassword
+		m.key = shadowsocks.Key([]byte(password), m.keySaltLength)
 	}
 	return m, nil
 }
@@ -181,12 +176,10 @@ func (m *Method) DecodePacket(buffer *buf.Buffer) error {
 
 type clientConn struct {
 	net.Conn
-
 	method      *Method
 	destination M.Socksaddr
-
-	reader *Reader
-	writer *Writer
+	reader      *Reader
+	writer      *Writer
 }
 
 func (c *clientConn) writeRequest(payload []byte) error {

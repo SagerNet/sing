@@ -30,10 +30,10 @@ type MultiService[U comparable] struct {
 }
 
 func (s *MultiService[U]) AddUser(user U, key []byte) error {
-	if len(key) < s.keyLength {
-		return shadowaead.ErrBadKey
-	} else if len(key) > s.keyLength {
-		key = DerivePSK(key, s.keyLength)
+	if len(key) < s.keySaltLength {
+		return shadowsocks.ErrBadKey
+	} else if len(key) > s.keySaltLength {
+		key = Key(key, s.keySaltLength)
 	}
 
 	var uPSKHash [aes.BlockSize]byte
@@ -67,7 +67,7 @@ func NewMultiService[U comparable](method string, iPSK []byte, secureRNG io.Read
 		return nil, E.New("unsupported method ", method)
 	}
 
-	ss, err := NewService(method, iPSK, secureRNG, udpTimeout, handler)
+	ss, err := NewService(method, iPSK, "", secureRNG, udpTimeout, handler)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (s *MultiService[U]) NewConnection(ctx context.Context, conn net.Conn, meta
 }
 
 func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := make([]byte, SaltSize)
+	requestSalt := make([]byte, s.keySaltLength)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
 		return E.Cause(err, "read request salt")
@@ -108,10 +108,10 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return E.Cause(err, "read extended identity header")
 	}
 
-	keyMaterial := buf.Make(s.keyLength + SaltSize)
+	keyMaterial := buf.Make(s.keySaltLength * 2)
 	copy(keyMaterial, s.psk)
-	copy(keyMaterial[s.keyLength:], requestSalt)
-	_identitySubkey := buf.Make(s.keyLength)
+	copy(keyMaterial[s.keySaltLength:], requestSalt)
+	_identitySubkey := buf.Make(s.keySaltLength)
 	identitySubkey := common.Dup(_identitySubkey)
 	blake3.DeriveKey(identitySubkey, "shadowsocks 2022 identity subkey", keyMaterial)
 	s.blockConstructor(identitySubkey).Decrypt(eiHeader, eiHeader)
@@ -126,7 +126,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return E.New("invalid request")
 	}
 
-	requestKey := DeriveSessionKey(uPSK, requestSalt, s.keyLength)
+	requestKey := SessionKey(uPSK, requestSalt, s.keySaltLength)
 	reader := shadowaead.NewReader(
 		conn,
 		s.constructor(common.Dup(requestKey)),
@@ -230,7 +230,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 	})
 	if !loaded {
 		session.remoteSessionId = sessionId
-		key := DeriveSessionKey(uPSK, packetHeader[:8], s.keyLength)
+		key := SessionKey(uPSK, packetHeader[:8], s.keySaltLength)
 		session.remoteCipher = s.constructor(common.Dup(key))
 		runtime.KeepAlive(key)
 	}
@@ -312,7 +312,7 @@ func (m *MultiService[U]) newUDPSession(uPSK []byte) *serverUDPSession {
 	session.packetId--
 	sessionId := make([]byte, 8)
 	binary.BigEndian.PutUint64(sessionId, session.sessionId)
-	key := DeriveSessionKey(uPSK, sessionId, m.keyLength)
+	key := SessionKey(uPSK, sessionId, m.keySaltLength)
 	session.cipher = m.constructor(common.Dup(key))
 	runtime.KeepAlive(key)
 	return session

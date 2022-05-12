@@ -30,7 +30,7 @@ import (
 type Service struct {
 	name             string
 	secureRNG        io.Reader
-	keyLength        int
+	keySaltLength    int
 	constructor      func(key []byte) cipher.AEAD
 	blockConstructor func(key []byte) cipher.Block
 	udpCipher        cipher.AEAD
@@ -42,7 +42,7 @@ type Service struct {
 	sessions         *cache.LruCache[uint64, *serverUDPSession]
 }
 
-func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, psk []byte, password string, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:         method,
 		secureRNG:    secureRNG,
@@ -57,25 +57,31 @@ func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64
 
 	switch method {
 	case "2022-blake3-aes-128-gcm":
-		s.keyLength = 16
+		s.keySaltLength = 16
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
 	case "2022-blake3-aes-256-gcm":
-		s.keyLength = 32
+		s.keySaltLength = 32
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
 	case "2022-blake3-chacha20-poly1305":
-		s.keyLength = 32
+		s.keySaltLength = 32
 		s.constructor = newChacha20Poly1305
 	}
 
-	if len(psk) < s.keyLength {
-		return nil, shadowaead.ErrBadKey
-	} else if len(psk) > s.keyLength {
-		psk = DerivePSK(psk, s.keyLength)
+	if len(psk) == s.keySaltLength {
+		s.psk = psk
+	} else if len(psk) != 0 {
+		if len(psk) < s.keySaltLength {
+			return nil, shadowsocks.ErrBadKey
+		}
+		s.psk = Key(psk, s.keySaltLength)
+	} else if password == "" {
+		return nil, ErrMissingPasswordPSK
+	} else {
+		s.psk = Key([]byte(password), s.keySaltLength)
 	}
 
-	s.psk = psk
 	switch method {
 	case "2022-blake3-aes-128-gcm":
 		s.udpBlockCipher = newAES(psk)
@@ -97,7 +103,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := make([]byte, SaltSize)
+	requestSalt := buf.Make(s.keySaltLength)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
 		return E.Cause(err, "read request salt")
@@ -107,7 +113,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return E.New("salt not unique")
 	}
 
-	requestKey := DeriveSessionKey(s.psk, requestSalt, s.keyLength)
+	requestKey := SessionKey(s.psk, requestSalt, s.keySaltLength)
 	reader := shadowaead.NewReader(
 		conn,
 		s.constructor(common.Dup(requestKey)),
@@ -175,10 +181,10 @@ type serverConn struct {
 }
 
 func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
-	var _salt [SaltSize]byte
+	_salt := buf.Make(c.keySaltLength)
 	salt := common.Dup(_salt[:])
 	common.Must1(io.ReadFull(c.secureRNG, salt))
-	key := DeriveSessionKey(c.uPSK, salt, c.keyLength)
+	key := SessionKey(c.uPSK, salt, c.keySaltLength)
 	runtime.KeepAlive(_salt)
 	writer := shadowaead.NewWriter(
 		c.Conn,
@@ -294,7 +300,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 	if !loaded {
 		session.remoteSessionId = sessionId
 		if packetHeader != nil {
-			key := DeriveSessionKey(s.psk, packetHeader[:8], s.keyLength)
+			key := SessionKey(s.psk, packetHeader[:8], s.keySaltLength)
 			session.remoteCipher = s.constructor(common.Dup(key))
 			runtime.KeepAlive(key)
 		}
@@ -439,7 +445,7 @@ func (m *Service) newUDPSession() *serverUDPSession {
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
-		key := DeriveSessionKey(m.psk, sessionId, m.keyLength)
+		key := SessionKey(m.psk, sessionId, m.keySaltLength)
 		session.cipher = m.constructor(common.Dup(key))
 		runtime.KeepAlive(key)
 	}

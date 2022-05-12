@@ -30,7 +30,7 @@ type Service struct {
 	udpNat        *udpnat.Service[netip.AddrPort]
 }
 
-func NewService(method string, key []byte, password []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, key []byte, password string, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:      method,
 		secureRNG: secureRNG,
@@ -65,11 +65,11 @@ func NewService(method string, key []byte, password []byte, secureRNG io.Reader,
 	if len(key) == s.keySaltLength {
 		s.key = key
 	} else if len(key) > 0 {
-		return nil, ErrBadKey
-	} else if len(password) > 0 {
-		s.key = shadowsocks.Key(password, s.keySaltLength)
+		return nil, shadowsocks.ErrBadKey
+	} else if password != "" {
+		s.key = shadowsocks.Key([]byte(password), s.keySaltLength)
 	} else {
-		return nil, ErrMissingPassword
+		return nil, shadowsocks.ErrMissingPassword
 	}
 	return s, nil
 }

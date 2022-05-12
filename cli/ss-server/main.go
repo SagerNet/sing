@@ -143,7 +143,7 @@ func newServer(f *flags) (*server, error) {
 			}
 			key = kb
 		}
-		service, err := shadowaead.NewService(f.Method, key, []byte(f.Password), random.Default, udpTimeout, s)
+		service, err := shadowaead.NewService(f.Method, key, f.Password, random.Default, udpTimeout, s)
 		if err != nil {
 			return nil, err
 		}
@@ -157,7 +157,7 @@ func newServer(f *flags) (*server, error) {
 			}
 			key = kb
 		}
-		service, err := shadowaead_2022.NewService(f.Method, key, random.Default, udpTimeout, s)
+		service, err := shadowaead_2022.NewService(f.Method, key, f.Password, random.Default, udpTimeout, s)
 		if err != nil {
 			return nil, err
 		}
