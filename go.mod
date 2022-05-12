@@ -8,7 +8,7 @@ require (
 	github.com/go-acme/lego/v4 v4.6.0
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/klauspost/compress v1.15.4
-	github.com/lucas-clemente/quic-go v0.27.0
+	github.com/lucas-clemente/quic-go v0.26.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/geoip2-golang v1.7.0
 	github.com/refraction-networking/utls v1.1.0
@@ -17,7 +17,7 @@ require (
 	github.com/spf13/cobra v1.4.0
 	github.com/u-root/u-root v0.8.1-0.20220504042106-94cc250573fb
 	github.com/ulikunitz/xz v0.5.10
-	github.com/v2fly/v2ray-core/v5 v5.0.6
+	github.com/v2fly/v2ray-core/v5 v5.0.3
 	github.com/vishvananda/netlink v1.2.0-beta
 	golang.org/x/crypto v0.0.0-20220511200225-c6db032c6c88
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
@@ -29,7 +29,6 @@ require (
 )
 
 require (
-	github.com/adrg/xdg v0.4.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.1 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/dgryski/go-metro v0.0.0-20211217172704-adc40b04c140 // indirect
