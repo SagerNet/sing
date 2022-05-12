@@ -15,21 +15,21 @@ import (
 
 func TestMultiService(t *testing.T) {
 	method := "2022-blake3-aes-128-gcm"
-	var iPSK [shadowaead_2022.KeySaltSize]byte
+	var iPSK [16]byte
 	random.Default.Read(iPSK[:])
 
 	var wg sync.WaitGroup
 
-	multiService, err := shadowaead_2022.NewMultiService[string](method, iPSK, random.Default, 500, &multiHandler{t, &wg})
+	multiService, err := shadowaead_2022.NewMultiService[string](method, iPSK[:], random.Default, 500, &multiHandler{t, &wg})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var uPSK [shadowaead_2022.KeySaltSize]byte
+	var uPSK [16]byte
 	random.Default.Read(uPSK[:])
-	multiService.AddUser("my user", uPSK)
+	multiService.AddUser("my user", uPSK[:])
 
-	client, err := shadowaead_2022.New(method, [][shadowaead_2022.KeySaltSize]byte{iPSK, uPSK}, random.Default)
+	client, err := shadowaead_2022.New(method, [][]byte{iPSK[:], uPSK[:]}, random.Default)
 	if err != nil {
 		t.Fatal(err)
 	}

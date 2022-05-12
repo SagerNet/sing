@@ -28,8 +28,8 @@ var List = []string{
 }
 
 var (
-	ErrBadKey          = E.New("bad key")
-	ErrMissingPassword = E.New("missing password")
+	ErrBadKey          = E.New("shadowsocks: bad key")
+	ErrMissingPassword = E.New("shadowsocks: missing password")
 )
 
 func New(method string, key []byte, password []byte, secureRNG io.Reader) (shadowsocks.Method, error) {

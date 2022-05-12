@@ -35,14 +35,14 @@ type Service struct {
 	blockConstructor func(key []byte) cipher.Block
 	udpCipher        cipher.AEAD
 	udpBlockCipher   cipher.Block
-	psk              [KeySaltSize]byte
+	psk              []byte
 	replayFilter     replay.Filter
 	handler          shadowsocks.Handler
 	udpNat           *udpnat.Service[uint64]
 	sessions         *cache.LruCache[uint64, *serverUDPSession]
 }
 
-func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
+func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:         method,
 		psk:          psk,
@@ -61,15 +61,25 @@ func NewService(method string, psk [KeySaltSize]byte, secureRNG io.Reader, udpTi
 		s.keyLength = 16
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
-		s.udpBlockCipher = newAES(s.psk[:])
 	case "2022-blake3-aes-256-gcm":
 		s.keyLength = 32
 		s.constructor = newAESGCM
 		s.blockConstructor = newAES
-		s.udpBlockCipher = newAES(s.psk[:])
 	case "2022-blake3-chacha20-poly1305":
 		s.keyLength = 32
 		s.constructor = newChacha20Poly1305
+	}
+
+	if len(psk) != s.keyLength {
+		return nil, shadowaead.ErrBadKey
+	}
+
+	switch method {
+	case "2022-blake3-aes-128-gcm":
+		s.udpBlockCipher = newAES(s.psk[:])
+	case "2022-blake3-aes-256-gcm":
+		s.udpBlockCipher = newAES(s.psk[:])
+	case "2022-blake3-chacha20-poly1305":
 		s.udpCipher = newXChacha20Poly1305(s.psk[:])
 	}
 
@@ -85,7 +95,7 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := make([]byte, KeySaltSize)
+	requestSalt := make([]byte, SaltSize)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
 		return E.Cause(err, "read request salt")
@@ -155,7 +165,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 type serverConn struct {
 	*Service
 	net.Conn
-	uPSK        [KeySaltSize]byte
+	uPSK        []byte
 	access      sync.Mutex
 	reader      *shadowaead.Reader
 	writer      *shadowaead.Writer
@@ -163,7 +173,7 @@ type serverConn struct {
 }
 
 func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
-	var _salt [KeySaltSize]byte
+	var _salt [SaltSize]byte
 	salt := common.Dup(_salt[:])
 	common.Must1(io.ReadFull(c.secureRNG, salt))
 	key := Blake3DeriveKey(c.uPSK[:], salt, c.keyLength)

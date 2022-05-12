@@ -24,12 +24,12 @@ import (
 type MultiService[U comparable] struct {
 	*Service
 
-	uPSK      map[U][KeySaltSize]byte
+	uPSK      map[U][]byte
 	uPSKHash  map[U][aes.BlockSize]byte
 	uPSKHashR map[[aes.BlockSize]byte]U
 }
 
-func (s *MultiService[U]) AddUser(user U, key [KeySaltSize]byte) {
+func (s *MultiService[U]) AddUser(user U, key []byte) {
 	var uPSKHash [aes.BlockSize]byte
 	hash512 := blake3.Sum512(key[:])
 	copy(uPSKHash[:], hash512[:])
@@ -52,7 +52,7 @@ func (s *MultiService[U]) RemoveUser(user U) {
 	delete(s.uPSKHash, user)
 }
 
-func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (*MultiService[U], error) {
+func NewMultiService[U comparable](method string, iPSK []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (*MultiService[U], error) {
 	switch method {
 	case "2022-blake3-aes-128-gcm":
 	case "2022-blake3-aes-256-gcm":
@@ -68,7 +68,7 @@ func NewMultiService[U comparable](method string, iPSK [KeySaltSize]byte, secure
 	s := &MultiService[U]{
 		Service: ss.(*Service),
 
-		uPSK:      make(map[U][KeySaltSize]byte),
+		uPSK:      make(map[U][]byte),
 		uPSKHash:  make(map[U][aes.BlockSize]byte),
 		uPSKHashR: make(map[[aes.BlockSize]byte]U),
 	}
@@ -84,7 +84,7 @@ func (s *MultiService[U]) NewConnection(ctx context.Context, conn net.Conn, meta
 }
 
 func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := make([]byte, KeySaltSize)
+	requestSalt := make([]byte, SaltSize)
 	_, err := io.ReadFull(conn, requestSalt)
 	if err != nil {
 		return E.Cause(err, "read request salt")
@@ -101,9 +101,9 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return E.Cause(err, "read extended identity header")
 	}
 
-	keyMaterial := make([]byte, 2*KeySaltSize)
+	keyMaterial := buf.Make(s.keyLength + SaltSize)
 	copy(keyMaterial, s.psk[:])
-	copy(keyMaterial[KeySaltSize:], requestSalt)
+	copy(keyMaterial[s.keyLength:], requestSalt)
 	_identitySubkey := buf.Make(s.keyLength)
 	identitySubkey := common.Dup(_identitySubkey)
 	blake3.DeriveKey(identitySubkey, "shadowsocks 2022 identity subkey", keyMaterial)
@@ -111,7 +111,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	runtime.KeepAlive(_identitySubkey)
 
 	var user U
-	var uPSK [KeySaltSize]byte
+	var uPSK []byte
 	if u, loaded := s.uPSKHashR[_eiHeader]; loaded {
 		user = u
 		uPSK = s.uPSK[u]
@@ -200,7 +200,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 	}
 
 	var user U
-	var uPSK [KeySaltSize]byte
+	var uPSK []byte
 	if u, loaded := s.uPSKHashR[_eiHeader]; loaded {
 		user = u
 		uPSK = s.uPSK[u]
@@ -299,7 +299,7 @@ process:
 	return nil
 }
 
-func (m *MultiService[U]) newUDPSession(uPSK [KeySaltSize]byte) *serverUDPSession {
+func (m *MultiService[U]) newUDPSession(uPSK []byte) *serverUDPSession {
 	session := &serverUDPSession{}
 	common.Must(binary.Read(m.secureRNG, binary.BigEndian, &session.sessionId))
 	session.packetId--
