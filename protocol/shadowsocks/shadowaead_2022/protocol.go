@@ -49,13 +49,13 @@ const (
 )
 
 var (
-	ErrMissingPasswordPSK    = E.New("shadowsocks: missing password or psk")
-	ErrBadHeaderType         = E.New("shadowsocks: bad header type")
-	ErrBadTimestamp          = E.New("shadowsocks: bad timestamp")
-	ErrBadRequestSalt        = E.New("shadowsocks: bad request salt")
-	ErrBadClientSessionId    = E.New("shadowsocks: bad client session id")
-	ErrPacketIdNotUnique     = E.New("shadowsocks: packet id not unique")
-	ErrTooManyServerSessions = E.New("shadowsocks: server session changed more than once during the last minute")
+	ErrMissingPasswordPSK    = E.New("missing password or psk")
+	ErrBadHeaderType         = E.New("bad header type")
+	ErrBadTimestamp          = E.New("bad timestamp")
+	ErrBadRequestSalt        = E.New("bad request salt")
+	ErrBadClientSessionId    = E.New("bad client session id")
+	ErrPacketIdNotUnique     = E.New("packet id not unique")
+	ErrTooManyServerSessions = E.New("server session changed more than once during the last minute")
 )
 
 var List = []string{

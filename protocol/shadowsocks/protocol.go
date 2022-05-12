@@ -13,8 +13,8 @@ import (
 )
 
 var (
-	ErrBadKey          = E.New("shadowsocks: bad key")
-	ErrMissingPassword = E.New("shadowsocks: missing password")
+	ErrBadKey          = E.New("bad key")
+	ErrMissingPassword = E.New("missing password")
 )
 
 type Method interface {

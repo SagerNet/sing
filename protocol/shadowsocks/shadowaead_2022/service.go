@@ -27,6 +27,8 @@ import (
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 )
 
+var ErrNoPadding = E.New("bad request: missing payload or padding")
+
 type Service struct {
 	name             string
 	secureRNG        io.Reader
@@ -157,6 +159,8 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		if err != nil {
 			return E.Cause(err, "discard padding")
 		}
+	} else if reader.Cached() == 0 {
+		return ErrNoPadding
 	}
 
 	metadata.Protocol = "shadowsocks"

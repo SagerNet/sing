@@ -198,6 +198,10 @@ func (r *Reader) Discard(n int) error {
 	}
 }
 
+func (r *Reader) Cached() int {
+	return r.cached
+}
+
 type Writer struct {
 	upstream      io.Writer
 	cipher        cipher.AEAD

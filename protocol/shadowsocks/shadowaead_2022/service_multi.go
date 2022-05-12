@@ -169,6 +169,8 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		if err != nil {
 			return E.Cause(err, "discard padding")
 		}
+	} else if reader.Cached() == 0 {
+		return ErrNoPadding
 	}
 
 	var userCtx shadowsocks.UserContext[U]
