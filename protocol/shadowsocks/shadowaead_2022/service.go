@@ -45,7 +45,6 @@ type Service struct {
 func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
 		name:         method,
-		psk:          psk,
 		secureRNG:    secureRNG,
 		replayFilter: replay.NewCuckoo(60),
 		handler:      handler,
@@ -70,17 +69,20 @@ func NewService(method string, psk []byte, secureRNG io.Reader, udpTimeout int64
 		s.constructor = newChacha20Poly1305
 	}
 
-	if len(psk) != s.keyLength {
+	if len(psk) < s.keyLength {
 		return nil, shadowaead.ErrBadKey
+	} else if len(psk) > s.keyLength {
+		psk = DerivePSK(psk, s.keyLength)
 	}
 
+	s.psk = psk
 	switch method {
 	case "2022-blake3-aes-128-gcm":
-		s.udpBlockCipher = newAES(s.psk[:])
+		s.udpBlockCipher = newAES(psk)
 	case "2022-blake3-aes-256-gcm":
-		s.udpBlockCipher = newAES(s.psk[:])
+		s.udpBlockCipher = newAES(psk)
 	case "2022-blake3-chacha20-poly1305":
-		s.udpCipher = newXChacha20Poly1305(s.psk[:])
+		s.udpCipher = newXChacha20Poly1305(psk)
 	}
 
 	return s, nil
@@ -105,7 +107,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return E.New("salt not unique")
 	}
 
-	requestKey := Blake3DeriveKey(s.psk[:], requestSalt, s.keyLength)
+	requestKey := DeriveSessionKey(s.psk, requestSalt, s.keyLength)
 	reader := shadowaead.NewReader(
 		conn,
 		s.constructor(common.Dup(requestKey)),
@@ -176,7 +178,7 @@ func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
 	var _salt [SaltSize]byte
 	salt := common.Dup(_salt[:])
 	common.Must1(io.ReadFull(c.secureRNG, salt))
-	key := Blake3DeriveKey(c.uPSK[:], salt, c.keyLength)
+	key := DeriveSessionKey(c.uPSK, salt, c.keyLength)
 	runtime.KeepAlive(_salt)
 	writer := shadowaead.NewWriter(
 		c.Conn,
@@ -292,7 +294,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 	if !loaded {
 		session.remoteSessionId = sessionId
 		if packetHeader != nil {
-			key := Blake3DeriveKey(s.psk[:], packetHeader[:8], s.keyLength)
+			key := DeriveSessionKey(s.psk, packetHeader[:8], s.keyLength)
 			session.remoteCipher = s.constructor(common.Dup(key))
 			runtime.KeepAlive(key)
 		}
@@ -437,7 +439,7 @@ func (m *Service) newUDPSession() *serverUDPSession {
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
-		key := Blake3DeriveKey(m.psk[:], sessionId, m.keyLength)
+		key := DeriveSessionKey(m.psk, sessionId, m.keyLength)
 		session.cipher = m.constructor(common.Dup(key))
 		runtime.KeepAlive(key)
 	}

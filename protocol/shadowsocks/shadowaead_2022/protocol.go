@@ -65,7 +65,6 @@ var List = []string{
 func New(method string, pskList [][]byte, secureRNG io.Reader) (shadowsocks.Method, error) {
 	m := &Method{
 		name:         method,
-		psk:          pskList[len(pskList)-1],
 		pskList:      pskList,
 		secureRNG:    secureRNG,
 		replayFilter: replay.NewCuckoo(60),
@@ -85,11 +84,15 @@ func New(method string, pskList [][]byte, secureRNG io.Reader) (shadowsocks.Meth
 		m.constructor = newChacha20Poly1305
 	}
 
-	for _, psk := range pskList {
-		if len(psk) != m.keyLength {
+	for i, psk := range pskList {
+		if len(psk) < m.keyLength {
 			return nil, shadowaead.ErrBadKey
+		} else if len(psk) > m.keyLength {
+			pskList[i] = DerivePSK(psk, m.keyLength)
 		}
 	}
+
+	m.psk = pskList[len(pskList)-1]
 
 	if len(pskList) > 1 {
 		pskHash := make([]byte, (len(pskList)-1)*aes.BlockSize)
@@ -111,10 +114,17 @@ func New(method string, pskList [][]byte, secureRNG io.Reader) (shadowsocks.Meth
 	case "2022-blake3-chacha20-poly1305":
 		m.udpCipher = newXChacha20Poly1305(m.psk)
 	}
+
 	return m, nil
 }
 
-func Blake3DeriveKey(psk []byte, salt []byte, keyLength int) []byte {
+func DerivePSK(key []byte, keyLength int) []byte {
+	outKey := buf.Make(keyLength)
+	blake3.DeriveKey(outKey, "shadowsocks 2022 pre shared key", key)
+	return outKey
+}
+
+func DeriveSessionKey(psk []byte, salt []byte, keyLength int) []byte {
 	sessionKey := buf.Make(len(psk) + len(salt))
 	copy(sessionKey, psk)
 	copy(sessionKey[len(psk):], salt)
@@ -232,7 +242,7 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	salt := make([]byte, SaltSize)
 	common.Must1(io.ReadFull(c.method.secureRNG, salt))
 
-	key := Blake3DeriveKey(c.method.psk, salt, c.method.keyLength)
+	key := DeriveSessionKey(c.method.psk, salt, c.method.keyLength)
 	writer := shadowaead.NewWriter(
 		c.Conn,
 		c.method.constructor(common.Dup(key)),
@@ -301,7 +311,7 @@ func (c *clientConn) readResponse() error {
 		return E.New("salt not unique")
 	}
 
-	key := Blake3DeriveKey(c.method.psk, salt, c.method.keyLength)
+	key := DeriveSessionKey(c.method.psk, salt, c.method.keyLength)
 	runtime.KeepAlive(_salt)
 	reader := shadowaead.NewReader(
 		c.Conn,
@@ -516,7 +526,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		} else if sessionId == c.session.lastRemoteSessionId {
 			remoteCipher = c.session.lastRemoteCipher
 		} else {
-			key := Blake3DeriveKey(c.method.psk, packetHeader[:8], c.method.keyLength)
+			key := DeriveSessionKey(c.method.psk, packetHeader[:8], c.method.keyLength)
 			remoteCipher = c.method.constructor(common.Dup(key))
 			runtime.KeepAlive(key)
 		}
@@ -716,7 +726,7 @@ func (m *Method) newUDPSession() *udpSession {
 	if m.udpCipher == nil {
 		sessionId := make([]byte, 8)
 		binary.BigEndian.PutUint64(sessionId, session.sessionId)
-		key := Blake3DeriveKey(m.psk, sessionId, m.keyLength)
+		key := DeriveSessionKey(m.psk, sessionId, m.keyLength)
 		session.cipher = m.constructor(common.Dup(key))
 		runtime.KeepAlive(key)
 	}

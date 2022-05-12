@@ -149,16 +149,13 @@ func newServer(f *flags) (*server, error) {
 		}
 		s.service = service
 	} else if common.Contains(shadowaead_2022.List, f.Method) {
-		var key [shadowaead_2022.KeySaltSize]byte
+		var key []byte
 		if f.Key != "" {
 			kb, err := base64.StdEncoding.DecodeString(f.Key)
 			if err != nil {
 				return nil, E.Cause(err, "decode key")
 			}
-			if len(kb) != shadowaead_2022.KeySaltSize {
-				return nil, shadowaead.ErrBadKey
-			}
-			copy(key[:], kb)
+			key = kb
 		}
 		service, err := shadowaead_2022.NewService(f.Method, key, random.Default, udpTimeout, s)
 		if err != nil {

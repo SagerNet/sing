@@ -29,9 +29,15 @@ type MultiService[U comparable] struct {
 	uPSKHashR map[[aes.BlockSize]byte]U
 }
 
-func (s *MultiService[U]) AddUser(user U, key []byte) {
+func (s *MultiService[U]) AddUser(user U, key []byte) error {
+	if len(key) < s.keyLength {
+		return shadowaead.ErrBadKey
+	} else if len(key) > s.keyLength {
+		key = DerivePSK(key, s.keyLength)
+	}
+
 	var uPSKHash [aes.BlockSize]byte
-	hash512 := blake3.Sum512(key[:])
+	hash512 := blake3.Sum512(key)
 	copy(uPSKHash[:], hash512[:])
 
 	if oldHash, loaded := s.uPSKHash[user]; loaded {
@@ -40,8 +46,9 @@ func (s *MultiService[U]) AddUser(user U, key []byte) {
 
 	s.uPSKHash[user] = uPSKHash
 	s.uPSKHashR[uPSKHash] = user
-
 	s.uPSK[user] = key
+
+	return nil
 }
 
 func (s *MultiService[U]) RemoveUser(user U) {
@@ -102,7 +109,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}
 
 	keyMaterial := buf.Make(s.keyLength + SaltSize)
-	copy(keyMaterial, s.psk[:])
+	copy(keyMaterial, s.psk)
 	copy(keyMaterial[s.keyLength:], requestSalt)
 	_identitySubkey := buf.Make(s.keyLength)
 	identitySubkey := common.Dup(_identitySubkey)
@@ -119,7 +126,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return E.New("invalid request")
 	}
 
-	requestKey := Blake3DeriveKey(uPSK[:], requestSalt, s.keyLength)
+	requestKey := DeriveSessionKey(uPSK, requestSalt, s.keyLength)
 	reader := shadowaead.NewReader(
 		conn,
 		s.constructor(common.Dup(requestKey)),
@@ -223,7 +230,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 	})
 	if !loaded {
 		session.remoteSessionId = sessionId
-		key := Blake3DeriveKey(uPSK[:], packetHeader[:8], s.keyLength)
+		key := DeriveSessionKey(uPSK, packetHeader[:8], s.keyLength)
 		session.remoteCipher = s.constructor(common.Dup(key))
 		runtime.KeepAlive(key)
 	}
@@ -305,7 +312,7 @@ func (m *MultiService[U]) newUDPSession(uPSK []byte) *serverUDPSession {
 	session.packetId--
 	sessionId := make([]byte, 8)
 	binary.BigEndian.PutUint64(sessionId, session.sessionId)
-	key := Blake3DeriveKey(uPSK[:], sessionId, m.keyLength)
+	key := DeriveSessionKey(uPSK, sessionId, m.keyLength)
 	session.cipher = m.constructor(common.Dup(key))
 	runtime.KeepAlive(key)
 	return session
