@@ -444,7 +444,7 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 		if pskLen > 1 {
 			panic("unsupported chacha extended header")
 		}
-		dataIndex = buffer.Len()
+		dataIndex = PacketNonceSize
 	} else {
 		dataIndex = aes.BlockSize
 	}
@@ -649,7 +649,7 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		if pskLen > 1 {
 			panic("unsupported chacha extended header")
 		}
-		dataIndex = buffer.Len()
+		dataIndex = PacketNonceSize
 	} else {
 		dataIndex = aes.BlockSize
 	}
