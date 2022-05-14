@@ -50,14 +50,9 @@ func From(data []byte) *Buffer {
 }
 
 func As(data []byte) *Buffer {
-	size := len(data)
-	max := cap(data)
-	if size != max {
-		data = data[:max]
-	}
 	return &Buffer{
 		data: data,
-		end:  size,
+		end:  len(data),
 	}
 }
 

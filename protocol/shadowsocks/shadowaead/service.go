@@ -20,6 +20,8 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
+var ErrBadHeader = E.New("bad header")
+
 type Service struct {
 	name          string
 	keySaltLength int
@@ -83,17 +85,25 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	_salt := buf.Make(s.keySaltLength)
-	defer runtime.KeepAlive(_salt)
-	salt := common.Dup(_salt)
+	_header := buf.Make(s.keySaltLength + PacketLengthBufferSize + Overhead)
+	defer runtime.KeepAlive(_header)
+	header := common.Dup(_header)
 
-	_, err := io.ReadFull(conn, salt)
+	n, err := conn.Read(header)
 	if err != nil {
-		return E.Cause(err, "read salt")
+		return E.Cause(err, "read header")
+	} else if n < len(header) {
+		return ErrBadHeader
 	}
 
-	key := Kdf(s.key, salt, s.keySaltLength)
+	key := Kdf(s.key, header[:s.keySaltLength], s.keySaltLength)
 	reader := NewReader(conn, s.constructor(common.Dup(key)), MaxPacketSize)
+
+	err = reader.ReadWithLengthChunk(header[s.keySaltLength:])
+	if err != nil {
+		return err
+	}
+
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return err
@@ -250,6 +260,6 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 	c := w.constructor(common.Dup(key))
 	runtime.KeepAlive(key)
 	c.Seal(buffer.From(w.keySaltLength)[:0], rw.ZeroBytes[:c.NonceSize()], buffer.From(w.keySaltLength), nil)
-	buffer.Extend(c.Overhead())
+	buffer.Extend(Overhead)
 	return w.PacketConn.WritePacket(buffer, w.source)
 }

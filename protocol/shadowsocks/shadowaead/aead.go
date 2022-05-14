@@ -14,6 +14,18 @@ const (
 	PacketLengthBufferSize = 2
 )
 
+const (
+	// NonceSize
+	// crypto/cipher.gcmStandardNonceSize
+	// golang.org/x/crypto/chacha20poly1305.NonceSize
+	NonceSize = 12
+
+	// Overhead
+	// crypto/cipher.gcmTagSize
+	// golang.org/x/crypto/chacha20poly1305.Overhead
+	Overhead = 16
+)
+
 type Reader struct {
 	upstream io.Reader
 	cipher   cipher.AEAD
@@ -27,8 +39,8 @@ func NewReader(upstream io.Reader, cipher cipher.AEAD, maxPacketSize int) *Reade
 	return &Reader{
 		upstream: upstream,
 		cipher:   cipher,
-		buffer:   make([]byte, maxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
-		nonce:    make([]byte, cipher.NonceSize()),
+		buffer:   make([]byte, maxPacketSize+PacketLengthBufferSize+Overhead*2),
+		nonce:    make([]byte, NonceSize),
 	}
 }
 
@@ -62,7 +74,7 @@ func (r *Reader) WriteTo(writer io.Writer) (n int64, err error) {
 		n += int64(writeN)
 	}
 	for {
-		start := PacketLengthBufferSize + r.cipher.Overhead()
+		start := PacketLengthBufferSize + Overhead
 		_, err = io.ReadFull(r.upstream, r.buffer[:start])
 		if err != nil {
 			return
@@ -73,7 +85,7 @@ func (r *Reader) WriteTo(writer io.Writer) (n int64, err error) {
 		}
 		increaseNonce(r.nonce)
 		length := int(binary.BigEndian.Uint16(r.buffer[:PacketLengthBufferSize]))
-		end := length + r.cipher.Overhead()
+		end := length + Overhead
 		_, err = io.ReadFull(r.upstream, r.buffer[:end])
 		if err != nil {
 			return
@@ -92,7 +104,7 @@ func (r *Reader) WriteTo(writer io.Writer) (n int64, err error) {
 }
 
 func (r *Reader) readInternal() (err error) {
-	start := PacketLengthBufferSize + r.cipher.Overhead()
+	start := PacketLengthBufferSize + Overhead
 	_, err = io.ReadFull(r.upstream, r.buffer[:start])
 	if err != nil {
 		return err
@@ -103,7 +115,7 @@ func (r *Reader) readInternal() (err error) {
 	}
 	increaseNonce(r.nonce)
 	length := int(binary.BigEndian.Uint16(r.buffer[:PacketLengthBufferSize]))
-	end := length + r.cipher.Overhead()
+	end := length + Overhead
 	_, err = io.ReadFull(r.upstream, r.buffer[:end])
 	if err != nil {
 		return err
@@ -138,7 +150,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 		r.index += n
 		return
 	}
-	start := PacketLengthBufferSize + r.cipher.Overhead()
+	start := PacketLengthBufferSize + Overhead
 	_, err = io.ReadFull(r.upstream, r.buffer[:start])
 	if err != nil {
 		return 0, err
@@ -149,7 +161,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 	}
 	increaseNonce(r.nonce)
 	length := int(binary.BigEndian.Uint16(r.buffer[:PacketLengthBufferSize]))
-	end := length + r.cipher.Overhead()
+	end := length + Overhead
 
 	if len(b) >= end {
 		data := b[:end]
@@ -202,6 +214,59 @@ func (r *Reader) Cached() int {
 	return r.cached
 }
 
+func (r *Reader) CachedSlice() []byte {
+	return r.buffer[r.index : r.index+r.cached]
+}
+
+func (r *Reader) ReadWithLengthChunk(lengthChunk []byte) error {
+	_, err := r.cipher.Open(r.buffer[:0], r.nonce, lengthChunk, nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	length := int(binary.BigEndian.Uint16(r.buffer[:PacketLengthBufferSize]))
+	end := length + Overhead
+	_, err = io.ReadFull(r.upstream, r.buffer[:end])
+	if err != nil {
+		return err
+	}
+	_, err = r.cipher.Open(r.buffer[:0], r.nonce, r.buffer[:end], nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	r.cached = length
+	r.index = 0
+	return nil
+}
+
+func (r *Reader) ReadWithLength(length uint16) error {
+	end := length + Overhead
+	_, err := io.ReadFull(r.upstream, r.buffer[:end])
+	if err != nil {
+		return err
+	}
+	_, err = r.cipher.Open(r.buffer[:0], r.nonce, r.buffer[:end], nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	r.cached = int(length)
+	r.index = 0
+	return nil
+}
+
+func (r *Reader) ReadChunk(chunk []byte) error {
+	bb, err := r.cipher.Open(r.buffer[:0], r.nonce, chunk, nil)
+	if err != nil {
+		return err
+	}
+	increaseNonce(r.nonce)
+	r.cached = len(bb)
+	r.index = 0
+	return nil
+}
+
 type Writer struct {
 	upstream      io.Writer
 	cipher        cipher.AEAD
@@ -214,7 +279,7 @@ func NewWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int) *Write
 	return &Writer{
 		upstream:      upstream,
 		cipher:        cipher,
-		buffer:        make([]byte, maxPacketSize+PacketLengthBufferSize+cipher.Overhead()*2),
+		buffer:        make([]byte, maxPacketSize+PacketLengthBufferSize+Overhead*2),
 		nonce:         make([]byte, cipher.NonceSize()),
 		maxPacketSize: maxPacketSize,
 	}
@@ -244,7 +309,7 @@ func (w *Writer) SetWriter(writer io.Writer) {
 
 func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	for {
-		offset := w.cipher.Overhead() + PacketLengthBufferSize
+		offset := Overhead + PacketLengthBufferSize
 		readN, readErr := r.Read(w.buffer[offset : offset+w.maxPacketSize])
 		if readErr != nil {
 			return 0, readErr
@@ -271,7 +336,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		binary.BigEndian.PutUint16(w.buffer[:PacketLengthBufferSize], uint16(len(data)))
 		w.cipher.Seal(w.buffer[:0], w.nonce, w.buffer[:PacketLengthBufferSize], nil)
 		increaseNonce(w.nonce)
-		offset := w.cipher.Overhead() + PacketLengthBufferSize
+		offset := Overhead + PacketLengthBufferSize
 		packet := w.cipher.Seal(w.buffer[offset:offset], w.nonce, data, nil)
 		increaseNonce(w.nonce)
 		_, err = w.upstream.Write(w.buffer[:offset+len(packet)])
@@ -288,11 +353,17 @@ func (w *Writer) Buffer() *buf.Buffer {
 	return buf.With(w.buffer)
 }
 
+func (w *Writer) WriteChunk(buffer *buf.Buffer, chunk []byte) {
+	bb := w.cipher.Seal(buffer.Index(buffer.Len()), w.nonce, chunk, nil)
+	buffer.Extend(len(bb))
+	increaseNonce(w.nonce)
+}
+
 func (w *Writer) BufferedWriter(reversed int) *BufferedWriter {
 	return &BufferedWriter{
 		upstream: w,
 		reversed: reversed,
-		data:     w.buffer[PacketLengthBufferSize+w.cipher.Overhead() : len(w.buffer)-w.cipher.Overhead()],
+		data:     w.buffer[PacketLengthBufferSize+Overhead : len(w.buffer)-Overhead],
 	}
 }
 
@@ -340,7 +411,7 @@ func (w *BufferedWriter) Flush() error {
 	binary.BigEndian.PutUint16(buffer[:PacketLengthBufferSize], uint16(w.index))
 	w.upstream.cipher.Seal(buffer[:0], w.upstream.nonce, buffer[:PacketLengthBufferSize], nil)
 	increaseNonce(w.upstream.nonce)
-	offset := w.upstream.cipher.Overhead() + PacketLengthBufferSize
+	offset := Overhead + PacketLengthBufferSize
 	packet := w.upstream.cipher.Seal(buffer[offset:offset], w.upstream.nonce, buffer[offset:offset+w.index], nil)
 	increaseNonce(w.upstream.nonce)
 	_, err := w.upstream.upstream.Write(w.upstream.buffer[:w.reversed+offset+len(packet)])

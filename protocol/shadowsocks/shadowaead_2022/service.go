@@ -28,7 +28,10 @@ import (
 	wgReplay "golang.zx2c4.com/wireguard/replay"
 )
 
-var ErrNoPadding = E.New("bad request: missing payload or padding")
+var (
+	ErrNoPadding  = E.New("bad request: missing payload or padding")
+	ErrBadPadding = E.New("bad request: damaged padding")
+)
 
 type Service struct {
 	name             string
@@ -108,11 +111,16 @@ func (s *Service) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := buf.Make(s.keySaltLength)
-	_, err := io.ReadFull(conn, requestSalt)
+	header := buf.Make(s.keySaltLength + shadowaead.Overhead + RequestHeaderFixedChunkLength)
+
+	n, err := conn.Read(header)
 	if err != nil {
-		return E.Cause(err, "read request salt")
+		return E.Cause(err, "read header")
+	} else if n < len(header) {
+		return shadowaead.ErrBadHeader
 	}
+
+	requestSalt := header[:s.keySaltLength]
 
 	if !s.replayFilter.Check(requestSalt) {
 		return E.New("salt not unique")
@@ -126,7 +134,12 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	)
 	runtime.KeepAlive(requestKey)
 
-	headerType, err := rw.ReadByte(reader)
+	err = reader.ReadChunk(header[s.keySaltLength:])
+	if err != nil {
+		return E.Cause(err, "read request fixed length chunk")
+	}
+
+	headerType, err := reader.ReadByte()
 	if err != nil {
 		return E.Cause(err, "read header")
 	}
@@ -138,7 +151,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	var epoch uint64
 	err = binary.Read(reader, binary.BigEndian, &epoch)
 	if err != nil {
-		return E.Cause(err, "read timestamp")
+		return err
 	}
 
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
@@ -146,15 +159,30 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 		return ErrBadTimestamp
 	}
 
+	var length uint16
+	err = binary.Read(reader, binary.BigEndian, &length)
+	if err != nil {
+		return err
+	}
+
+	err = reader.ReadWithLength(length)
+	if err != nil {
+		return err
+	}
+
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
-		return E.Cause(err, "read destination")
+		return err
 	}
 
 	var paddingLen uint16
 	err = binary.Read(reader, binary.BigEndian, &paddingLen)
 	if err != nil {
-		return E.Cause(err, "read padding length")
+		return err
+	}
+
+	if uint16(reader.Cached()) < paddingLen {
+		return ErrNoPadding
 	}
 
 	if paddingLen > 0 {
@@ -201,21 +229,23 @@ func (c *serverConn) writeResponse(payload []byte) (n int, err error) {
 	runtime.KeepAlive(key)
 	header := writer.Buffer()
 	header.Write(salt)
-	bufferedWriter := writer.BufferedWriter(header.Len())
 
-	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeServer))
-	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
-	common.Must1(bufferedWriter.Write(c.requestSalt[:]))
+	_headerFixedChunk := buf.Make(1 + 8 + c.keySaltLength + 2)
+	headerFixedChunk := buf.With(common.Dup(_headerFixedChunk))
+	common.Must(headerFixedChunk.WriteByte(HeaderTypeServer))
+	common.Must(binary.Write(headerFixedChunk, binary.BigEndian, uint64(time.Now().Unix())))
+	common.Must1(headerFixedChunk.Write(c.requestSalt))
+	common.Must(binary.Write(headerFixedChunk, binary.BigEndian, uint16(len(payload))))
+
+	writer.WriteChunk(header, headerFixedChunk.Slice())
+	runtime.KeepAlive(_headerFixedChunk)
 	c.requestSalt = nil
 
 	if len(payload) > 0 {
-		_, err = bufferedWriter.Write(payload)
-		if err != nil {
-			return
-		}
+		writer.WriteChunk(header, payload)
 	}
 
-	err = bufferedWriter.Flush()
+	err = writer.BufferedWriter(header.Len()).Flush()
 	if err != nil {
 		return
 	}
@@ -287,7 +317,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 			return E.Cause(err, "decrypt packet header")
 		}
 		buffer.Advance(PacketNonceSize)
-		buffer.Truncate(buffer.Len() - s.udpCipher.Overhead())
+		buffer.Truncate(buffer.Len() - shadowaead.Overhead)
 	} else {
 		packetHeader = buffer.To(aes.BlockSize)
 		s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
@@ -332,7 +362,7 @@ process:
 			err = E.Cause(err, "decrypt packet")
 			goto returnErr
 		}
-		buffer.Truncate(buffer.Len() - session.remoteCipher.Overhead())
+		buffer.Truncate(buffer.Len() - shadowaead.Overhead)
 	}
 
 	var headerType byte
@@ -421,11 +451,11 @@ func (w *serverPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 
 	if w.udpCipher != nil {
 		w.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
-		buffer.Extend(w.udpCipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 	} else {
 		packetHeader := buffer.To(aes.BlockSize)
 		w.session.cipher.Seal(buffer.Index(dataIndex), packetHeader[4:16], buffer.From(dataIndex), nil)
-		buffer.Extend(w.session.cipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 		w.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
 	return w.PacketConn.WritePacket(buffer, w.session.remoteAddr)

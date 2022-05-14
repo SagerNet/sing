@@ -32,6 +32,13 @@ type ServerConnError struct {
 	Cause  error
 }
 
+func (e *ServerConnError) Close() error {
+	if tcpConn, ok := e.Conn.(*net.TCPConn); ok {
+		tcpConn.SetLinger(0)
+	}
+	return e.Conn.Close()
+}
+
 func (e *ServerConnError) Unwrap() error {
 	return e.Cause
 }

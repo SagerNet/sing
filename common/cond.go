@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"io"
-	"log"
 	"strings"
 	"unsafe"
 )
@@ -117,20 +116,20 @@ func Error(_ any, err error) error {
 func Must(errs ...error) {
 	for _, err := range errs {
 		if err != nil {
-			log.Fatalln(err)
+			panic(err)
 		}
 	}
 }
 
 func Must1(_ any, err error) {
 	if err != nil {
-		log.Fatalln(err)
+		panic(err)
 	}
 }
 
 func Must2(_ any, _ any, err error) {
 	if err != nil {
-		log.Fatalln(err)
+		panic(err)
 	}
 }
 

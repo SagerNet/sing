@@ -91,22 +91,21 @@ func (s *MultiService[U]) NewConnection(ctx context.Context, conn net.Conn, meta
 }
 
 func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	requestSalt := make([]byte, s.keySaltLength)
-	_, err := io.ReadFull(conn, requestSalt)
+	requestHeader := make([]byte, s.keySaltLength+aes.BlockSize+shadowaead.Overhead+RequestHeaderFixedChunkLength)
+	n, err := conn.Read(requestHeader)
 	if err != nil {
-		return E.Cause(err, "read request salt")
+		return err
+	} else if n < len(requestHeader) {
+		return shadowaead.ErrBadHeader
 	}
-
+	requestSalt := requestHeader[:s.keySaltLength]
 	if !s.replayFilter.Check(requestSalt) {
 		return E.New("salt not unique")
 	}
 
 	var _eiHeader [aes.BlockSize]byte
 	eiHeader := common.Dup(_eiHeader[:])
-	_, err = io.ReadFull(conn, eiHeader)
-	if err != nil {
-		return E.Cause(err, "read extended identity header")
-	}
+	copy(eiHeader, requestHeader[s.keySaltLength:s.keySaltLength+aes.BlockSize])
 
 	keyMaterial := buf.Make(s.keySaltLength * 2)
 	copy(keyMaterial, s.psk)
@@ -125,6 +124,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	} else {
 		return E.New("invalid request")
 	}
+	runtime.KeepAlive(_eiHeader)
 
 	requestKey := SessionKey(uPSK, requestSalt, s.keySaltLength)
 	reader := shadowaead.NewReader(
@@ -132,7 +132,11 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		s.constructor(common.Dup(requestKey)),
 		MaxPacketSize,
 	)
-	runtime.KeepAlive(requestSalt)
+
+	err = reader.ReadChunk(requestHeader[s.keySaltLength+aes.BlockSize:])
+	if err != nil {
+		return err
+	}
 
 	headerType, err := rw.ReadByte(reader)
 	if err != nil {
@@ -152,6 +156,16 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	if diff > 30 {
 		return ErrBadTimestamp
 	}
+	var length uint16
+	err = binary.Read(reader, binary.BigEndian, &length)
+	if err != nil {
+		return E.Cause(err, "read length")
+	}
+
+	err = reader.ReadWithLength(length)
+	if err != nil {
+		return err
+	}
 
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
@@ -164,7 +178,9 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 		return E.Cause(err, "read padding length")
 	}
 
-	if paddingLen > 0 {
+	if reader.Cached() < int(paddingLen) {
+		return ErrBadPadding
+	} else if paddingLen > 0 {
 		err = reader.Discard(int(paddingLen))
 		if err != nil {
 			return E.Cause(err, "discard padding")
@@ -257,7 +273,7 @@ process:
 			err = E.Cause(err, "decrypt packet")
 			goto returnErr
 		}
-		buffer.Truncate(buffer.Len() - session.remoteCipher.Overhead())
+		buffer.Truncate(buffer.Len() - shadowaead.Overhead)
 	}
 
 	var headerType byte

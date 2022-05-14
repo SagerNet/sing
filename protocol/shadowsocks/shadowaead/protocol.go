@@ -154,7 +154,7 @@ func (m *Method) EncodePacket(buffer *buf.Buffer) error {
 	c := m.constructor(common.Dup(key))
 	runtime.KeepAlive(key)
 	c.Seal(buffer.Index(m.keySaltLength), rw.ZeroBytes[:c.NonceSize()], buffer.From(m.keySaltLength), nil)
-	buffer.Extend(c.Overhead())
+	buffer.Extend(Overhead)
 	return nil
 }
 

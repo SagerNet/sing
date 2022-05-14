@@ -30,22 +30,12 @@ import (
 )
 
 const (
-	HeaderTypeClient = 0
-	HeaderTypeServer = 1
-	MaxPaddingLength = 900
-	PacketNonceSize  = 24
-	MaxPacketSize    = 65535
-)
-
-const (
-	// crypto/cipher.gcmStandardNonceSize
-	// golang.org/x/crypto/chacha20poly1305.NonceSize
-	nonceSize = 12
-
-	// Overhead
-	// crypto/cipher.gcmTagSize
-	// golang.org/x/crypto/chacha20poly1305.Overhead
-	overhead = 16
+	HeaderTypeClient              = 0
+	HeaderTypeServer              = 1
+	MaxPaddingLength              = 900
+	PacketNonceSize               = 24
+	MaxPacketSize                 = 65535
+	RequestHeaderFixedChunkLength = 1 + 8 + 2
 )
 
 var (
@@ -259,38 +249,32 @@ func (c *clientConn) writeRequest(payload []byte) error {
 	header.Write(salt)
 	c.writeExtendedIdentityHeaders(header, salt)
 
-	bufferedWriter := writer.BufferedWriter(header.Len())
-
-	common.Must(rw.WriteByte(bufferedWriter, HeaderTypeClient))
-	common.Must(binary.Write(bufferedWriter, binary.BigEndian, uint64(time.Now().Unix())))
-
-	err := M.SocksaddrSerializer.WriteAddrPort(bufferedWriter, c.destination)
-	if err != nil {
-		return E.Cause(err, "write destination")
+	var _fixedLengthBuffer [RequestHeaderFixedChunkLength]byte
+	fixedLengthBuffer := buf.With(common.Dup(_fixedLengthBuffer[:]))
+	common.Must(fixedLengthBuffer.WriteByte(HeaderTypeClient))
+	common.Must(binary.Write(fixedLengthBuffer, binary.BigEndian, uint64(time.Now().Unix())))
+	var paddingLen int
+	if len(payload) == 0 {
+		paddingLen = rand.Intn(MaxPaddingLength + 1)
 	}
+	variableLengthHeaderLen := M.SocksaddrSerializer.AddrPortLen(c.destination) + 2 + paddingLen + len(payload)
+	common.Must(binary.Write(fixedLengthBuffer, binary.BigEndian, uint16(variableLengthHeaderLen)))
+	writer.WriteChunk(header, fixedLengthBuffer.Slice())
+	runtime.KeepAlive(_fixedLengthBuffer)
 
-	if len(payload) > 0 {
-		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(0))
-		if err != nil {
-			return E.Cause(err, "write padding length")
-		}
-		_, err = bufferedWriter.Write(payload)
-		if err != nil {
-			return E.Cause(err, "write payload")
-		}
+	_variableLengthBuffer := buf.Make(variableLengthHeaderLen)
+	variableLengthBuffer := buf.With(common.Dup(_variableLengthBuffer))
+	common.Must(M.SocksaddrSerializer.WriteAddrPort(variableLengthBuffer, c.destination))
+	common.Must(binary.Write(variableLengthBuffer, binary.BigEndian, uint16(paddingLen)))
+	if paddingLen > 0 {
+		common.Must1(io.CopyN(variableLengthBuffer, c.secureRNG, int64(paddingLen)))
 	} else {
-		pLen := rand.Intn(MaxPaddingLength + 1)
-		err = binary.Write(bufferedWriter, binary.BigEndian, uint16(pLen))
-		if err != nil {
-			return E.Cause(err, "write padding length")
-		}
-		_, err = io.CopyN(bufferedWriter, c.secureRNG, int64(pLen))
-		if err != nil {
-			return E.Cause(err, "write padding")
-		}
+		common.Must1(variableLengthBuffer.Write(payload))
 	}
+	writer.WriteChunk(header, variableLengthBuffer.Slice())
+	runtime.KeepAlive(_variableLengthBuffer)
 
-	err = bufferedWriter.Flush()
+	err := writer.BufferedWriter(header.Len()).Flush()
 	if err != nil {
 		return E.Cause(err, "client handshake")
 	}
@@ -325,6 +309,11 @@ func (c *clientConn) readResponse() error {
 	)
 	runtime.KeepAlive(key)
 
+	err = reader.ReadWithLength(uint16(1 + 8 + c.keySaltLength + 2))
+	if err != nil {
+		return E.Cause(err, "read response fixed length chunk")
+	}
+
 	headerType, err := rw.ReadByte(reader)
 	if err != nil {
 		return err
@@ -355,6 +344,17 @@ func (c *clientConn) readResponse() error {
 		return ErrBadRequestSalt
 	}
 	runtime.KeepAlive(_requestSalt)
+
+	var length uint16
+	err = binary.Read(reader, binary.BigEndian, &length)
+	if err != nil {
+		return err
+	}
+
+	err = reader.ReadWithLength(length)
+	if err != nil {
+		return err
+	}
 
 	c.requestSalt = nil
 	c.reader = reader
@@ -481,11 +481,11 @@ func (c *clientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksad
 	}
 	if c.udpCipher != nil {
 		c.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
-		buffer.Extend(c.udpCipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 	} else {
 		packetHeader := buffer.To(aes.BlockSize)
 		c.session.cipher.Seal(buffer.Index(dataIndex), packetHeader[4:16], buffer.From(dataIndex), nil)
-		buffer.Extend(c.session.cipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 		c.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
 	return common.Error(c.Write(buffer.Bytes()))
@@ -505,7 +505,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
 		buffer.Advance(PacketNonceSize)
-		buffer.Truncate(buffer.Len() - c.udpCipher.Overhead())
+		buffer.Truncate(buffer.Len() - shadowaead.Overhead)
 	} else {
 		packetHeader = buffer.To(aes.BlockSize)
 		c.udpBlockCipher.Decrypt(packetHeader, packetHeader)
@@ -536,7 +536,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		if err != nil {
 			return M.Socksaddr{}, E.Cause(err, "decrypt packet")
 		}
-		buffer.Truncate(buffer.Len() - remoteCipher.Overhead())
+		buffer.Truncate(buffer.Len() - shadowaead.Overhead)
 	}
 
 	var headerType byte
@@ -625,9 +625,9 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	destination := M.SocksaddrFromNet(addr)
 	var overHead int
 	if c.udpCipher != nil {
-		overHead = PacketNonceSize + c.udpCipher.Overhead()
+		overHead = PacketNonceSize + shadowaead.Overhead
 	} else {
-		overHead = c.session.cipher.Overhead()
+		overHead = shadowaead.Overhead
 	}
 	overHead += 16 // packet header
 	pskLen := len(c.pskList)
@@ -686,11 +686,11 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 	if c.udpCipher != nil {
 		c.udpCipher.Seal(buffer.Index(dataIndex), buffer.To(dataIndex), buffer.From(dataIndex), nil)
-		buffer.Extend(c.udpCipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 	} else {
 		packetHeader := buffer.To(aes.BlockSize)
 		c.session.cipher.Seal(buffer.Index(dataIndex), packetHeader[4:16], buffer.From(dataIndex), nil)
-		buffer.Extend(c.session.cipher.Overhead())
+		buffer.Extend(shadowaead.Overhead)
 		c.udpBlockCipher.Encrypt(packetHeader, packetHeader)
 	}
 	err = common.Error(c.Write(buffer.Bytes()))

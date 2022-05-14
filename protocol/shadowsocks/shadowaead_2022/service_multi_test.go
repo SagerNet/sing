@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
@@ -40,7 +41,8 @@ func TestMultiService(t *testing.T) {
 	go func() {
 		err := multiService.NewConnection(context.Background(), serverConn, M.Metadata{})
 		if err != nil {
-			t.Error(err)
+			serverConn.Close()
+			t.Error(E.Cause(err, "server"))
 			return
 		}
 	}()
