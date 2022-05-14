@@ -73,7 +73,7 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 	defer runtime.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	for {
-		buffer.FullReset()
+		buffer.Reset()
 		_, err = buffer.ReadFrom(src)
 		if err != nil {
 			break
