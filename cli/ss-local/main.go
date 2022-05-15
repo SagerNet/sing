@@ -168,6 +168,9 @@ func newClient(f *flags) (*client, error) {
 	c := &client{
 		server: M.ParseSocksaddrHostPort(f.Server, f.ServerPort),
 		bypass: f.Bypass,
+		dialer: net.Dialer{
+			Timeout: 5 * time.Second,
+		},
 	}
 
 	if f.Method == shadowsocks.MethodNone {

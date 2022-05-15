@@ -187,7 +187,7 @@ func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 		return s.service.NewConnection(ctx, conn, metadata)
 	}
 	logrus.Info("inbound TCP ", conn.RemoteAddr(), " ==> ", metadata.Destination)
-	destConn, err := N.SystemDialer.DialContext(context.Background(), "tcp", metadata.Destination)
+	destConn, err := N.SystemDialer.DialContext(ctx, "tcp", metadata.Destination)
 	if err != nil {
 		return err
 	}
