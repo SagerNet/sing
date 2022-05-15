@@ -21,20 +21,17 @@ sudo systemctl start ss
 ## Log
 
 ```shell
-journalctl -u ss --output cat -f
+sudo journalctl -u ss --output cat -f
 ```
 
 ## Update
 
 ```shell
-sudo systemctl stop ss
 cli/ss-server/update.sh
-sudo systemctl start ss
 ```
 
 ## Uninstall
 
 ```shell
-sudo systemctl stop ss
 cli/ss-server/uninstall.sh
 ```
