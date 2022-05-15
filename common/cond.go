@@ -145,10 +145,8 @@ func Close(closers ...any) error {
 			err = c.Close()
 		}
 		switch c := closer.(type) {
-		case ReaderWithUpstream:
-			err = Close(c.UpstreamReader())
-		case WriterWithUpstream:
-			err = Close(c.UpstreamWriter())
+		case WithUpstream:
+			err = Close(c.Upstream())
 		}
 		if err != nil {
 			retErr = err

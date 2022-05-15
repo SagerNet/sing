@@ -4,42 +4,12 @@ import (
 	"context"
 	"io"
 	"net"
-	"os"
 	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/task"
 )
-
-func ReadFromVar(writerVar *io.Writer, reader io.Reader) (int64, error) {
-	writer := *writerVar
-	writerBack := writer
-	for {
-		if w, ok := writer.(io.ReaderFrom); ok {
-			return w.ReadFrom(reader)
-		}
-		if f, ok := writer.(common.Flusher); ok {
-			err := f.Flush()
-			if err != nil {
-				return 0, err
-			}
-		}
-		if u, ok := writer.(common.WriterWithUpstream); ok {
-			if u.WriterReplaceable() && writerBack == writer {
-				writer = u.UpstreamWriter()
-				writerBack = writer
-				writerVar = &writer
-				continue
-			}
-			writer = u.UpstreamWriter()
-			writerBack = writer
-		} else {
-			break
-		}
-	}
-	return 0, os.ErrInvalid
-}
 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 	if pc, inPc := conn.(net.PacketConn); inPc {

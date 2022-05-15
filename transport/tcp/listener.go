@@ -25,23 +25,6 @@ type Listener struct {
 	*net.TCPListener
 }
 
-type Error struct {
-	Conn  net.Conn
-	Cause error
-}
-
-func (e *Error) Error() string {
-	return e.Cause.Error()
-}
-
-func (e *Error) Unwrap() error {
-	return e.Cause
-}
-
-func (e *Error) Close() error {
-	return common.Close(e.Conn)
-}
-
 func NewTCPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
 	listener := &Listener{
 		bind:    listen,
@@ -112,9 +95,26 @@ func (l *Listener) loop() {
 			metadata.Protocol = "tcp"
 			hErr := l.handler.NewConnection(context.Background(), tcpConn, metadata)
 			if hErr != nil {
-				l.handler.HandleError(&Error{Conn: tcpConn, Cause: hErr})
+				l.handler.HandleError(hErr)
 			}
 			debug.Free()
 		}()
 	}
+}
+
+type Error struct {
+	Conn  net.Conn
+	Cause error
+}
+
+func (e *Error) Error() string {
+	return e.Cause.Error()
+}
+
+func (e *Error) Unwrap() error {
+	return e.Cause
+}
+
+func (e *Error) Close() error {
+	return common.Close(e.Conn)
 }

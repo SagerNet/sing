@@ -394,26 +394,8 @@ func (c *clientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	return c.writer.ReadFrom(r)
 }
 
-func (c *clientConn) UpstreamReader() io.Reader {
-	if c.reader == nil {
-		return c.Conn
-	}
-	return c.reader
-}
-
-func (c *clientConn) ReaderReplaceable() bool {
-	return c.reader != nil
-}
-
-func (c *clientConn) UpstreamWriter() io.Writer {
-	if c.writer == nil {
-		return c.Conn
-	}
-	return c.writer
-}
-
-func (c *clientConn) WriterReplaceable() bool {
-	return c.writer != nil
+func (c *clientConn) Upstream() any {
+	return c.Conn
 }
 
 type clientPacketConn struct {
@@ -732,18 +714,6 @@ func (m *Method) newUDPSession() *udpSession {
 	return session
 }
 
-func (c *clientPacketConn) UpstreamReader() io.Reader {
+func (c *clientPacketConn) Upstream() any {
 	return c.Conn
-}
-
-func (c *clientPacketConn) ReaderReplaceable() bool {
-	return false
-}
-
-func (c *clientPacketConn) UpstreamWriter() io.Writer {
-	return c.Conn
-}
-
-func (c *clientPacketConn) WriterReplaceable() bool {
-	return false
 }

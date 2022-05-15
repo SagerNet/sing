@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -33,8 +34,8 @@ type ServerConnError struct {
 }
 
 func (e *ServerConnError) Close() error {
-	if tcpConn, ok := e.Conn.(*net.TCPConn); ok {
-		tcpConn.SetLinger(0)
+	if conn, ok := common.Cast[*net.TCPConn](e.Conn); ok {
+		conn.SetLinger(0)
 	}
 	return e.Conn.Close()
 }

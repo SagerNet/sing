@@ -303,20 +303,8 @@ func (c *clientConn) Write(p []byte) (n int, err error) {
 	return c.Conn.Write(p)
 }
 
-func (c *clientConn) UpstreamReader() io.Reader {
+func (c *clientConn) Upstream() any {
 	return c.Conn
-}
-
-func (c *clientConn) ReaderReplaceable() bool {
-	return false
-}
-
-func (c *clientConn) UpstreamWriter() io.Writer {
-	return c.Conn
-}
-
-func (c *clientConn) WriterReplaceable() bool {
-	return false
 }
 
 type clientPacketConn struct {
@@ -400,18 +388,6 @@ func (c *clientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return len(p), nil
 }
 
-func (c *clientPacketConn) UpstreamReader() io.Reader {
+func (c *clientPacketConn) Upstream() any {
 	return c.Conn
-}
-
-func (c *clientPacketConn) ReaderReplaceable() bool {
-	return false
-}
-
-func (c *clientPacketConn) UpstreamWriter() io.Writer {
-	return c.Conn
-}
-
-func (c *clientPacketConn) WriterReplaceable() bool {
-	return false
 }

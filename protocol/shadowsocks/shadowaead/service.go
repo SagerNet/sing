@@ -186,26 +186,8 @@ func (c *serverConn) WriteTo(w io.Writer) (n int64, err error) {
 	return c.reader.WriteTo(w)
 }
 
-func (c *serverConn) UpstreamReader() io.Reader {
-	if c.reader == nil {
-		return c.Conn
-	}
-	return c.reader
-}
-
-func (c *serverConn) ReaderReplaceable() bool {
-	return c.reader != nil
-}
-
-func (c *serverConn) UpstreamWriter() io.Writer {
-	if c.writer == nil {
-		return c.Conn
-	}
-	return c.writer
-}
-
-func (c *serverConn) WriterReplaceable() bool {
-	return c.writer != nil
+func (c *serverConn) Upstream() any {
+	return c.Conn
 }
 
 func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {

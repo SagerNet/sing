@@ -10,7 +10,6 @@ import (
 )
 
 type CachedReader interface {
-	common.ReaderWithUpstream
 	ReadCached() *buf.Buffer
 }
 
@@ -62,20 +61,8 @@ func (c *BufferedConn) ReadFrom(r io.Reader) (n int64, err error) {
 	return Copy(c.Conn, r)
 }
 
-func (c *BufferedConn) UpstreamReader() io.Reader {
+func (c *BufferedConn) Upstream() any {
 	return c.Conn
-}
-
-func (c *BufferedConn) ReaderReplaceable() bool {
-	return c.Buffer == nil
-}
-
-func (c *BufferedConn) UpstreamWriter() io.Writer {
-	return c.Conn
-}
-
-func (c *BufferedConn) WriterReplaceable() bool {
-	return true
 }
 
 type BufferedReader struct {
@@ -114,12 +101,8 @@ func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (w *BufferedReader) UpstreamReader() io.Reader {
+func (w *BufferedReader) Upstream() any {
 	return w.Reader
-}
-
-func (w *BufferedReader) ReaderReplaceable() bool {
-	return w.Buffer == nil
 }
 
 type BufferedWriter struct {
@@ -127,12 +110,8 @@ type BufferedWriter struct {
 	Buffer *buf.Buffer
 }
 
-func (w *BufferedWriter) UpstreamWriter() io.Writer {
+func (w *BufferedWriter) Upstream() any {
 	return w.Writer
-}
-
-func (w *BufferedWriter) WriterReplaceable() bool {
-	return w.Buffer == nil
 }
 
 func (w *BufferedWriter) Write(p []byte) (n int, err error) {
@@ -200,12 +179,8 @@ type HeaderWriter struct {
 	Header *buf.Buffer
 }
 
-func (w *HeaderWriter) UpstreamWriter() io.Writer {
+func (w *HeaderWriter) Upstream() any {
 	return w.Writer
-}
-
-func (w *HeaderWriter) WriterReplaceable() bool {
-	return w.Header == nil
 }
 
 func (w *HeaderWriter) Write(p []byte) (n int, err error) {

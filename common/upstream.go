@@ -1,23 +1,16 @@
 package common
 
-import (
-	"io"
-)
-
-type ReaderWithUpstream interface {
-	UpstreamReader() io.Reader
-	ReaderReplaceable() bool
+type WithUpstream interface {
+	Upstream() any
 }
 
-type UpstreamReaderSetter interface {
-	SetReader(reader io.Reader)
-}
-
-type WriterWithUpstream interface {
-	UpstreamWriter() io.Writer
-	WriterReplaceable() bool
-}
-
-type UpstreamWriterSetter interface {
-	SetWriter(writer io.Writer)
+func Cast[T any](obj any) (T, bool) {
+	if c, ok := obj.(T); ok {
+		return c, true
+	}
+	if u, ok := obj.(WithUpstream); ok {
+		return Cast[T](u.Upstream())
+	}
+	var defaultValue T
+	return defaultValue, false
 }

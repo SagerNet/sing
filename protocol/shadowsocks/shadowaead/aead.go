@@ -53,16 +53,8 @@ func NewRawReader(upstream io.Reader, cipher cipher.AEAD, buffer []byte, nonce [
 	}
 }
 
-func (r *Reader) UpstreamReader() io.Reader {
+func (r *Reader) Upstream() any {
 	return r.upstream
-}
-
-func (r *Reader) ReaderReplaceable() bool {
-	return false
-}
-
-func (r *Reader) SetReader(reader io.Reader) {
-	r.upstream = reader
 }
 
 func (r *Reader) WriteTo(writer io.Writer) (n int64, err error) {
@@ -295,16 +287,8 @@ func NewRawWriter(upstream io.Writer, cipher cipher.AEAD, maxPacketSize int, buf
 	}
 }
 
-func (w *Writer) UpstreamWriter() io.Writer {
+func (w *Writer) Upstream() any {
 	return w.upstream
-}
-
-func (w *Writer) WriterReplaceable() bool {
-	return false
-}
-
-func (w *Writer) SetWriter(writer io.Writer) {
-	w.upstream = writer
 }
 
 func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {

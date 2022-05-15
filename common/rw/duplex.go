@@ -13,31 +13,15 @@ type WriteCloser interface {
 }
 
 func CloseRead(reader any) error {
-	r := reader
-	for {
-		if closer, ok := r.(ReadCloser); ok {
-			return closer.CloseRead()
-		}
-		if u, ok := r.(common.ReaderWithUpstream); ok {
-			r = u.UpstreamReader()
-			continue
-		}
-		break
+	if c, ok := common.Cast[ReadCloser](reader); ok {
+		return c.CloseRead()
 	}
 	return common.Close(reader)
 }
 
 func CloseWrite(writer any) error {
-	w := writer
-	for {
-		if closer, ok := w.(WriteCloser); ok {
-			return closer.CloseWrite()
-		}
-		if u, ok := w.(common.WriterWithUpstream); ok {
-			w = u.UpstreamWriter()
-			continue
-		}
-		break
+	if c, ok := common.Cast[WriteCloser](writer); ok {
+		return c.CloseWrite()
 	}
 	return common.Close(writer)
 }
