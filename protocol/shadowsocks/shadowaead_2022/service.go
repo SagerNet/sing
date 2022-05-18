@@ -29,33 +29,37 @@ import (
 )
 
 var (
-	ErrNoPadding  = E.New("bad request: missing payload or padding")
-	ErrBadPadding = E.New("bad request: damaged padding")
+	ErrSaltNotUnique = E.New("bad request: salt not unique")
+	ErrNoPadding     = E.New("bad request: missing payload or padding")
+	ErrBadPadding    = E.New("bad request: damaged padding")
 )
 
 type Service struct {
-	name             string
-	secureRNG        io.Reader
-	keySaltLength    int
+	name          string
+	secureRNG     io.Reader
+	keySaltLength int
+	handler       shadowsocks.Handler
+
 	constructor      func(key []byte) cipher.AEAD
 	blockConstructor func(key []byte) cipher.Block
 	udpCipher        cipher.AEAD
 	udpBlockCipher   cipher.Block
 	psk              []byte
-	replayFilter     replay.Filter
-	handler          shadowsocks.Handler
-	udpNat           *udpnat.Service[uint64]
-	sessions         *cache.LruCache[uint64, *serverUDPSession]
+
+	replayFilter replay.Filter
+	udpNat       *udpnat.Service[uint64]
+	udpSessions  *cache.LruCache[uint64, *serverUDPSession]
 }
 
 func NewService(method string, psk []byte, password string, secureRNG io.Reader, udpTimeout int64, handler shadowsocks.Handler) (shadowsocks.Service, error) {
 	s := &Service{
-		name:         method,
-		secureRNG:    secureRNG,
+		name:      method,
+		secureRNG: secureRNG,
+		handler:   handler,
+
 		replayFilter: replay.NewCuckoo(60),
-		handler:      handler,
 		udpNat:       udpnat.New[uint64](udpTimeout, handler),
-		sessions: cache.New[uint64, *serverUDPSession](
+		udpSessions: cache.New[uint64, *serverUDPSession](
 			cache.WithAge[uint64, *serverUDPSession](udpTimeout),
 			cache.WithUpdateAgeOnGet[uint64, *serverUDPSession](),
 		),
@@ -90,9 +94,7 @@ func NewService(method string, psk []byte, password string, secureRNG io.Reader,
 	}
 
 	switch method {
-	case "2022-blake3-aes-128-gcm":
-		s.udpBlockCipher = newAES(psk)
-	case "2022-blake3-aes-256-gcm":
+	case "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm":
 		s.udpBlockCipher = newAES(psk)
 	case "2022-blake3-chacha20-poly1305":
 		s.udpCipher = newXChacha20Poly1305(psk)
@@ -123,7 +125,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	requestSalt := header[:s.keySaltLength]
 
 	if !s.replayFilter.Check(requestSalt) {
-		return E.New("salt not unique")
+		return ErrSaltNotUnique
 	}
 
 	requestKey := SessionKey(s.psk, requestSalt, s.keySaltLength)
@@ -315,7 +317,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 		return err
 	}
 
-	session, loaded := s.sessions.LoadOrStore(sessionId, s.newUDPSession)
+	session, loaded := s.udpSessions.LoadOrStore(sessionId, s.newUDPSession)
 	if !loaded {
 		session.remoteSessionId = sessionId
 		if packetHeader != nil {
@@ -328,7 +330,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 
 returnErr:
 	if !loaded {
-		s.sessions.Delete(sessionId)
+		s.udpSessions.Delete(sessionId)
 	}
 	return err
 

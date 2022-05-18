@@ -40,22 +40,24 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 }
 
 func (s *Service[T]) NewPacket(key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
-	s.NewContextPacket(context.Background(), key, writer, buffer, metadata)
+	s.NewContextPacket(context.Background(), key, func() (context.Context, N.PacketWriter) {
+		return context.Background(), writer()
+	}, buffer, metadata)
 }
 
-func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
+func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (context.Context, N.PacketWriter), buffer *buf.Buffer, metadata M.Metadata) {
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet),
 			localAddr:  metadata.Source,
 			remoteAddr: metadata.Destination,
-			source:     writer(),
 			fastClose:  metadata.Destination.Port == 53,
 		}
 		c.ctx, c.cancel = context.WithCancel(ctx)
 		return c
 	})
 	if !loaded {
+		ctx, c.source = init()
 		go func() {
 			err := s.handler.NewPacketConnection(ctx, c, metadata)
 			if err != nil {
@@ -69,7 +71,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, writer func() 
 	if common.Done(c.ctx) {
 		s.nat.Delete(key)
 		c.access.Unlock()
-		s.NewContextPacket(ctx, key, writer, buffer, metadata)
+		s.NewContextPacket(ctx, key, init, buffer, metadata)
 		return
 	}
 	packetCtx, done := context.WithCancel(c.ctx)

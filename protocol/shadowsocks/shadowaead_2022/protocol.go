@@ -106,9 +106,7 @@ func New(method string, pskList [][]byte, password string, secureRNG io.Reader) 
 	}
 
 	switch method {
-	case "2022-blake3-aes-128-gcm":
-		m.udpBlockCipher = newAES(pskList[0])
-	case "2022-blake3-aes-256-gcm":
+	case "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm":
 		m.udpBlockCipher = newAES(pskList[0])
 	case "2022-blake3-chacha20-poly1305":
 		m.udpCipher = newXChacha20Poly1305(pskList[0])
@@ -297,7 +295,7 @@ func (c *clientConn) readResponse() error {
 	}
 
 	if !c.replayFilter.Check(salt) {
-		return E.New("salt not unique")
+		return ErrSaltNotUnique
 	}
 
 	key := SessionKey(c.pskList[len(c.pskList)-1], salt, c.keySaltLength)

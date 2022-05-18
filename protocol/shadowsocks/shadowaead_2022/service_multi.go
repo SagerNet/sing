@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"os"
 	"runtime"
 	"time"
 
@@ -64,7 +65,7 @@ func NewMultiService[U comparable](method string, iPSK []byte, secureRNG io.Read
 	case "2022-blake3-aes-128-gcm":
 	case "2022-blake3-aes-256-gcm":
 	default:
-		return nil, E.New("unsupported method ", method)
+		return nil, os.ErrInvalid
 	}
 
 	ss, err := NewService(method, iPSK, "", secureRNG, udpTimeout, handler)
@@ -100,7 +101,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}
 	requestSalt := requestHeader[:s.keySaltLength]
 	if !s.replayFilter.Check(requestSalt) {
-		return E.New("salt not unique")
+		return ErrSaltNotUnique
 	}
 
 	var _eiHeader [aes.BlockSize]byte
@@ -243,7 +244,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 		return err
 	}
 
-	session, loaded := s.sessions.LoadOrStore(sessionId, func() *serverUDPSession {
+	session, loaded := s.udpSessions.LoadOrStore(sessionId, func() *serverUDPSession {
 		return s.newUDPSession(uPSK)
 	})
 	if !loaded {
@@ -257,7 +258,7 @@ func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metad
 
 returnErr:
 	if !loaded {
-		s.sessions.Delete(sessionId)
+		s.udpSessions.Delete(sessionId)
 	}
 	return err
 
@@ -314,12 +315,11 @@ process:
 	metadata.Destination = destination
 	session.remoteAddr = metadata.Source
 
-	var userCtx shadowsocks.UserContext[U]
-	userCtx.Context = context.Background()
-	userCtx.User = user
-
-	s.udpNat.NewContextPacket(&userCtx, sessionId, func() N.PacketWriter {
-		return &serverPacketWriter{s.Service, conn, session}
+	s.udpNat.NewContextPacket(context.Background(), sessionId, func() (context.Context, N.PacketWriter) {
+		return &shadowsocks.UserContext[U]{
+			context.Background(),
+			user,
+		}, &serverPacketWriter{s.Service, conn, session}
 	}, buffer, metadata)
 	return nil
 }
