@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 
 	"github.com/sagernet/sing/common"
 )
@@ -72,6 +73,9 @@ func (b *Buffer) SetByte(index int, value byte) {
 
 func (b *Buffer) Extend(n int) []byte {
 	end := b.end + n
+	if end > cap(b.data) {
+		panic("buffer overflow: cap " + strconv.Itoa(cap(b.data)) + ",end " + strconv.Itoa(b.end) + ", need " + strconv.Itoa(n))
+	}
 	ext := b.data[b.end:end]
 	b.end = end
 	return ext
@@ -97,21 +101,12 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 	return
 }
 
-func (b *Buffer) ExtendHeader(size int) []byte {
-	if b.start >= size {
-		b.start -= size
-		return b.data[b.start : b.start+size]
-	} else {
-		/*offset := size - b.start
-		end := b.end + size
-		if end > len(b.data) {
-			panic("buffer overflow")
-		}
-		copy(b.data[offset:end], b.data[b.start:b.end])
-		b.end = end
-		return b.data[:offset]*/
-		panic("no header available")
+func (b *Buffer) ExtendHeader(n int) []byte {
+	if b.start < n {
+		panic("buffer overflow: cap " + strconv.Itoa(cap(b.data)) + ",start " + strconv.Itoa(b.start) + ", need " + strconv.Itoa(n))
 	}
+	b.start -= n
+	return b.data[b.start : b.start+n]
 }
 
 func (b *Buffer) _WriteBufferAtFirst(buffer *Buffer) *Buffer {
