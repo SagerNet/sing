@@ -205,14 +205,14 @@ func (s *NoneService) NewConnection(ctx context.Context, conn net.Conn, metadata
 	return s.handler.NewConnection(ctx, conn, metadata)
 }
 
-func (s *NoneService) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *NoneService) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return err
 	}
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
-	s.udp.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
+	s.udp.NewPacket(ctx, metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &nonePacketWriter{conn, metadata.Source}
 	}, buffer, metadata)
 	return nil

@@ -190,15 +190,15 @@ func (c *serverConn) Upstream() any {
 	return c.Conn
 }
 
-func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	err := s.newPacket(conn, buffer, metadata)
+func (s *Service) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(ctx, conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{Source: metadata.Source, Cause: err}
 	}
 	return err
 }
 
-func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) newPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	if buffer.Len() < s.keySaltLength {
 		return E.New("bad packet")
 	}
@@ -219,7 +219,7 @@ func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Me
 
 	metadata.Protocol = "shadowsocks"
 	metadata.Destination = destination
-	s.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
+	s.udpNat.NewPacket(ctx, metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &serverPacketWriter{s, conn, metadata.Source}
 	}, buffer, metadata)
 	return nil

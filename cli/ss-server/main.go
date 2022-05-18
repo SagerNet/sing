@@ -203,9 +203,9 @@ func (s *server) NewPacketConnection(ctx context.Context, conn N.PacketConn, met
 	return N.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
-func (s *server) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *server) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	logrus.Trace("inbound raw UDP from ", metadata.Source)
-	return s.service.NewPacket(conn, buffer, metadata)
+	return s.service.NewPacket(ctx, conn, buffer, metadata)
 }
 
 func (s *server) HandleError(err error) {

@@ -1,6 +1,7 @@
 package udp
 
 import (
+	"context"
 	"net"
 	"net/netip"
 	"runtime"
@@ -103,7 +104,7 @@ func (l *Listener) loop() {
 				return
 			}
 			buffer.Resize(buf.ReversedHeader, n)
-			err = l.handler.NewPacket(l, buffer, M.Metadata{
+			err = l.handler.NewPacket(context.Background(), l, buffer, M.Metadata{
 				Protocol: "udp",
 				Source:   M.SocksaddrFromNetIP(addr),
 			})
@@ -127,7 +128,7 @@ func (l *Listener) loop() {
 				continue
 			}
 			buffer.Resize(buf.ReversedHeader, n)
-			err = l.handler.NewPacket(l, buffer, M.Metadata{
+			err = l.handler.NewPacket(context.Background(), l, buffer, M.Metadata{
 				Protocol:    "tproxy",
 				Source:      M.SocksaddrFromNetIP(addr),
 				Destination: M.SocksaddrFromNetIP(destination),

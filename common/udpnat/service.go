@@ -39,10 +39,8 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 	}
 }
 
-func (s *Service[T]) NewPacket(key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
-	s.NewContextPacket(context.Background(), key, func() (context.Context, N.PacketWriter) {
-		return context.Background(), writer()
-	}, buffer, metadata)
+func (s *Service[T]) NewPacket(ctx context.Context, key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
+	s.NewContextPacket(ctx, key, func() (context.Context, N.PacketWriter) { return ctx, writer() }, buffer, metadata)
 }
 
 func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (context.Context, N.PacketWriter), buffer *buf.Buffer, metadata M.Metadata) {

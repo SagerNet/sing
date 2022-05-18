@@ -205,15 +205,15 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}, metadata)
 }
 
-func (s *MultiService[U]) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	err := s.newPacket(conn, buffer, metadata)
+func (s *MultiService[U]) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(ctx, conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{Source: metadata.Source, Cause: err}
 	}
 	return err
 }
 
-func (s *MultiService[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *MultiService[U]) newPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	packetHeader := buffer.To(aes.BlockSize)
 	s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
 
@@ -315,9 +315,9 @@ process:
 	metadata.Destination = destination
 	session.remoteAddr = metadata.Source
 
-	s.udpNat.NewContextPacket(context.Background(), sessionId, func() (context.Context, N.PacketWriter) {
+	s.udpNat.NewContextPacket(ctx, sessionId, func() (context.Context, N.PacketWriter) {
 		return &shadowsocks.UserContext[U]{
-			context.Background(),
+			ctx,
 			user,
 		}, &serverPacketWriter{s.Service, conn, session}
 	}, buffer, metadata)

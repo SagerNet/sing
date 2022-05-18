@@ -285,15 +285,15 @@ func (c *serverConn) Upstream() any {
 	return c.Conn
 }
 
-func (s *Service) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	err := s.newPacket(conn, buffer, metadata)
+func (s *Service) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(ctx, conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{Source: metadata.Source, Cause: err}
 	}
 	return err
 }
 
-func (s *Service) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Service) newPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	var packetHeader []byte
 	if s.udpCipher != nil {
 		_, err := s.udpCipher.Open(buffer.Index(PacketNonceSize), buffer.To(PacketNonceSize), buffer.From(PacketNonceSize), nil)
@@ -386,7 +386,7 @@ process:
 	metadata.Destination = destination
 
 	session.remoteAddr = metadata.Source
-	s.udpNat.NewPacket(sessionId, func() N.PacketWriter {
+	s.udpNat.NewPacket(ctx, sessionId, func() N.PacketWriter {
 		return &serverPacketWriter{s, conn, session}
 	}, buffer, metadata)
 	return nil

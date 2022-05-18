@@ -263,7 +263,7 @@ func (t *Stack) processIPv4UDP(ipHdr header.IPv4, hdr header.UDP) error {
 
 	logger.Trace("[UDP] ", metadata.Source, "=>", metadata.Destination)
 
-	t.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
+	t.udpNat.NewPacket(context.Background(), metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &inetPacketWriter{
 			tun:             t,
 			headerCache:     headerCache,
@@ -341,7 +341,7 @@ func (t *Stack) processIPv6UDP(ipHdr header.IPv6, hdr header.UDP) error {
 		return err
 	}
 
-	t.udpNat.NewPacket(metadata.Source.AddrPort(), func() N.PacketWriter {
+	t.udpNat.NewPacket(context.Background(), metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &inet6PacketWriter{
 			tun:             t,
 			headerCache:     headerCache,

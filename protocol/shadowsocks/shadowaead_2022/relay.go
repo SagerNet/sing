@@ -170,15 +170,15 @@ func (s *Relay[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.
 	return s.handler.NewConnection(ctx, conn, metadata)
 }
 
-func (s *Relay[U]) NewPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	err := s.newPacket(conn, buffer, metadata)
+func (s *Relay[U]) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+	err := s.newPacket(ctx, conn, buffer, metadata)
 	if err != nil {
 		err = &shadowsocks.ServerPacketError{Source: metadata.Source, Cause: err}
 	}
 	return err
 }
 
-func (s *Relay[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
+func (s *Relay[U]) newPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	packetHeader := buffer.To(aes.BlockSize)
 	s.udpBlockCipher.Decrypt(packetHeader, packetHeader)
 
@@ -210,9 +210,9 @@ func (s *Relay[U]) newPacket(conn N.PacketConn, buffer *buf.Buffer, metadata M.M
 
 	metadata.Protocol = "shadowsocks-relay"
 	metadata.Destination = s.uDestination[user]
-	s.udpNat.NewContextPacket(context.Background(), sessionId, func() (context.Context, N.PacketWriter) {
+	s.udpNat.NewContextPacket(ctx, sessionId, func() (context.Context, N.PacketWriter) {
 		return &shadowsocks.UserContext[U]{
-			context.Background(),
+			ctx,
 			user,
 		}, &relayPacketWriter[U]{conn, session}
 	}, buffer, metadata)

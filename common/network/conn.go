@@ -38,7 +38,7 @@ type NetPacketConn interface {
 }
 
 type UDPHandler interface {
-	NewPacket(conn PacketConn, buffer *buf.Buffer, metadata M.Metadata) error
+	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer, metadata M.Metadata) error
 }
 
 type UDPConnectionHandler interface {
