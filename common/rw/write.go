@@ -24,15 +24,15 @@ func WriteZeroN(writer io.Writer, size int) error {
 	var index int
 	for index < size {
 		next := index + 1024
-		if next < size {
+		if next > size {
+			_, err := writer.Write(ZeroBytes[:size-index])
+			return err
+		} else {
 			_, err := writer.Write(ZeroBytes)
 			if err != nil {
 				return err
 			}
 			index = next
-		} else {
-			_, err := writer.Write(ZeroBytes[:size-index])
-			return err
 		}
 	}
 	return nil
