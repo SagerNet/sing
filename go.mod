@@ -20,8 +20,8 @@ require (
 	github.com/v2fly/v2ray-core/v5 v5.0.6
 	github.com/vishvananda/netlink v1.2.0-beta
 	golang.org/x/crypto v0.0.0-20220518034528-6f7dac969898
-	golang.org/x/net v0.0.0-20220517181318-183a9ca12b87
-	golang.org/x/sys v0.0.0-20220517195934-5e4e11fc645e
+	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2
+	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
 	google.golang.org/protobuf v1.28.0
 	gvisor.dev/gvisor v0.0.0-20220428010907-8082b77961ba

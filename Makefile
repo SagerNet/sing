@@ -1,4 +1,9 @@
-.:
+.DEFAULT_GOAL := debug
+
+clean:
+	rm -rf ./bin
+
+debug:
 	go run ./cli/buildx --name ss-local --path ./cli/ss-local
 	go run ./cli/buildx --name ss-server --path ./cli/ss-server
 
