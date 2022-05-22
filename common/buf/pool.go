@@ -48,7 +48,7 @@ func Make(size int) []byte {
 	} else if size <= 65535 {
 		buffer = make([]byte, 65535)
 	} else {
-		buffer = make([]byte, size)
+		return make([]byte, size)
 	}
 	return buffer[:size]
 }
