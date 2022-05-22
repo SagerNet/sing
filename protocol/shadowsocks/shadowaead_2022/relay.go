@@ -12,11 +12,11 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/udpnat"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
@@ -163,7 +163,7 @@ func (s *Relay[U]) newConnection(ctx context.Context, conn net.Conn, metadata M.
 	}
 	metadata.Protocol = "shadowsocks-relay"
 	metadata.Destination = s.uDestination[user]
-	conn = &rw.BufferedConn{
+	conn = &bufio.BufferedConn{
 		Conn:   conn,
 		Buffer: requestHeader,
 	}

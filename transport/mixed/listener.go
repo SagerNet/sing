@@ -1,7 +1,7 @@
 package mixed
 
 import (
-	"bufio"
+	std_bufio "bufio"
 	"context"
 	"io"
 	"net"
@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -66,7 +67,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 		return socks.HandleConnection0(ctx, conn, headerType, l.authenticator, l.handler, metadata)
 	}
 
-	reader := bufio.NewReader(&rw.BufferedReader{
+	reader := std_bufio.NewReader(&bufio.BufferedReader{
 		Reader: conn,
 		Buffer: buf.As([]byte{headerType}),
 	})
@@ -107,7 +108,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 			return err
 		}
 
-		conn = &rw.BufferedConn{
+		conn = &bufio.BufferedConn{
 			Conn:   conn,
 			Buffer: buffer,
 		}

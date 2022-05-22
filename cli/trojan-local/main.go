@@ -17,12 +17,12 @@ import (
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/trojan"
 	"github.com/sagernet/sing/transport/mixed"
 	"github.com/sirupsen/logrus"
@@ -317,7 +317,7 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 		return E.Cause(err, "client handshake")
 	}
 	runtime.KeepAlive(_request)
-	return rw.CopyConn(ctx, clientConn, conn)
+	return bufio.CopyConn(ctx, clientConn, conn)
 }
 
 func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -333,7 +333,7 @@ func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, met
 	}
 	return socks.CopyPacketConn(ctx, &trojan.PacketConn{Conn: tlsConn}, conn)*/
 	clientConn := trojan.NewClientPacketConn(tlsConn, c.key)
-	return N.CopyPacketConn(ctx, clientConn, conn)
+	return bufio.CopyPacketConn(ctx, clientConn, conn)
 }
 
 func (c *client) HandleError(err error) {

@@ -18,6 +18,7 @@ import (
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/geoip"
 	"github.com/sagernet/sing/common/geosite"
@@ -324,7 +325,7 @@ func (c *client) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 		return E.Cause(err, "client handshake")
 	}
 	runtime.KeepAlive(_payload)
-	return rw.CopyConn(ctx, serverConn, conn)
+	return bufio.CopyConn(ctx, serverConn, conn)
 }
 
 func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -334,7 +335,7 @@ func (c *client) NewPacketConnection(ctx context.Context, conn N.PacketConn, met
 		return err
 	}
 	serverConn := c.method.DialPacketConn(udpConn)
-	return N.CopyPacketConn(ctx, serverConn, conn)
+	return bufio.CopyPacketConn(ctx, serverConn, conn)
 }
 
 func run(cmd *cobra.Command, flags *flags) {

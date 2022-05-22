@@ -1,4 +1,4 @@
-package rw
+package bufio
 
 import (
 	"io"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/rw"
 )
 
 type CachedReader interface {
@@ -124,7 +125,7 @@ func (w *BufferedWriter) Write(p []byte) (n int, err error) {
 	}
 	fd, err := common.TryFileDescriptor(w.Writer)
 	if err == nil {
-		_, err = WriteV(fd, w.Buffer.Bytes(), p[n:])
+		_, err = rw.WriteV(fd, w.Buffer.Bytes(), p[n:])
 		if err != nil {
 			return
 		}
@@ -189,7 +190,7 @@ func (w *HeaderWriter) Write(p []byte) (n int, err error) {
 	}
 	fd, err := common.TryFileDescriptor(w.Writer)
 	if err == nil {
-		_, err = WriteV(fd, w.Header.Bytes(), p)
+		_, err = rw.WriteV(fd, w.Header.Bytes(), p)
 		if err != nil {
 			return
 		}

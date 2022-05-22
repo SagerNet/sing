@@ -15,11 +15,11 @@ import (
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/acme"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/trojan"
 	transTLS "github.com/sagernet/sing/transport/tls"
 	"github.com/sirupsen/logrus"
@@ -180,7 +180,7 @@ func (i *TrojanInstance) NewConnection(ctx context.Context, conn net.Conn, metad
 	if err != nil {
 		return err
 	}
-	return rw.CopyConn(ctx, conn, destConn)
+	return bufio.CopyConn(ctx, conn, destConn)
 }
 
 func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -191,7 +191,7 @@ func (i *TrojanInstance) NewPacketConnection(ctx context.Context, conn N.PacketC
 	if err != nil {
 		return err
 	}
-	return N.CopyNetPacketConn(ctx, conn, udpConn)
+	return bufio.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (i *TrojanInstance) loopRequests() {

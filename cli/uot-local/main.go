@@ -10,12 +10,12 @@ import (
 
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/redir"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/uot"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/transport/mixed"
@@ -108,7 +108,7 @@ func (c *localClient) NewConnection(ctx context.Context, conn net.Conn, metadata
 		return err
 	}
 
-	return rw.CopyConn(context.Background(), conn, upstream)
+	return bufio.CopyConn(context.Background(), conn, upstream)
 }
 
 func (c *localClient) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -119,7 +119,7 @@ func (c *localClient) NewPacketConnection(ctx context.Context, conn N.PacketConn
 		return err
 	}
 
-	return N.CopyPacketConn(ctx, conn, uot.NewClientConn(upstream))
+	return bufio.CopyPacketConn(ctx, conn, uot.NewClientConn(upstream))
 }
 
 func (c *localClient) OnError(err error) {

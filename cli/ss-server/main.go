@@ -14,12 +14,12 @@ import (
 	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	_ "github.com/sagernet/sing/common/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
@@ -191,7 +191,7 @@ func (s *server) NewConnection(ctx context.Context, conn net.Conn, metadata M.Me
 	if err != nil {
 		return err
 	}
-	return rw.CopyConn(ctx, conn, destConn)
+	return bufio.CopyConn(ctx, conn, destConn)
 }
 
 func (s *server) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -200,7 +200,7 @@ func (s *server) NewPacketConnection(ctx context.Context, conn N.PacketConn, met
 	if err != nil {
 		return err
 	}
-	return N.CopyNetPacketConn(ctx, conn, udpConn)
+	return bufio.CopyNetPacketConn(ctx, conn, udpConn)
 }
 
 func (s *server) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
