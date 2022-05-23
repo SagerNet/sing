@@ -16,12 +16,12 @@ func CloseRead(reader any) error {
 	if c, ok := common.Cast[ReadCloser](reader); ok {
 		return c.CloseRead()
 	}
-	return common.Close(reader)
+	return nil
 }
 
 func CloseWrite(writer any) error {
 	if c, ok := common.Cast[WriteCloser](writer); ok {
 		return c.CloseWrite()
 	}
-	return common.Close(writer)
+	return nil
 }

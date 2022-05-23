@@ -274,6 +274,7 @@ func bypass(conn net.Conn, destination M.Socksaddr) error {
 	if err != nil {
 		return err
 	}
+	defer common.Close(conn, serverConn)
 	return task.Run(context.Background(), func() error {
 		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(serverConn)

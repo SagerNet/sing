@@ -91,6 +91,7 @@ func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err erro
 }
 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
+	defer common.Close(conn, dest)
 	err := task.Run(ctx, func() error {
 		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(dest)
@@ -106,6 +107,7 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 }
 
 func CopyExtendedConn(ctx context.Context, conn N.ExtendedConn, dest N.ExtendedConn) error {
+	defer common.Close(conn, dest)
 	return task.Run(ctx, func() error {
 		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(dest)
