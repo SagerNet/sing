@@ -145,7 +145,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}
 
 	if headerType != HeaderTypeClient {
-		return ErrBadHeaderType
+		return E.Extend(ErrBadHeaderType, "expected ", HeaderTypeClient, ", got ", headerType)
 	}
 
 	var epoch uint64
@@ -155,7 +155,7 @@ func (s *MultiService[U]) newConnection(ctx context.Context, conn net.Conn, meta
 	}
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		return ErrBadTimestamp
+		return E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 	}
 	var length uint16
 	err = binary.Read(reader, binary.BigEndian, &length)
@@ -284,7 +284,7 @@ process:
 		goto returnErr
 	}
 	if headerType != HeaderTypeClient {
-		err = ErrBadHeaderType
+		err = E.Extend(ErrBadHeaderType, "expected ", HeaderTypeClient, ", got ", headerType)
 		goto returnErr
 	}
 
@@ -295,7 +295,7 @@ process:
 	}
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		err = ErrBadTimestamp
+		err = E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 		goto returnErr
 	}
 

@@ -317,7 +317,7 @@ func (c *clientConn) readResponse() error {
 		return err
 	}
 	if headerType != HeaderTypeServer {
-		return ErrBadHeaderType
+		return E.Extend(ErrBadHeaderType, "expected ", HeaderTypeServer, ", got ", headerType)
 	}
 
 	var epoch uint64
@@ -328,7 +328,7 @@ func (c *clientConn) readResponse() error {
 
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		return ErrBadTimestamp
+		return E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 	}
 
 	_requestSalt := buf.Make(c.keySaltLength)
@@ -525,7 +525,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		return M.Socksaddr{}, err
 	}
 	if headerType != HeaderTypeServer {
-		return M.Socksaddr{}, ErrBadHeaderType
+		return M.Socksaddr{}, E.Extend(ErrBadHeaderType, "expected ", HeaderTypeServer, ", got ", headerType)
 	}
 
 	var epoch uint64
@@ -536,7 +536,7 @@ func (c *clientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		return M.Socksaddr{}, ErrBadTimestamp
+		return M.Socksaddr{}, E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 	}
 
 	if sessionId == c.session.remoteSessionId {

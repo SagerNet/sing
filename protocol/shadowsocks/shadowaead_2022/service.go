@@ -138,7 +138,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 
 	err = reader.ReadChunk(header[s.keySaltLength:])
 	if err != nil {
-		return E.Cause(err, "read request fixed length chunk")
+		return err
 	}
 
 	headerType, err := reader.ReadByte()
@@ -147,7 +147,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 	}
 
 	if headerType != HeaderTypeClient {
-		return ErrBadHeaderType
+		return E.Extend(ErrBadHeaderType, "expected ", HeaderTypeClient, ", got ", headerType)
 	}
 
 	var epoch uint64
@@ -158,7 +158,7 @@ func (s *Service) newConnection(ctx context.Context, conn net.Conn, metadata M.M
 
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		return ErrBadTimestamp
+		return E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 	}
 
 	var length uint16
@@ -356,7 +356,7 @@ process:
 		goto returnErr
 	}
 	if headerType != HeaderTypeClient {
-		err = ErrBadHeaderType
+		err = E.Extend(ErrBadHeaderType, "expected ", HeaderTypeClient, ", got ", headerType)
 		goto returnErr
 	}
 
@@ -367,7 +367,7 @@ process:
 	}
 	diff := int(math.Abs(float64(time.Now().Unix() - int64(epoch))))
 	if diff > 30 {
-		err = ErrBadTimestamp
+		err = E.Extend(ErrBadTimestamp, "received ", epoch, ", diff ", diff, "s")
 		goto returnErr
 	}
 

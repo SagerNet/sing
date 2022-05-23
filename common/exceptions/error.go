@@ -9,24 +9,36 @@ import (
 	"syscall"
 )
 
-type exception struct {
+type causeError struct {
 	message string
 	cause   error
 }
 
-func (e exception) Error() string {
+func (e *causeError) Error() string {
 	if e.cause == nil {
 		return e.message
 	}
 	return e.message + ": " + e.cause.Error()
 }
 
-func (e exception) Unwrap() error {
+func (e *causeError) Unwrap() error {
 	return e.cause
 }
 
-func (e exception) Is(err error) bool {
-	return e == err || errors.Is(e.cause, err)
+type extendedError struct {
+	message string
+	cause   error
+}
+
+func (e *extendedError) Error() string {
+	if e.cause == nil {
+		return e.message
+	}
+	return e.cause.Error() + e.message
+}
+
+func (e *extendedError) Unwrap() error {
+	return e.cause
 }
 
 func New(message ...any) error {
@@ -34,7 +46,11 @@ func New(message ...any) error {
 }
 
 func Cause(cause error, message ...any) error {
-	return exception{fmt.Sprint(message...), cause}
+	return &causeError{fmt.Sprint(message...), cause}
+}
+
+func Extend(cause error, message ...any) error {
+	return &extendedError{fmt.Sprint(message...), cause}
 }
 
 func IsClosed(err error) bool {
