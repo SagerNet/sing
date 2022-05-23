@@ -106,52 +106,9 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 	return err
 }
 
-func CopyExtendedConn(ctx context.Context, conn N.ExtendedConn, dest N.ExtendedConn) error {
-	defer common.Close(conn, dest)
-	return task.Run(ctx, func() error {
-		defer rw.CloseRead(conn)
-		defer rw.CloseWrite(dest)
-		_buffer := buf.StackNewMax()
-		defer runtime.KeepAlive(_buffer)
-		buffer := common.Dup(_buffer)
-		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
-		for {
-			data.Reset()
-			_, err := data.ReadFrom(conn)
-			if err != nil {
-				return err
-			}
-			buffer.Resize(buf.ReversedHeader+data.Start(), data.Len())
-			err = dest.WriteBuffer(buffer)
-			if err != nil {
-				return err
-			}
-		}
-	}, func() error {
-		defer rw.CloseRead(dest)
-		defer rw.CloseWrite(conn)
-		_buffer := buf.StackNewMax()
-		defer runtime.KeepAlive(_buffer)
-		buffer := common.Dup(_buffer)
-		data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader)
-		for {
-			data.Reset()
-			_, err := data.ReadFrom(dest)
-			if err != nil {
-				return err
-			}
-			buffer.Resize(buf.ReversedHeader+data.Start(), data.Len())
-			err = conn.WriteBuffer(buffer)
-			if err != nil {
-				return err
-			}
-		}
-	})
-}
-
 func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) error {
-	defer common.Close(conn, dest)
 	return task.Run(ctx, func() error {
+		defer common.Close(conn, dest)
 		_buffer := buf.StackNewMax()
 		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
@@ -169,6 +126,7 @@ func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) e
 			}
 		}
 	}, func() error {
+		defer common.Close(conn, dest)
 		_buffer := buf.StackNewMax()
 		defer runtime.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
