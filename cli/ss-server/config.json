@@ -1,7 +1,0 @@
-{
-  "server": "::",
-  "server_port": 8080,
-  "method": "2022-blake3-aes-128-gcm",
-  "key": "psk",
-  "log_level": "info"
-}

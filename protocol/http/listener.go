@@ -11,14 +11,17 @@ import (
 	"time"
 	_ "unsafe"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/transport/tcp"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type Handler interface {
-	tcp.Handler
+	N.TCPConnectionHandler
+	N.UDPConnectionHandler
+	E.Handler
 }
 
 func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
@@ -88,7 +91,8 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 						go func() {
 							err := handler.NewConnection(ctx, right, metadata)
 							if err != nil {
-								handler.HandleError(&tcp.Error{Conn: right, Cause: err})
+								common.Close(left, right)
+								handler.HandleError(err)
 							}
 						}()
 						return left, nil

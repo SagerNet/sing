@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/sagernet/sing"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
@@ -87,7 +86,6 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 			ProtoMinor: request.ProtoMinor,
 			Header: netHttp.Header{
 				"Content-Type": {"application/x-ns-proxy-autoconfig"},
-				"Server":       {sing.VersionStr},
 			},
 			ContentLength: int64(len(content)),
 			Body:          io.NopCloser(strings.NewReader(content)),

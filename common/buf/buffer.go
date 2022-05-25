@@ -361,38 +361,3 @@ func (b Buffer) IsEmpty() bool {
 func (b Buffer) IsFull() bool {
 	return b.end == b.Cap()
 }
-
-func (b Buffer) ToOwned() *Buffer {
-	var buffer *Buffer
-	if b.Len() > BufferSize {
-		buffer = As(make([]byte, b.Len()))
-		copy(buffer.data, b.Bytes())
-	} else {
-		buffer = New()
-		buffer.Write(b.Bytes())
-	}
-	return buffer
-}
-
-func (b Buffer) Copy() []byte {
-	buffer := make([]byte, b.Len())
-	copy(buffer, b.Bytes())
-	return buffer
-}
-
-func ForeachN(b []byte, size int) [][]byte {
-	total := len(b)
-	var index int
-	var retArr [][]byte
-	for {
-		nextIndex := index + size
-		if nextIndex < total {
-			retArr = append(retArr, b[index:nextIndex])
-			index = nextIndex
-		} else {
-			retArr = append(retArr, b[index:])
-			break
-		}
-	}
-	return retArr
-}

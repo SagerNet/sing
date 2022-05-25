@@ -4,9 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
-	"os"
 	"runtime"
-	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -15,24 +13,6 @@ import (
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/task"
 )
-
-type PacketConnStub struct{}
-
-func (s *PacketConnStub) RemoteAddr() net.Addr {
-	return &common.DummyAddr{}
-}
-
-func (s *PacketConnStub) SetDeadline(t time.Time) error {
-	return os.ErrInvalid
-}
-
-func (s *PacketConnStub) SetReadDeadline(t time.Time) error {
-	return os.ErrInvalid
-}
-
-func (s *PacketConnStub) SetWriteDeadline(t time.Time) error {
-	return os.ErrInvalid
-}
 
 func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 	if wt, ok := src.(io.WriterTo); ok {

@@ -3,7 +3,6 @@ package common
 import (
 	"context"
 	"io"
-	"strings"
 	"unsafe"
 )
 
@@ -93,22 +92,6 @@ func Done(ctx context.Context) bool {
 	}
 }
 
-func IsEmpty[T any](array []T) bool {
-	return len(array) == 0
-}
-
-func IsNotEmpty[T any](array []T) bool {
-	return len(array) > 0
-}
-
-func IsBlank(str string) bool {
-	return strings.TrimSpace(str) == ""
-}
-
-func IsNotBlank(str string) bool {
-	return strings.TrimSpace(str) != ""
-}
-
 func Error(_ any, err error) error {
 	return err
 }
@@ -153,11 +136,4 @@ func Close(closers ...any) error {
 		}
 	}
 	return retErr
-}
-
-func CloseError(closer any, err error) error {
-	if err == nil {
-		return nil
-	}
-	return Close(closer)
 }

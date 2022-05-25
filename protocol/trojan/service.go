@@ -15,7 +15,7 @@ import (
 )
 
 type Handler interface {
-	M.TCPConnectionHandler
+	N.TCPConnectionHandler
 	N.UDPConnectionHandler
 }
 

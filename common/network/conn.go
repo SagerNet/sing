@@ -45,6 +45,10 @@ type ExtendedConn interface {
 	net.Conn
 }
 
+type TCPConnectionHandler interface {
+	NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error
+}
+
 type NetPacketConn interface {
 	net.PacketConn
 	PacketConn

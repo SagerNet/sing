@@ -1,36 +1,12 @@
 package random
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"io"
 	"sync"
 
 	"github.com/sagernet/sing/common"
-	"lukechampine.com/blake3"
 )
-
-var System = &Source{rand.Reader}
-
-var Default = &Source{&SyncReader{Reader: Blake3KeyedHash()}}
-
-func Blake3KeyedHash() io.Reader {
-	key := make([]byte, 32)
-	common.Must1(io.ReadFull(System, key))
-	h := blake3.New(1024, key)
-	return h.XOF()
-}
-
-type SyncReader struct {
-	io.Reader
-	sync.Mutex
-}
-
-func (r *SyncReader) Read(p []byte) (n int, err error) {
-	r.Lock()
-	defer r.Unlock()
-	return r.Reader.Read(p)
-}
 
 const (
 	rngMax  = 1 << 63
@@ -58,4 +34,15 @@ func (s Source) Uint64() uint64 {
 }
 
 func (s Source) Seed(int64) {
+}
+
+type SyncReader struct {
+	io.Reader
+	sync.Mutex
+}
+
+func (r *SyncReader) Read(p []byte) (n int, err error) {
+	r.Lock()
+	defer r.Unlock()
+	return r.Reader.Read(p)
 }

@@ -36,8 +36,13 @@ func (c *ServerConn) Write(b []byte) (n int, err error) {
 	return c.inputWriter.Write(b)
 }
 
+type pipeAddr struct{}
+
+func (pipeAddr) Network() string { return "pipe" }
+func (pipeAddr) String() string  { return "pipe" }
+
 func (c *ServerConn) RemoteAddr() net.Addr {
-	return &common.DummyAddr{}
+	return pipeAddr{}
 }
 
 func (c *ServerConn) loopInput() {

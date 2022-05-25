@@ -1,8 +1,2 @@
 /.idea/
-/sing_*
-/*.json
-/Country.mmdb
-/geosite.dat
 /vendor/
-/acme/
-/bin/

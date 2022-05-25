@@ -1,5 +1,6 @@
 package replay
 
+/*
 import (
 	"sync"
 	"time"
@@ -7,44 +8,43 @@ import (
 	"github.com/seiflotfy/cuckoofilter"
 )
 
-func NewCuckoo(interval int64) Filter {
-	filter := &cuckooFilter{}
-	filter.interval = interval
-	return filter
+const defaultCapacity = 100000
+
+func NewCuckoo(interval time.Duration) *CuckooFilter {
+	return &CuckooFilter{
+		poolA:    cuckoo.NewFilter(defaultCapacity),
+		poolB:    cuckoo.NewFilter(defaultCapacity),
+		lastSwap: time.Now(),
+		interval: interval,
+	}
 }
 
-type cuckooFilter struct {
-	lock     sync.Mutex
+type CuckooFilter struct {
+	access   sync.Mutex
 	poolA    *cuckoo.Filter
 	poolB    *cuckoo.Filter
 	poolSwap bool
-	lastSwap int64
-	interval int64
+	lastSwap time.Time
+	interval time.Duration
 }
 
-func (filter *cuckooFilter) Check(sum []byte) bool {
-	const defaultCapacity = 100000
+func (f *CuckooFilter) Check(sum []byte) bool {
+	f.access.Lock()
+	defer f.access.Unlock()
 
-	filter.lock.Lock()
-	defer filter.lock.Unlock()
+	now := time.Now()
 
-	now := time.Now().Unix()
-	if filter.lastSwap == 0 {
-		filter.lastSwap = now
-		filter.poolA = cuckoo.NewFilter(defaultCapacity)
-		filter.poolB = cuckoo.NewFilter(defaultCapacity)
-	}
-
-	elapsed := now - filter.lastSwap
-	if elapsed >= filter.interval {
-		if filter.poolSwap {
-			filter.poolA.Reset()
+	elapsed := now.Sub(f.lastSwap)
+	if elapsed >= f.interval {
+		if f.poolSwap {
+			f.poolA.Reset()
 		} else {
-			filter.poolB.Reset()
+			f.poolB.Reset()
 		}
-		filter.poolSwap = !filter.poolSwap
-		filter.lastSwap = now
+		f.poolSwap = !f.poolSwap
+		f.lastSwap = now
 	}
 
-	return filter.poolA.InsertUnique(sum) && filter.poolB.InsertUnique(sum)
+	return f.poolA.InsertUnique(sum) && f.poolB.InsertUnique(sum)
 }
+*/
