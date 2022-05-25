@@ -34,7 +34,7 @@ func (e *extendedError) Error() string {
 	if e.cause == nil {
 		return e.message
 	}
-	return e.cause.Error() + e.message
+	return e.cause.Error() + ": " + e.message
 }
 
 func (e *extendedError) Unwrap() error {
