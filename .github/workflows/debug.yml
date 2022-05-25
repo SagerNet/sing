@@ -30,4 +30,11 @@ jobs:
         with:
           go-version: ${{ steps.version.outputs.go_version }}
       - name: Build
-        run: go build -v ./...
+        run: |
+          version=`git rev-parse HEAD`
+          mkdir build
+          pushd build
+          go mod init build
+          go get -v github.com/sagernet/sing@$version
+          popd
+          go build -v ./...
