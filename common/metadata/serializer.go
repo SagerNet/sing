@@ -122,7 +122,11 @@ func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
 			if err != nil {
 				return Socksaddr{}, E.Cause(err, "read ipv6 address")
 			}
-			return Socksaddr{Addr: netip.AddrFrom16(addr)}, nil
+			netAddr := netip.AddrFrom16(addr)
+			if netAddr.Is4In6() {
+				netAddr = netip.AddrFrom4(netAddr.As4())
+			}
+			return Socksaddr{Addr: netAddr}, nil
 		default:
 			return Socksaddr{}, E.New("unknown address family: ", af)
 		}

@@ -94,7 +94,7 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 		return 0, io.ErrShortBuffer
 	}
 	if b.end+len(data) > b.Cap() {
-		panic("buffer overflow")
+		panic("buffer overflow: cap " + strconv.Itoa(len(b.data)) + ",end " + strconv.Itoa(b.end) + ", need " + strconv.Itoa(len(data)))
 	}
 	n = copy(b.data[b.end:], data)
 	b.end += n
