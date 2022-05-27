@@ -4,7 +4,8 @@ import (
 	"context"
 	"net"
 	"net/netip"
-	"runtime"
+	"os"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -21,10 +22,15 @@ type Handler interface {
 
 type Listener struct {
 	*net.UDPConn
-	handler Handler
-	network string
-	bind    netip.AddrPort
-	tproxy  bool
+	handler    Handler
+	network    string
+	bind       netip.AddrPort
+	tproxy     bool
+	forceAddr6 bool
+	ctx        context.Context
+	access     sync.RWMutex
+	closed     chan struct{}
+	outbound   chan *outboundPacket
 }
 
 func (l *Listener) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
@@ -36,7 +42,52 @@ func (l *Listener) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	return M.SocksaddrFromNetIP(addr), nil
 }
 
+func (l *Listener) WriteIsThreadUnsafe() {
+}
+
+func (l *Listener) loopBack() {
+	for {
+		select {
+		case packet := <-l.outbound:
+			err := l.writePacket(packet.buffer, packet.destination)
+			if err != nil && !E.IsClosed(err) {
+				l.handler.HandleError(E.New("udp write failed: ", err))
+			}
+			continue
+		case <-l.closed:
+		}
+		for {
+			select {
+			case packet := <-l.outbound:
+				packet.buffer.Release()
+			default:
+				return
+			}
+		}
+	}
+}
+
+type outboundPacket struct {
+	buffer      *buf.Buffer
+	destination M.Socksaddr
+}
+
 func (l *Listener) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	l.access.RLock()
+	defer l.access.RUnlock()
+
+	select {
+	case <-l.closed:
+		return os.ErrClosed
+	default:
+	}
+
+	l.outbound <- &outboundPacket{buffer, destination}
+	return nil
+}
+
+func (l *Listener) writePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	defer buffer.Release()
 	if destination.Family().IsFqdn() {
 		udpAddr, err := net.ResolveUDPAddr("udp", destination.String())
 		if err != nil {
@@ -44,13 +95,18 @@ func (l *Listener) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) erro
 		}
 		return common.Error(l.UDPConn.WriteTo(buffer.Bytes(), udpAddr))
 	}
-	return common.Error(l.UDPConn.WriteToUDP(buffer.Bytes(), destination.UDPAddr()))
+	if l.forceAddr6 && destination.Addr.Is4() {
+		destination.Addr = netip.AddrFrom16(destination.Addr.As16())
+	}
+	return common.Error(l.UDPConn.WriteToUDPAddrPort(buffer.Bytes(), destination.AddrPort()))
 }
 
 func NewUDPListener(listen netip.AddrPort, handler Handler, options ...Option) *Listener {
 	listener := &Listener{
-		handler: handler,
-		bind:    listen,
+		handler:  handler,
+		bind:     listen,
+		outbound: make(chan *outboundPacket),
+		closed:   make(chan struct{}),
 	}
 	for _, option := range options {
 		option(listener)
@@ -63,6 +119,7 @@ func (l *Listener) Start() error {
 	if err != nil {
 		return err
 	}
+	l.forceAddr6 = l.bind.Addr().Is6()
 
 	if l.tproxy {
 		fd, err := common.GetFileDescriptor(udpConn)
@@ -81,6 +138,7 @@ func (l *Listener) Start() error {
 
 	l.UDPConn = udpConn
 	go l.loop()
+	go l.loopBack()
 	return nil
 }
 
@@ -92,18 +150,22 @@ func (l *Listener) Close() error {
 }
 
 func (l *Listener) loop() {
-	_buffer := buf.StackNewMax()
-	defer runtime.KeepAlive(_buffer)
+	defer close(l.closed)
+
+	_buffer := buf.StackNewPacket()
+	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
-	data := buffer.Cut(buf.ReversedHeader, buf.ReversedHeader).Slice()
+	buffer.IncRef()
+	defer buffer.DecRef()
 	if !l.tproxy {
 		for {
-			n, addr, err := l.ReadFromUDPAddrPort(data)
+			buffer.Reset()
+			n, addr, err := l.ReadFromUDPAddrPort(buffer.FreeBytes())
 			if err != nil {
 				l.handler.HandleError(E.New("udp listener closed: ", err))
 				return
 			}
-			buffer.Resize(buf.ReversedHeader, n)
+			buffer.Truncate(n)
 			err = l.handler.NewPacket(context.Background(), l, buffer, M.Metadata{
 				Protocol: "udp",
 				Source:   M.SocksaddrFromNetIP(addr),
@@ -114,14 +176,16 @@ func (l *Listener) loop() {
 		}
 	} else {
 		_oob := make([]byte, 1024)
-		defer runtime.KeepAlive(_oob)
+		defer common.KeepAlive(_oob)
 		oob := common.Dup(_oob)
 		for {
-			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(data, oob)
+			buffer.Reset()
+			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(buffer.FreeBytes(), oob)
 			if err != nil {
 				l.handler.HandleError(E.New("udp listener closed: ", err))
 				return
 			}
+			buffer.Truncate(n)
 			destination, err := redir.GetOriginalDestinationFromOOB(oob[:oobN])
 			if err != nil {
 				l.handler.HandleError(E.Cause(err, "get original destination"))

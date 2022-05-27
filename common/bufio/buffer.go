@@ -66,6 +66,14 @@ func (c *BufferedConn) Upstream() any {
 	return c.Conn
 }
 
+func (c *BufferedConn) ReaderReplaceable() bool {
+	return c.Buffer == nil
+}
+
+func (c *BufferedConn) WriterReplaceable() bool {
+	return true
+}
+
 type BufferedReader struct {
 	Reader io.Reader
 	Buffer *buf.Buffer
@@ -106,13 +114,13 @@ func (w *BufferedReader) Upstream() any {
 	return w.Reader
 }
 
+func (c *BufferedReader) ReaderReplaceable() bool {
+	return c.Buffer == nil
+}
+
 type BufferedWriter struct {
 	Writer io.Writer
 	Buffer *buf.Buffer
-}
-
-func (w *BufferedWriter) Upstream() any {
-	return w.Writer
 }
 
 func (w *BufferedWriter) Write(p []byte) (n int, err error) {
@@ -175,13 +183,17 @@ func (w *BufferedWriter) Close() error {
 	return nil
 }
 
+func (w *BufferedWriter) Upstream() any {
+	return w.Writer
+}
+
+func (w *BufferedWriter) WriterReplaceable() bool {
+	return w.Buffer == nil
+}
+
 type HeaderWriter struct {
 	Writer io.Writer
 	Header *buf.Buffer
-}
-
-func (w *HeaderWriter) Upstream() any {
-	return w.Writer
 }
 
 func (w *HeaderWriter) Write(p []byte) (n int, err error) {
@@ -221,4 +233,12 @@ func (w *HeaderWriter) Close() error {
 		buffer.Release()
 	}
 	return nil
+}
+
+func (w *HeaderWriter) Upstream() any {
+	return w.Writer
+}
+
+func (w *HeaderWriter) WriterReplaceable() bool {
+	return w.Header == nil
 }

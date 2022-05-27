@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"io"
 	"net"
-	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/rw"
@@ -55,11 +55,11 @@ func (c *ClientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if !c.headerWritten {
 		return rw.ReadFrom0(c, r)
 	}
-	return io.Copy(c.Conn, r)
+	return bufio.Copy(c.Conn, r)
 }
 
 func (c *ClientConn) WriteTo(w io.Writer) (n int64, err error) {
-	return io.Copy(w, c.Conn)
+	return bufio.Copy(w, c.Conn)
 }
 
 type ClientPacketConn struct {
@@ -80,6 +80,7 @@ func (c *ClientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *ClientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	defer buffer.Release()
 	if !c.headerWritten {
 		return ClientHandshakePacket(c.Conn, c.key, destination, buffer)
 	}
@@ -146,15 +147,16 @@ func ClientHandshakeRaw(conn net.Conn, key [KeyLength]byte, command byte, destin
 func ClientHandshake(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr, payload []byte) error {
 	headerLen := KeyLength + M.SocksaddrSerializer.AddrPortLen(destination) + 5
 	var header *buf.Buffer
+	defer header.Release()
 	var writeHeader bool
 	if len(payload) > 0 && headerLen+len(payload) < 65535 {
-		buffer := buf.Make(headerLen + len(payload))
-		defer runtime.KeepAlive(buffer)
-		header = buf.With(common.Dup(buffer))
+		buffer := buf.StackNewSize(headerLen + len(payload))
+		defer common.KeepAlive(buffer)
+		header = common.Dup(buffer)
 	} else {
-		buffer := buf.Make(headerLen)
-		defer runtime.KeepAlive(buffer)
-		header = buf.With(common.Dup(buffer))
+		buffer := buf.StackNewSize(headerLen)
+		defer common.KeepAlive(buffer)
+		header = common.Dup(buffer)
 		writeHeader = true
 	}
 	common.Must1(header.Write(key[:]))
@@ -182,13 +184,14 @@ func ClientHandshakePacket(conn net.Conn, key [KeyLength]byte, destination M.Soc
 	headerLen := KeyLength + 2*M.SocksaddrSerializer.AddrPortLen(destination) + 9
 	payloadLen := payload.Len()
 	var header *buf.Buffer
+	defer header.Release()
 	var writeHeader bool
 	if payload.Start() >= headerLen {
 		header = buf.With(payload.ExtendHeader(headerLen))
 	} else {
-		buffer := buf.Make(headerLen)
-		defer runtime.KeepAlive(buffer)
-		header = buf.With(common.Dup(buffer))
+		buffer := buf.StackNewSize(headerLen)
+		defer common.KeepAlive(buffer)
+		header = common.Dup(buffer)
 		writeHeader = true
 	}
 	common.Must1(header.Write(key[:]))
@@ -242,15 +245,16 @@ func ReadPacket(conn net.Conn, buffer *buf.Buffer) (M.Socksaddr, error) {
 func WritePacket(conn net.Conn, buffer *buf.Buffer, destination M.Socksaddr) error {
 	headerOverload := M.SocksaddrSerializer.AddrPortLen(destination) + 4
 	var header *buf.Buffer
+	defer header.Release()
 	var writeHeader bool
 	bufferLen := buffer.Len()
 	if buffer.Start() >= headerOverload {
 		header = buf.With(buffer.ExtendHeader(headerOverload))
 	} else {
 		writeHeader = true
-		_buffer := buf.Make(headerOverload)
-		defer runtime.KeepAlive(_buffer)
-		header = buf.With(common.Dup(_buffer))
+		_buffer := buf.StackNewSize(headerOverload)
+		defer common.KeepAlive(_buffer)
+		header = common.Dup(_buffer)
 	}
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must(binary.Write(header, binary.BigEndian, uint16(bufferLen)))

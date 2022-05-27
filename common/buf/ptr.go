@@ -1,19 +1,17 @@
+//go:build !disable_unsafe
+
 package buf
 
 import (
 	"os"
-	"runtime"
 	_ "unsafe"
 )
 
 //go:linkname parsedebugvars runtime.parsedebugvars
 func parsedebugvars()
 
-//noinspection GoBoolExpressions
 func init() {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		disableInvalidPtrCheck()
-	}
+	disableInvalidPtrCheck()
 }
 
 func disableInvalidPtrCheck() {
@@ -21,7 +19,7 @@ func disableInvalidPtrCheck() {
 	if debug == "" {
 		os.Setenv("GODEBUG", "invalidptr=0")
 	} else {
-		os.Setenv("GODEBUG", "invalidptr=0,"+debug)
+		os.Setenv("GODEBUG", debug+",invalidptr=0")
 	}
 	parsedebugvars()
 }

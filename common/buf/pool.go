@@ -1,26 +1,11 @@
 package buf
 
-import "sync"
-
-const (
-	ReversedHeader = 1024
-	BufferSize     = 20 * 1024
-	UDPBufferSize  = 16 * 1024
-)
-
-var pool = sync.Pool{
-	New: func() any {
-		buffer := make([]byte, BufferSize)
-		return &buffer
-	},
+func Get(size int) []byte {
+	return DefaultAllocator.Get(size)
 }
 
-func GetBytes() []byte {
-	return *pool.Get().(*[]byte)
-}
-
-func PutBytes(buffer []byte) {
-	pool.Put(&buffer)
+func Put(buf []byte) error {
+	return DefaultAllocator.Put(buf)
 }
 
 func Make(size int) []byte {

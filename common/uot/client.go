@@ -35,6 +35,7 @@ func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	defer buffer.Release()
 	err := AddrParser.WriteAddrPort(c, destination)
 	if err != nil {
 		return err

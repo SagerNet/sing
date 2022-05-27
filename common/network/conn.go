@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 )
@@ -60,4 +61,28 @@ type UDPHandler interface {
 
 type UDPConnectionHandler interface {
 	NewPacketConnection(ctx context.Context, conn PacketConn, metadata M.Metadata) error
+}
+
+type ReaderWithUpstream interface {
+	common.WithUpstream
+	ReaderReplaceable() bool
+}
+
+type WriterWithUpstream interface {
+	common.WithUpstream
+	WriterReplaceable() bool
+}
+
+func UnwrapReader(reader io.Reader) io.Reader {
+	if u, ok := reader.(ReaderWithUpstream); ok && u.ReaderReplaceable() {
+		return UnwrapReader(u.Upstream().(io.Reader))
+	}
+	return reader
+}
+
+func UnwrapWriter(writer io.Writer) io.Writer {
+	if u, ok := writer.(WriterWithUpstream); ok && u.WriterReplaceable() {
+		return UnwrapWriter(u.Upstream().(io.Writer))
+	}
+	return writer
 }

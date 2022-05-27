@@ -31,3 +31,22 @@ func Run(ctx context.Context, tasks ...func() error) error {
 	<-ctx.Done()
 	return retErr
 }
+
+func Any(ctx context.Context, tasks ...func() error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	var retErr error
+	for _, task := range tasks {
+		task := task
+		go func() {
+			if err := task(); err != nil {
+				if !common.Done(ctx) {
+					retErr = err
+				}
+			}
+			cancel()
+		}()
+	}
+	<-ctx.Done()
+	cancel()
+	return retErr
+}

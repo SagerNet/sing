@@ -6,8 +6,15 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
+)
+
+const (
+	ReversedHeader = 1024
+	BufferSize     = 20 * 1024
+	UDPBufferSize  = 16 * 1024
 )
 
 type Buffer struct {
@@ -15,39 +22,66 @@ type Buffer struct {
 	start   int
 	end     int
 	managed bool
+	refs    int32
 }
 
 func New() *Buffer {
 	return &Buffer{
-		data:    GetBytes(),
+		data:    Get(BufferSize),
 		start:   ReversedHeader,
 		end:     ReversedHeader,
 		managed: true,
 	}
 }
 
-func StackNew() *Buffer {
+func NewPacket() *Buffer {
 	return &Buffer{
-		data: make([]byte, BufferSize),
+		data:    Get(UDPBufferSize),
+		start:   ReversedHeader,
+		end:     ReversedHeader,
+		managed: true,
 	}
 }
 
-func StackNewMax() *Buffer {
+func NewSize(size int) *Buffer {
 	return &Buffer{
-		data: make([]byte, 65535),
+		data:    Get(size),
+		managed: true,
+	}
+}
+
+func StackNew() *Buffer {
+	if common.Unsafe {
+		return &Buffer{
+			data:  make([]byte, BufferSize),
+			start: ReversedHeader,
+			end:   ReversedHeader,
+		}
+	} else {
+		return New()
+	}
+}
+
+func StackNewPacket() *Buffer {
+	if common.Unsafe {
+		return &Buffer{
+			data:  make([]byte, UDPBufferSize),
+			start: ReversedHeader,
+			end:   ReversedHeader,
+		}
+	} else {
+		return NewPacket()
 	}
 }
 
 func StackNewSize(size int) *Buffer {
-	return &Buffer{
-		data: Make(size),
+	if common.Unsafe {
+		return &Buffer{
+			data: Make(size),
+		}
+	} else {
+		return NewSize(size)
 	}
-}
-
-func From(data []byte) *Buffer {
-	buffer := New()
-	buffer.Write(data)
-	return buffer
 }
 
 func As(data []byte) *Buffer {
@@ -294,11 +328,24 @@ func (b *Buffer) FullReset() {
 	b.end = 0
 }
 
+func (b *Buffer) IncRef() {
+	atomic.AddInt32(&b.refs, 1)
+}
+
+func (b *Buffer) DecRef() {
+	if atomic.AddInt32(&b.refs, -1) == 0 {
+		b.Release()
+	}
+}
+
 func (b *Buffer) Release() {
 	if b == nil || b.data == nil || !b.managed {
 		return
 	}
-	PutBytes(b.data)
+	if atomic.LoadInt32(&b.refs) > 0 {
+		return
+	}
+	common.Must(Put(b.data))
 	*b = Buffer{}
 }
 
@@ -310,54 +357,54 @@ func (b *Buffer) Cut(start int, end int) *Buffer {
 	}
 }
 
-func (b Buffer) Start() int {
+func (b *Buffer) Start() int {
 	return b.start
 }
 
-func (b Buffer) Len() int {
+func (b *Buffer) Len() int {
 	return b.end - b.start
 }
 
-func (b Buffer) Cap() int {
+func (b *Buffer) Cap() int {
 	return len(b.data)
 }
 
-func (b Buffer) Bytes() []byte {
+func (b *Buffer) Bytes() []byte {
 	return b.data[b.start:b.end]
 }
 
-func (b Buffer) Slice() []byte {
+func (b *Buffer) Slice() []byte {
 	return b.data
 }
 
-func (b Buffer) From(n int) []byte {
+func (b *Buffer) From(n int) []byte {
 	return b.data[b.start+n : b.end]
 }
 
-func (b Buffer) To(n int) []byte {
+func (b *Buffer) To(n int) []byte {
 	return b.data[b.start : b.start+n]
 }
 
-func (b Buffer) Range(start, end int) []byte {
+func (b *Buffer) Range(start, end int) []byte {
 	return b.data[b.start+start : b.start+end]
 }
 
-func (b Buffer) Index(start int) []byte {
+func (b *Buffer) Index(start int) []byte {
 	return b.data[b.start+start : b.start+start]
 }
 
-func (b Buffer) FreeLen() int {
+func (b *Buffer) FreeLen() int {
 	return b.Cap() - b.end
 }
 
-func (b Buffer) FreeBytes() []byte {
+func (b *Buffer) FreeBytes() []byte {
 	return b.data[b.end:b.Cap()]
 }
 
-func (b Buffer) IsEmpty() bool {
+func (b *Buffer) IsEmpty() bool {
 	return b.end-b.start == 0
 }
 
-func (b Buffer) IsFull() bool {
+func (b *Buffer) IsFull() bool {
 	return b.end == b.Cap()
 }

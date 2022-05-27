@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"io"
+	"runtime"
 	"unsafe"
 )
 
@@ -52,9 +53,20 @@ func Find[T any](arr []T, block func(it T) bool) T {
 	return defaultValue
 }
 
+//noinspection GoVetUnsafePointer
 func Dup[T any](obj T) T {
-	p := uintptr(unsafe.Pointer(&obj))
-	return *(*T)(unsafe.Pointer(p))
+	if Unsafe {
+		p := uintptr(unsafe.Pointer(&obj))
+		return *(*T)(unsafe.Pointer(p))
+	} else {
+		return obj
+	}
+}
+
+func KeepAlive(obj any) {
+	if Unsafe {
+		runtime.KeepAlive(obj)
+	}
 }
 
 func Uniq[T comparable](arr []T) []T {
@@ -122,17 +134,20 @@ func Close(closers ...any) error {
 		if closer == nil {
 			continue
 		}
-		var err error
 		switch c := closer.(type) {
 		case io.Closer:
-			err = c.Close()
+			err := c.Close()
+			if err != nil {
+				retErr = err
+			}
+			continue
 		}
 		switch c := closer.(type) {
 		case WithUpstream:
-			err = Close(c.Upstream())
-		}
-		if err != nil {
-			retErr = err
+			err := Close(c.Upstream())
+			if err != nil {
+				retErr = err
+			}
 		}
 	}
 	return retErr

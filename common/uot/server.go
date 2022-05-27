@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"runtime"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -47,7 +46,7 @@ func (c *ServerConn) RemoteAddr() net.Addr {
 
 func (c *ServerConn) loopInput() {
 	_buffer := buf.StackNew()
-	defer runtime.KeepAlive(_buffer)
+	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	for {
 		destination, err := AddrParser.ReadAddrPort(c.inputReader)
@@ -81,7 +80,7 @@ func (c *ServerConn) loopInput() {
 
 func (c *ServerConn) loopOutput() {
 	_buffer := buf.StackNew()
-	defer runtime.KeepAlive(_buffer)
+	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	for {
 		buffer.FullReset()
