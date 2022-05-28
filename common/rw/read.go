@@ -4,7 +4,6 @@ import (
 	"io"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
 )
 
 func Skip(reader io.Reader) error {
@@ -40,35 +39,4 @@ func ReadString(reader io.Reader, size int) (string, error) {
 		return "", err
 	}
 	return string(b), nil
-}
-
-type ReaderFromWriter interface {
-	io.ReaderFrom
-	io.Writer
-}
-
-func ReadFrom0(readerFrom ReaderFromWriter, reader io.Reader) (n int64, err error) {
-	n, err = CopyOnce(readerFrom, reader)
-	if err != nil {
-		return
-	}
-	var rn int64
-	rn, err = readerFrom.ReadFrom(reader)
-	if err != nil {
-		return
-	}
-	n += rn
-	return
-}
-
-func CopyOnce(dest io.Writer, src io.Reader) (n int64, err error) {
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	n, err = buffer.ReadFrom(src)
-	if err != nil {
-		return
-	}
-	_, err = dest.Write(buffer.Bytes())
-	return
 }

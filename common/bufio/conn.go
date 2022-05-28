@@ -225,10 +225,18 @@ func (r *ExtendedReaderWrapper) ReadBuffer(buffer *buf.Buffer) error {
 	return nil
 }
 
+func (r *ExtendedReaderWrapper) Upstream() any {
+	return r.Reader
+}
+
 type ExtendedWriterWrapper struct {
 	io.Writer
 }
 
 func (w *ExtendedWriterWrapper) WriteBuffer(buffer *buf.Buffer) error {
 	return common.Error(w.Write(buffer.Bytes()))
+}
+
+func (r *ExtendedWriterWrapper) Upstream() any {
+	return r.Writer
 }
