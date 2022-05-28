@@ -44,7 +44,14 @@ func (s *Service[T]) NewPacket(ctx context.Context, key T, writer func() N.Packe
 }
 
 func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (context.Context, N.PacketWriter), buffer *buf.Buffer, metadata M.Metadata) {
-	c, loaded := s.nat.LoadOrStore(key, func() *conn {
+	var maxAge int64
+	switch metadata.Destination.Port {
+	case 443:
+		maxAge = 30
+	case 3478:
+		maxAge = 10
+	}
+	c, loaded := s.nat.LoadOrStoreWithAge(key, maxAge, func() *conn {
 		c := &conn{
 			data:       make(chan packet),
 			localAddr:  metadata.Source,

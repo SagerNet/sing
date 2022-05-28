@@ -112,6 +112,45 @@ create:
 	return value, false
 }
 
+func (c *LruCache[K, V]) LoadOrStoreWithAge(key K, maxAge int64, constructor func() V) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if maxAge == 0 {
+		maxAge = c.maxAge
+	}
+
+	le, ok := c.cache[key]
+	if ok {
+		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+			c.deleteElement(le)
+			goto create
+		}
+
+		c.lru.MoveToBack(le)
+		entry := le.Value
+		if c.maxAge > 0 && c.updateAgeOnGet {
+			entry.expires = time.Now().Unix() + maxAge
+		}
+		return entry.value, true
+	}
+
+create:
+	value := constructor()
+	if le, ok := c.cache[key]; ok {
+		c.lru.MoveToBack(le)
+		e := le.Value
+		e.value = value
+		e.expires = time.Now().Unix() + maxAge
+	} else {
+		e := &entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge}
+		c.cache[key] = c.lru.PushBack(e)
+	}
+
+	c.maybeDeleteOldest()
+	return value, false
+}
+
 func (c *LruCache[K, V]) LoadWithExpire(key K) (V, time.Time, bool) {
 	entry := c.get(key)
 	if entry == nil {
