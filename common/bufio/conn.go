@@ -34,7 +34,11 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 }
 
 func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	if _, unsafe := common.Cast[N.ThreadUnsafeWriter](dst); unsafe {
+	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafeReader](src)
+	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
+	if srcUnsafe {
+		return CopyExtendedWithSrcBuffer(dst, unsafeSrc)
+	} else if dstUnsafe {
 		return CopyExtendedWithPool(dst, src)
 	}
 
@@ -52,6 +56,23 @@ func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err erro
 		dataLen := buffer.Len()
 		err = dst.WriteBuffer(buffer)
 		if err != nil {
+			return
+		}
+		n += int64(dataLen)
+	}
+}
+
+func CopyExtendedWithSrcBuffer(dst N.ExtendedWriter, src N.ThreadSafeReader) (n int64, err error) {
+	for {
+		var buffer *buf.Buffer
+		buffer, err = src.ReadBufferThreadSafe()
+		if err != nil {
+			return
+		}
+		dataLen := buffer.Len()
+		err = dst.WriteBuffer(buffer)
+		if err != nil {
+			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
@@ -91,7 +112,11 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 }
 
 func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
-	if _, unsafe := common.Cast[N.ThreadUnsafeWriter](dst); unsafe {
+	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
+	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
+	if srcUnsafe {
+		return CopyPacketWithSrcBuffer(dst, unsafeSrc)
+	} else if dstUnsafe {
 		return CopyPacketWithPool(dst, src)
 	}
 
@@ -110,6 +135,24 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 		dataLen := buffer.Len()
 		err = dst.WritePacket(buffer, destination)
 		if err != nil {
+			return
+		}
+		n += int64(dataLen)
+	}
+}
+
+func CopyPacketWithSrcBuffer(dest N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
+	var buffer *buf.Buffer
+	var destination M.Socksaddr
+	for {
+		buffer, destination, err = src.ReadPacketThreadSafe()
+		if err != nil {
+			return
+		}
+		dataLen := buffer.Len()
+		err = dest.WritePacket(buffer, destination)
+		if err != nil {
+			buffer.Release()
 			return
 		}
 		n += int64(dataLen)

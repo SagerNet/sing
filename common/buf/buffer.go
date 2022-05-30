@@ -124,6 +124,9 @@ func (b *Buffer) Truncate(to int) {
 }
 
 func (b *Buffer) Write(data []byte) (n int, err error) {
+	if len(data) == 0 {
+		return
+	}
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}

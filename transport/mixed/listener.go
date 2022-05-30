@@ -114,6 +114,9 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 	return http.HandleRequest(ctx, request, conn, l.authenticator, l.handler, metadata)
 }
 
+func (l *Listener) WriteIsThreadUnsafe() {
+}
+
 func (l *Listener) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
 	l.udpNat.NewPacket(ctx, metadata.Source.AddrPort(), func() N.PacketWriter {
 		return &tproxyPacketWriter{metadata.Source.UDPAddr()}

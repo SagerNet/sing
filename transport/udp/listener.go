@@ -137,7 +137,13 @@ func (l *Listener) Start() error {
 	}
 
 	l.UDPConn = udpConn
-	go l.loop()
+
+	if _, threadUnsafeHandler := common.Cast[N.ThreadUnsafeWriter](l.handler); threadUnsafeHandler {
+		go l.loopThreadSafe()
+	} else {
+		go l.loop()
+	}
+
 	go l.loopBack()
 	return nil
 }
@@ -198,6 +204,61 @@ func (l *Listener) loop() {
 				Destination: M.SocksaddrFromNetIP(destination),
 			})
 			if err != nil {
+				l.handler.HandleError(err)
+			}
+		}
+
+	}
+}
+
+func (l *Listener) loopThreadSafe() {
+	defer close(l.closed)
+
+	if !l.tproxy {
+		for {
+			buffer := buf.NewPacket()
+			n, addr, err := l.ReadFromUDPAddrPort(buffer.FreeBytes())
+			if err != nil {
+				buffer.Release()
+				l.handler.HandleError(E.New("udp listener closed: ", err))
+				return
+			}
+			buffer.Truncate(n)
+			err = l.handler.NewPacket(context.Background(), l, buffer, M.Metadata{
+				Protocol: "udp",
+				Source:   M.SocksaddrFromNetIP(addr),
+			})
+			if err != nil {
+				buffer.Release()
+				l.handler.HandleError(err)
+			}
+		}
+	} else {
+		_oob := make([]byte, 1024)
+		defer common.KeepAlive(_oob)
+		oob := common.Dup(_oob)
+		for {
+			buffer := buf.NewPacket()
+			n, oobN, _, addr, err := l.ReadMsgUDPAddrPort(buffer.FreeBytes(), oob)
+			if err != nil {
+				l.handler.HandleError(E.New("udp listener closed: ", err))
+				return
+			}
+			buffer.Truncate(n)
+			destination, err := redir.GetOriginalDestinationFromOOB(oob[:oobN])
+			if err != nil {
+				buffer.Release()
+				l.handler.HandleError(E.Cause(err, "get original destination"))
+				continue
+			}
+			buffer.Resize(buf.ReversedHeader, n)
+			err = l.handler.NewPacket(context.Background(), l, buffer, M.Metadata{
+				Protocol:    "tproxy",
+				Source:      M.SocksaddrFromNetIP(addr),
+				Destination: M.SocksaddrFromNetIP(destination),
+			})
+			if err != nil {
+				buffer.Release()
 				l.handler.HandleError(err)
 			}
 		}

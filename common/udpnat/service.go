@@ -81,7 +81,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (c
 		return
 	}
 	c.data <- packet{
-		data:        buffer.ToOwned(),
+		data:        buffer,
 		destination: metadata.Destination,
 	}
 }
@@ -101,14 +101,26 @@ type conn struct {
 	fastClose  bool
 }
 
-func (c *conn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+func (c *conn) ReadPacketThreadSafe() (buffer *buf.Buffer, addr M.Socksaddr, err error) {
 	select {
 	case p, ok := <-c.data:
 		if !ok {
-			return M.Socksaddr{}, io.ErrClosedPipe
+			err = io.ErrClosedPipe
+			return
 		}
-		defer p.data.Release()
+		return p.data, p.destination, nil
+	}
+}
+
+func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
+	select {
+	case p, ok := <-c.data:
+		if !ok {
+			err = io.ErrClosedPipe
+			return
+		}
 		_, err := buffer.ReadFrom(p.data)
+		p.data.Release()
 		return p.destination, err
 	}
 }
@@ -128,8 +140,8 @@ func (c *conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 			return
 		}
 		n = copy(p, pkt.data.Bytes())
-		addr = pkt.destination.UDPAddr()
 		pkt.data.Release()
+		addr = pkt.destination.UDPAddr()
 		return
 	}
 }
