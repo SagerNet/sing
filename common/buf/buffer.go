@@ -408,3 +408,11 @@ func (b *Buffer) IsEmpty() bool {
 func (b *Buffer) IsFull() bool {
 	return b.end == b.Cap()
 }
+
+func (b *Buffer) ToOwned() *Buffer {
+	n := NewSize(len(b.data))
+	copy(n.data[b.start:b.end], b.data[b.start:b.end])
+	n.start = b.start
+	n.end = b.end
+	return n
+}

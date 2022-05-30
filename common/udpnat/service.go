@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -44,16 +43,18 @@ func (s *Service[T]) NewPacket(ctx context.Context, key T, writer func() N.Packe
 }
 
 func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (context.Context, N.PacketWriter), buffer *buf.Buffer, metadata M.Metadata) {
+	defer buffer.Release()
+
 	var maxAge int64
 	switch metadata.Destination.Port {
-	case 443:
+	case 443, 853:
 		maxAge = 30
-	case 3478:
+	case 53, 3478:
 		maxAge = 10
 	}
 	c, loaded := s.nat.LoadOrStoreWithAge(key, maxAge, func() *conn {
 		c := &conn{
-			data:       make(chan packet),
+			data:       make(chan packet, 64),
 			localAddr:  metadata.Source,
 			remoteAddr: metadata.Destination,
 			fastClose:  metadata.Destination.Port == 53,
@@ -72,32 +73,25 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (c
 			s.nat.Delete(key)
 		}()
 	}
-	c.access.Lock()
 	if common.Done(c.ctx) {
 		s.nat.Delete(key)
-		c.access.Unlock()
-		s.NewContextPacket(ctx, key, init, buffer, metadata)
+		if !common.Done(ctx) {
+			s.NewContextPacket(ctx, key, init, buffer, metadata)
+		}
 		return
 	}
-	packetCtx, done := context.WithCancel(c.ctx)
-	p := packet{
-		done:        done,
-		data:        buffer,
+	c.data <- packet{
+		data:        buffer.ToOwned(),
 		destination: metadata.Destination,
 	}
-	c.data <- p
-	c.access.Unlock()
-	<-packetCtx.Done()
 }
 
 type packet struct {
 	data        *buf.Buffer
 	destination M.Socksaddr
-	done        context.CancelFunc
 }
 
 type conn struct {
-	access     sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
 	data       chan packet
@@ -115,7 +109,6 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		}
 		defer p.data.Release()
 		_, err := buffer.ReadFrom(p.data)
-		p.done()
 		return p.destination, err
 	}
 }
@@ -127,17 +120,40 @@ func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return c.source.WritePacket(buffer, destination)
 }
 
-func (c *conn) Close() error {
-	c.access.Lock()
-	defer c.access.Unlock()
-
-	c.cancel()
+func (c *conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	select {
-	case <-c.data:
-		return os.ErrClosed
-	default:
-		close(c.data)
-		return nil
+	case pkt, ok := <-c.data:
+		if !ok {
+			err = io.ErrClosedPipe
+			return
+		}
+		n = copy(p, pkt.data.Bytes())
+		addr = pkt.destination.UDPAddr()
+		pkt.data.Release()
+		return
+	}
+}
+
+func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	if c.fastClose {
+		defer c.Close()
+	}
+	return len(p), c.source.WritePacket(buf.As(p), M.SocksaddrFromNet(addr))
+}
+
+func (c *conn) Close() error {
+	c.cancel()
+	for {
+		select {
+		case p, ok := <-c.data:
+			if !ok {
+				return os.ErrClosed
+			}
+			p.data.Release()
+		default:
+			close(c.data)
+			return nil
+		}
 	}
 }
 
@@ -150,15 +166,15 @@ func (c *conn) RemoteAddr() net.Addr {
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
-	return nil
+	return os.ErrInvalid
 }
 
 func (c *conn) SetReadDeadline(t time.Time) error {
-	return nil
+	return os.ErrInvalid
 }
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
-	return nil
+	return os.ErrInvalid
 }
 
 func (c *conn) Upstream() any {
