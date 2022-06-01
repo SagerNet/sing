@@ -1,12 +1,12 @@
 package exceptions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
-	"syscall"
 )
 
 type causeError struct {
@@ -53,14 +53,31 @@ func Extend(cause error, message ...any) error {
 	return &extendedError{fmt.Sprint(message...), cause}
 }
 
+type HasInnerError interface {
+	Unwrap() error
+}
+
+func Unwrap(err error) error {
+	for {
+		inner, ok := err.(HasInnerError)
+		if !ok {
+			break
+		}
+		innerErr := inner.Unwrap()
+		if innerErr == nil {
+			break
+		}
+		err = innerErr
+	}
+	return err
+}
+
+func IsCanceled(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
 func IsClosed(err error) bool {
-	if unwrapErr := errors.Unwrap(err); unwrapErr != nil {
-		err = unwrapErr
-	}
-	if ne, ok := err.(*os.SyscallError); ok {
-		err = ne.Err
-	}
-	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, syscall.EPIPE)
+	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed)
 }
 
 type TimeoutError interface {
