@@ -48,17 +48,18 @@ func (c *ServerConn) loopInput() {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	for {
 		destination, err := AddrParser.ReadAddrPort(c.inputReader)
 		if err != nil {
 			break
 		}
 		if destination.Family().IsFqdn() {
-			ip, err := LookupAddress(destination.Fqdn)
+			addr, err := net.ResolveUDPAddr("udp", destination.String())
 			if err != nil {
-				break
+				continue
 			}
-			destination.Addr = M.AddrFromIP(ip)
+			destination = M.SocksaddrFromNet(addr)
 		}
 		var length uint16
 		err = binary.Read(c.inputReader, binary.BigEndian, &length)
@@ -82,6 +83,7 @@ func (c *ServerConn) loopOutput() {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	for {
 		buffer.FullReset()
 		n, addr, err := buffer.ReadPacketFrom(c)

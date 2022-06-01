@@ -58,6 +58,7 @@ func (c *AssociateConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
 	if err != nil {
@@ -81,6 +82,7 @@ func (c *AssociateConn) Write(b []byte) (n int, err error) {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
 	if err != nil {
@@ -150,6 +152,7 @@ func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
 
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
@@ -173,6 +176,7 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
 
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
