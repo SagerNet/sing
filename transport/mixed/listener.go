@@ -118,19 +118,19 @@ func (l *Listener) WriteIsThreadUnsafe() {
 }
 
 func (l *Listener) NewPacket(ctx context.Context, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) error {
-	l.udpNat.NewPacket(ctx, metadata.Source.AddrPort(), func() N.PacketWriter {
-		return &tproxyPacketWriter{metadata.Source.UDPAddr()}
-	}, buffer, metadata)
+	l.udpNat.NewPacket(ctx, metadata.Source.AddrPort(), buffer, metadata, func(netConn N.PacketConn) N.PacketWriter {
+		return &tproxyPacketWriter{conn}
+	})
 	return nil
 }
 
 type tproxyPacketWriter struct {
-	source *net.UDPAddr
+	source N.PacketConn
 }
 
 func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	udpConn, err := redir.DialUDP("udp", destination.UDPAddr(), w.source)
+	udpConn, err := redir.DialUDP("udp", destination.UDPAddr(), M.SocksaddrFromNet(w.source.LocalAddr()).UDPAddr())
 	if err != nil {
 		return E.Cause(err, "tproxy udp write back")
 	}

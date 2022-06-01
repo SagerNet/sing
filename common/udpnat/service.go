@@ -38,11 +38,32 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 	}
 }
 
-func (s *Service[T]) NewPacket(ctx context.Context, key T, writer func() N.PacketWriter, buffer *buf.Buffer, metadata M.Metadata) {
-	s.NewContextPacket(ctx, key, func() (context.Context, N.PacketWriter) { return ctx, writer() }, buffer, metadata)
+func (s *Service[T]) NewPacketDirect(ctx context.Context, key T, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) {
+	s.NewContextPacket(ctx, key, buffer, metadata, func(natConn N.PacketConn) (context.Context, N.PacketWriter) {
+		return ctx, &DirectBackWriter{conn, natConn}
+	})
 }
 
-func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (context.Context, N.PacketWriter), buffer *buf.Buffer, metadata M.Metadata) {
+type DirectBackWriter struct {
+	Source N.PacketConn
+	Nat    N.PacketConn
+}
+
+func (w *DirectBackWriter) WritePacket(buffer *buf.Buffer, addr M.Socksaddr) error {
+	return w.Source.WritePacket(buffer, M.SocksaddrFromNet(w.Nat.LocalAddr()))
+}
+
+func (w *DirectBackWriter) Upstream() any {
+	return w.Source
+}
+
+func (s *Service[T]) NewPacket(ctx context.Context, key T, buffer *buf.Buffer, metadata M.Metadata, init func(natConn N.PacketConn) N.PacketWriter) {
+	s.NewContextPacket(ctx, key, buffer, metadata, func(natConn N.PacketConn) (context.Context, N.PacketWriter) {
+		return ctx, init(natConn)
+	})
+}
+
+func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Buffer, metadata M.Metadata, init func(natConn N.PacketConn) (context.Context, N.PacketWriter)) {
 	var maxAge int64
 	switch metadata.Destination.Port {
 	case 443, 853:
@@ -61,7 +82,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (c
 		return c
 	})
 	if !loaded {
-		ctx, c.source = init()
+		ctx, c.source = init(c)
 		go func() {
 			err := s.handler.NewPacketConnection(ctx, c, metadata)
 			if err != nil {
@@ -70,11 +91,13 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, init func() (c
 			c.Close()
 			s.nat.Delete(key)
 		}()
+	} else {
+		c.localAddr = metadata.Source
 	}
 	if common.Done(c.ctx) {
 		s.nat.Delete(key)
 		if !common.Done(ctx) {
-			s.NewContextPacket(ctx, key, init, buffer, metadata)
+			s.NewContextPacket(ctx, key, buffer, metadata, init)
 		}
 		return
 	}
