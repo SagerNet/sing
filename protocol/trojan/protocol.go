@@ -95,7 +95,9 @@ func (c *ClientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 func (c *ClientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
 	if !c.headerWritten {
-		return ClientHandshakePacket(c.Conn, c.key, destination, buffer)
+		err := ClientHandshakePacket(c.Conn, c.key, destination, buffer)
+		c.headerWritten = true
+		return err
 	}
 	return WritePacket(c.Conn, buffer, destination)
 }
