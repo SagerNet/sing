@@ -13,8 +13,18 @@ func Any[T any](array []T, block func(it T) bool) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func All[T any](array []T, block func(it T) bool) bool {
+	for _, it := range array {
+		if !block(it) {
+			return false
+		}
+	}
 	return true
 }
+
 
 func Contains[T comparable](arr []T, target T) bool {
 	for i := range arr {
@@ -29,6 +39,14 @@ func Map[T any, N any](arr []T, block func(it T) N) []N {
 	var retArr []N
 	for index := range arr {
 		retArr = append(retArr, block(arr[index]))
+	}
+	return retArr
+}
+
+func MapIndexed[T any, N any](arr []T, block func(index int, it T) N) []N {
+	var retArr []N
+	for index := range arr {
+		retArr = append(retArr, block(index, arr[index]))
 	}
 	return retArr
 }
