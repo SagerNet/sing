@@ -131,7 +131,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 	}
 }
 
-//go:linkname ReadRequest net/http.ReadRequest
+//go:linkname ReadRequest net/http.readRequest
 func ReadRequest(b *bufio.Reader) (req *http.Request, err error)
 
 func removeHopByHopHeaders(header http.Header) {
