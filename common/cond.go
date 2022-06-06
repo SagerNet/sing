@@ -25,7 +25,6 @@ func All[T any](array []T, block func(it T) bool) bool {
 	return true
 }
 
-
 func Contains[T comparable](arr []T, target T) bool {
 	for i := range arr {
 		if target == arr[i] {
@@ -71,8 +70,9 @@ func Find[T any](arr []T, block func(it T) bool) T {
 	return defaultValue
 }
 
-//noinspection GoVetUnsafePointer
+//go:norace
 func Dup[T any](obj T) T {
+	//goland:noinspection GoVetUnsafePointer
 	if Unsafe {
 		p := uintptr(unsafe.Pointer(&obj))
 		return *(*T)(unsafe.Pointer(p))
