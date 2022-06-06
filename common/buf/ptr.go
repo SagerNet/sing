@@ -4,7 +4,6 @@ package buf
 
 import (
 	"unsafe"
-	_ "unsafe"
 )
 
 type dbgVar struct {
