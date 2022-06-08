@@ -181,8 +181,10 @@ func (b *Buffer) _WriteAtFirst(data []byte) (n int, err error) {
 	return
 }
 
-func (b *Buffer) WriteRandom(size int) {
-	common.Must1(io.ReadFull(rand.Reader, b.Extend(size)))
+func (b *Buffer) WriteRandom(size int) []byte {
+	buffer := b.Extend(size)
+	common.Must1(io.ReadFull(rand.Reader, buffer))
+	return buffer
 }
 
 func (b *Buffer) WriteByte(byte byte) error {
