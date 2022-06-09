@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -141,10 +142,66 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	}
 }
 
+func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
+	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
+	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
+	if srcUnsafe {
+		return CopyPacketWithSrcBufferTimeout(dst, unsafeSrc, src, timeout)
+	} else if dstUnsafe {
+		return CopyPacketWithPoolTimeout(dst, src, timeout)
+	}
+
+	_buffer := buf.StackNewPacket()
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	buffer.IncRef()
+	defer buffer.DecRef()
+	var destination M.Socksaddr
+	for {
+		buffer.Reset()
+		err = src.SetReadDeadline(time.Now().Add(timeout))
+		if err != nil {
+			return
+		}
+		destination, err = src.ReadPacket(buffer)
+		if err != nil {
+			return
+		}
+		dataLen := buffer.Len()
+		err = dst.WritePacket(buffer, destination)
+		if err != nil {
+			return
+		}
+		n += int64(dataLen)
+	}
+}
+
 func CopyPacketWithSrcBuffer(dest N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
 	var buffer *buf.Buffer
 	var destination M.Socksaddr
 	for {
+		buffer, destination, err = src.ReadPacketThreadSafe()
+		if err != nil {
+			return
+		}
+		dataLen := buffer.Len()
+		err = dest.WritePacket(buffer, destination)
+		if err != nil {
+			buffer.Release()
+			return
+		}
+		n += int64(dataLen)
+	}
+}
+
+func CopyPacketWithSrcBufferTimeout(dest N.PacketWriter, src N.ThreadSafePacketReader, tSrc N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
+	var buffer *buf.Buffer
+	var destination M.Socksaddr
+	for {
+		err = tSrc.SetReadDeadline(time.Now().Add(timeout))
+		if err != nil {
+			return
+		}
 		buffer, destination, err = src.ReadPacketThreadSafe()
 		if err != nil {
 			return
@@ -178,6 +235,29 @@ func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err e
 	}
 }
 
+func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
+	var destination M.Socksaddr
+	for {
+		buffer := buf.New()
+		err = src.SetReadDeadline(time.Now().Add(timeout))
+		if err != nil {
+			return
+		}
+		destination, err = src.ReadPacket(buffer)
+		if err != nil {
+			buffer.Release()
+			return
+		}
+		dataLen := buffer.Len()
+		err = dest.WritePacket(buffer, destination)
+		if err != nil {
+			buffer.Release()
+			return
+		}
+		n += int64(dataLen)
+	}
+}
+
 func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) error {
 	defer common.Close(conn, dest)
 	return task.Any(ctx, func() error {
@@ -187,11 +267,20 @@ func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) e
 	})
 }
 
-func CopyNetPacketConn(ctx context.Context, conn N.PacketConn, dest net.PacketConn) error {
-	if udpConn, ok := dest.(*net.UDPConn); ok {
-		return CopyPacketConn(ctx, conn, &UDPConnWrapper{udpConn})
+func CopyPacketConnTimeout(ctx context.Context, conn N.PacketConn, dest N.PacketConn, timeout time.Duration) error {
+	defer common.Close(conn, dest)
+	return task.Any(ctx, func() error {
+		return common.Error(CopyPacketTimeout(dest, conn, timeout))
+	}, func() error {
+		return common.Error(CopyPacketTimeout(conn, dest, timeout))
+	})
+}
+
+func NewPacketConn(conn net.PacketConn) N.PacketConn {
+	if udpConn, ok := conn.(*net.UDPConn); ok {
+		return &UDPConnWrapper{udpConn}
 	} else {
-		return CopyPacketConn(ctx, conn, &PacketConnWrapper{dest})
+		return &PacketConnWrapper{udpConn}
 	}
 }
 

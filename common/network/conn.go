@@ -15,6 +15,11 @@ type PacketReader interface {
 	ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error)
 }
 
+type TimeoutPacketReader interface {
+	PacketReader
+	SetReadDeadline(t time.Time) error
+}
+
 type PacketWriter interface {
 	WritePacket(buffer *buf.Buffer, addr M.Socksaddr) error
 }
