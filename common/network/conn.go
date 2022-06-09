@@ -63,6 +63,10 @@ type UDPConnectionHandler interface {
 	NewPacketConnection(ctx context.Context, conn PacketConn, metadata M.Metadata) error
 }
 
+type CachedReader interface {
+	ReadCached() *buf.Buffer
+}
+
 type ReaderWithUpstream interface {
 	common.WithUpstream
 	ReaderReplaceable() bool

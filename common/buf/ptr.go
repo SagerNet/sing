@@ -15,7 +15,7 @@ type dbgVar struct {
 var dbgvars any
 
 // go.info.runtime.dbgvars: relocation target go.info.[]github.com/sagernet/sing/common/buf.dbgVar not defined
-//var dbgvars []dbgVar
+// var dbgvars []dbgVar
 
 func init() {
 	debugVars := *(*[]dbgVar)(unsafe.Pointer(&dbgvars))

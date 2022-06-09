@@ -272,6 +272,10 @@ func (r *ExtendedReaderWrapper) Upstream() any {
 	return r.Reader
 }
 
+func (r *ExtendedReaderWrapper) ReaderReplaceable() bool {
+	return true
+}
+
 type ExtendedWriterWrapper struct {
 	io.Writer
 }
@@ -282,4 +286,8 @@ func (w *ExtendedWriterWrapper) WriteBuffer(buffer *buf.Buffer) error {
 
 func (r *ExtendedWriterWrapper) Upstream() any {
 	return r.Writer
+}
+
+func (r *ExtendedReaderWrapper) WriterReplaceable() bool {
+	return true
 }

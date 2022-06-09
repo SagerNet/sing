@@ -65,7 +65,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 		return socks.HandleConnection0(ctx, conn, headerType, l.authenticator, l.handler, metadata)
 	}
 
-	reader := std_bufio.NewReader(&bufio.BufferedReader{
+	reader := std_bufio.NewReader(&bufio.CachedReader{
 		Reader: conn,
 		Buffer: buf.As([]byte{headerType}),
 	})
@@ -100,12 +100,13 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 		_buffer := buf.StackNewSize(reader.Buffered())
 		defer common.KeepAlive(_buffer)
 		buffer := common.Dup(_buffer)
+		defer buffer.Release()
 		_, err = buffer.ReadFullFrom(reader, reader.Buffered())
 		if err != nil {
 			return err
 		}
 
-		conn = &bufio.BufferedConn{
+		conn = &bufio.CachedConn{
 			Conn:   conn,
 			Buffer: buffer,
 		}
