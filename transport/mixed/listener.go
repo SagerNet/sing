@@ -65,11 +65,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 		return socks.HandleConnection0(ctx, conn, headerType, l.authenticator, l.handler, metadata)
 	}
 
-	reader := std_bufio.NewReader(&bufio.CachedReader{
-		Reader: conn,
-		Buffer: buf.As([]byte{headerType}),
-	})
-
+	reader := std_bufio.NewReader(bufio.NewCachedReader(conn, buf.As([]byte{headerType})))
 	request, err := http.ReadRequest(reader)
 	if err != nil {
 		return E.Cause(err, "read http request")
@@ -106,10 +102,7 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 			return err
 		}
 
-		conn = &bufio.CachedConn{
-			Conn:   conn,
-			Buffer: buffer,
-		}
+		conn = bufio.NewCachedConn(conn, buffer)
 	}
 
 	return http.HandleRequest(ctx, request, conn, l.authenticator, l.handler, metadata)
