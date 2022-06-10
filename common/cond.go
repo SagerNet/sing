@@ -73,16 +73,15 @@ func Find[T any](arr []T, block func(it T) bool) T {
 //go:norace
 func Dup[T any](obj T) T {
 	//goland:noinspection GoVetUnsafePointer
-	if Unsafe {
-		p := uintptr(unsafe.Pointer(&obj))
-		return *(*T)(unsafe.Pointer(p))
+	if UnsafeBuffer {
+		return *(*T)(unsafe.Pointer(uintptr(unsafe.Pointer(&obj)) ^ 0))
 	} else {
 		return obj
 	}
 }
 
 func KeepAlive(obj any) {
-	if Unsafe {
+	if UnsafeBuffer {
 		runtime.KeepAlive(obj)
 	}
 }

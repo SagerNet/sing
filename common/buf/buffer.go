@@ -51,7 +51,7 @@ func NewSize(size int) *Buffer {
 }
 
 func StackNew() *Buffer {
-	if common.Unsafe {
+	if common.UnsafeBuffer {
 		return &Buffer{
 			data:  make([]byte, BufferSize),
 			start: ReversedHeader,
@@ -63,7 +63,7 @@ func StackNew() *Buffer {
 }
 
 func StackNewPacket() *Buffer {
-	if common.Unsafe {
+	if common.UnsafeBuffer {
 		return &Buffer{
 			data:  make([]byte, UDPBufferSize),
 			start: ReversedHeader,
@@ -75,7 +75,7 @@ func StackNewPacket() *Buffer {
 }
 
 func StackNewSize(size int) *Buffer {
-	if common.Unsafe {
+	if common.UnsafeBuffer {
 		return &Buffer{
 			data: Make(size),
 		}

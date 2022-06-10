@@ -1,5 +1,5 @@
-//go:build !disable_unsafe
+//go:build unsafe_buffer && !disable_unsafe_buffer
 
 package common
 
-const Unsafe = true
+const UnsafeBuffer = true
