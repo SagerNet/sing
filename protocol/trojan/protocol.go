@@ -275,28 +275,12 @@ func ReadPacket(conn net.Conn, buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func WritePacket(conn net.Conn, buffer *buf.Buffer, destination M.Socksaddr) error {
-	headerOverload := M.SocksaddrSerializer.AddrPortLen(destination) + 4
-	var header *buf.Buffer
-	defer header.Release()
-	var writeHeader bool
+	defer buffer.Release()
 	bufferLen := buffer.Len()
-	if buffer.Start() >= headerOverload {
-		header = buf.With(buffer.ExtendHeader(headerOverload))
-	} else {
-		writeHeader = true
-		_buffer := buf.StackNewSize(headerOverload)
-		defer common.KeepAlive(_buffer)
-		header = common.Dup(_buffer)
-	}
+	header := buf.With(buffer.ExtendHeader(M.SocksaddrSerializer.AddrPortLen(destination) + 4))
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
 	common.Must(binary.Write(header, binary.BigEndian, uint16(bufferLen)))
 	common.Must1(header.Write(CRLF))
-	if writeHeader {
-		_, err := conn.Write(header.Bytes())
-		if err != nil {
-			return E.Cause(err, "write packet header")
-		}
-	}
 	_, err := conn.Write(buffer.Bytes())
 	if err != nil {
 		return E.Cause(err, "write packet")

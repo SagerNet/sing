@@ -218,10 +218,10 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Protocol = "socks5"
 			metadata.Destination = request.Destination
 			go func() {
-				err = handler.NewPacketConnection(ctx, NewAssociatePacketConn(conn, udpConn, request.Destination), metadata)
+				defer conn.Close()
+				err = handler.NewPacketConnection(ctx, NewAssociatePacketConn(udpConn, request.Destination, conn), metadata)
 				if err != nil {
 					handler.HandleError(err)
-					conn.Close()
 				}
 			}()
 			return common.Error(io.Copy(io.Discard, conn))

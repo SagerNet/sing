@@ -23,15 +23,7 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 	if rt, ok := dst.(io.ReaderFrom); ok {
 		return rt.ReadFrom(src)
 	}
-	extendedSrc, srcExtended := src.(N.ExtendedReader)
-	extendedDst, dstExtended := dst.(N.ExtendedWriter)
-	if !srcExtended {
-		extendedSrc = &ExtendedReaderWrapper{src}
-	}
-	if !dstExtended {
-		extendedDst = &ExtendedWriterWrapper{dst}
-	}
-	return CopyExtended(extendedDst, extendedSrc)
+	return CopyExtended(NewExtendedWriter(dst), NewExtendedReader(src))
 }
 
 func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
@@ -278,17 +270,17 @@ func CopyPacketConnTimeout(ctx context.Context, conn N.PacketConn, dest N.Packet
 
 func NewPacketConn(conn net.PacketConn) N.PacketConn {
 	if udpConn, ok := conn.(*net.UDPConn); ok {
-		return &UDPConnWrapper{udpConn}
+		return &ExtendedUDPConn{udpConn}
 	} else {
-		return &PacketConnWrapper{udpConn}
+		return &ExtendedPacketConn{udpConn}
 	}
 }
 
-type UDPConnWrapper struct {
+type ExtendedUDPConn struct {
 	*net.UDPConn
 }
 
-func (w *UDPConnWrapper) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+func (w *ExtendedUDPConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	n, addr, err := w.ReadFromUDPAddrPort(buffer.FreeBytes())
 	if err != nil {
 		return M.Socksaddr{}, err
@@ -297,7 +289,7 @@ func (w *UDPConnWrapper) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	return M.SocksaddrFromNetIP(addr), nil
 }
 
-func (w *UDPConnWrapper) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+func (w *ExtendedUDPConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
 	if destination.Family().IsFqdn() {
 		udpAddr, err := net.ResolveUDPAddr("udp", destination.String())
@@ -309,21 +301,29 @@ func (w *UDPConnWrapper) WritePacket(buffer *buf.Buffer, destination M.Socksaddr
 	return common.Error(w.UDPConn.WriteToUDP(buffer.Bytes(), destination.UDPAddr()))
 }
 
-type PacketConnWrapper struct {
+func (w *ExtendedUDPConn) Upstream() any {
+	return w.UDPConn
+}
+
+type ExtendedPacketConn struct {
 	net.PacketConn
 }
 
-func (p *PacketConnWrapper) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	_, addr, err := buffer.ReadPacketFrom(p)
+func (w *ExtendedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	_, addr, err := ReadFrom(w, buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
 	return M.SocksaddrFromNet(addr), err
 }
 
-func (p *PacketConnWrapper) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+func (w *ExtendedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	return common.Error(p.WriteTo(buffer.Bytes(), destination.UDPAddr()))
+	return common.Error(w.WriteTo(buffer.Bytes(), destination.UDPAddr()))
+}
+
+func (w *ExtendedPacketConn) Upstream() any {
+	return w.PacketConn
 }
 
 type BindPacketConn struct {
@@ -342,6 +342,44 @@ func (c *BindPacketConn) Write(b []byte) (n int, err error) {
 
 func (c *BindPacketConn) RemoteAddr() net.Addr {
 	return c.Addr
+}
+
+func (c *BindPacketConn) Upstream() any {
+	return c.PacketConn
+}
+
+type UnbindPacketConn struct {
+	net.Conn
+}
+
+func (c *UnbindPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, err = c.Conn.Read(p)
+	if err == nil {
+		addr = c.RemoteAddr()
+	}
+	return
+}
+
+func (c *UnbindPacketConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
+	return c.Write(p)
+}
+
+func (c *UnbindPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	_, err = buffer.ReadFrom(c.Conn)
+	if err != nil {
+		return
+	}
+	destination = M.SocksaddrFromNet(c.RemoteAddr())
+	return
+}
+
+func (c *UnbindPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	defer buffer.Release()
+	return common.Error(c.Conn.Write(buffer.Bytes()))
+}
+
+func (c *UnbindPacketConn) Upstream() any {
+	return c.Conn
 }
 
 type ExtendedReaderWrapper struct {
@@ -365,6 +403,13 @@ func (r *ExtendedReaderWrapper) ReaderReplaceable() bool {
 	return true
 }
 
+func NewExtendedReader(reader io.Reader) N.ExtendedReader {
+	if r, ok := reader.(N.ExtendedReader); ok {
+		return r
+	}
+	return &ExtendedReaderWrapper{reader}
+}
+
 type ExtendedWriterWrapper struct {
 	io.Writer
 }
@@ -379,4 +424,36 @@ func (r *ExtendedWriterWrapper) Upstream() any {
 
 func (r *ExtendedReaderWrapper) WriterReplaceable() bool {
 	return true
+}
+
+func NewExtendedWriter(writer io.Writer) N.ExtendedWriter {
+	if w, ok := writer.(N.ExtendedWriter); ok {
+		return w
+	}
+	return &ExtendedWriterWrapper{writer}
+}
+
+type ExtendedConnWrapper struct {
+	net.Conn
+	reader N.ExtendedReader
+	writer N.ExtendedWriter
+}
+
+func (w *ExtendedConnWrapper) ReadBuffer(buffer *buf.Buffer) error {
+	return w.reader.ReadBuffer(buffer)
+}
+
+func (w *ExtendedConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
+	return w.writer.WriteBuffer(buffer)
+}
+
+func NewExtendedConn(conn net.Conn) N.ExtendedConn {
+	if c, ok := conn.(N.ExtendedConn); ok {
+		return c
+	}
+	return &ExtendedConnWrapper{
+		Conn:   conn,
+		reader: NewExtendedReader(conn),
+		writer: NewExtendedWriter(conn),
+	}
 }

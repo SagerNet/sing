@@ -12,7 +12,7 @@ import (
 )
 
 type PacketReader interface {
-	ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error)
+	ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error)
 }
 
 type TimeoutPacketReader interface {
@@ -21,7 +21,7 @@ type TimeoutPacketReader interface {
 }
 
 type PacketWriter interface {
-	WritePacket(buffer *buf.Buffer, addr M.Socksaddr) error
+	WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error
 }
 
 type PacketConn interface {

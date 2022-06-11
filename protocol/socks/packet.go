@@ -5,7 +5,9 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 )
 
 //+----+------+------+----------+----------+----------+
@@ -14,118 +16,26 @@ import (
 //| 2  |  1   |  1   | Variable |    2     | Variable |
 //+----+------+------+----------+----------+----------+
 
-type AssociateConn struct {
-	net.Conn
-	conn net.Conn
-	addr net.Addr
-	dest M.Socksaddr
-}
-
-func (c *AssociateConn) Close() error {
-	c.conn.Close()
-	c.Conn.Close()
-	return nil
-}
-
-func NewAssociateConn(conn net.Conn, packetConn net.Conn, destination M.Socksaddr) *AssociateConn {
-	return &AssociateConn{
-		Conn: packetConn,
-		conn: conn,
-		dest: destination,
-	}
-}
-
-func (c *AssociateConn) RemoteAddr() net.Addr {
-	return c.addr
-}
-
-func (c *AssociateConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, err = c.Conn.Read(p)
-	if err != nil {
-		return
-	}
-	reader := buf.As(p[3:n])
-	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
-	if err != nil {
-		return
-	}
-	addr = destination.UDPAddr()
-	n = copy(p, reader.Bytes())
-	return
-}
-
-func (c *AssociateConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	common.Must(buffer.WriteZeroN(3))
-	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
-	if err != nil {
-		return
-	}
-	_, err = buffer.Write(p)
-	if err != nil {
-		return
-	}
-
-	_, err = c.Conn.Write(buffer.Bytes())
-	return
-}
-
-func (c *AssociateConn) Read(b []byte) (n int, err error) {
-	n, _, err = c.ReadFrom(b)
-	return
-}
-
-func (c *AssociateConn) Write(b []byte) (n int, err error) {
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	common.Must(buffer.WriteZeroN(3))
-	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
-	if err != nil {
-		return
-	}
-	_, err = buffer.Write(b)
-	if err != nil {
-		return
-	}
-	_, err = c.Conn.Write(buffer.Bytes())
-	return
-}
-
-func (c *AssociateConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	n, err := buffer.ReadFrom(c.conn)
-	if err != nil {
-		return M.Socksaddr{}, err
-	}
-	buffer.Truncate(int(n))
-	buffer.Advance(3)
-	return M.SocksaddrSerializer.ReadAddrPort(buffer)
-}
-
-func (c *AssociateConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
-	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
-	common.Must(header.WriteZeroN(3))
-	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
-	return common.Error(c.Conn.Write(buffer.Bytes()))
-}
-
 type AssociatePacketConn struct {
-	net.PacketConn
-	conn net.Conn
-	addr net.Addr
-	dest M.Socksaddr
+	N.PacketConn
+	addr       net.Addr
+	remoteAddr M.Socksaddr
+	underlying net.Conn
 }
 
-func NewAssociatePacketConn(conn net.Conn, packetConn net.PacketConn, destination M.Socksaddr) *AssociatePacketConn {
+func NewAssociatePacketConn(conn net.PacketConn, remoteAddr M.Socksaddr, underlying net.Conn) *AssociatePacketConn {
 	return &AssociatePacketConn{
-		PacketConn: packetConn,
-		conn:       conn,
-		dest:       destination,
+		PacketConn: bufio.NewPacketConn(conn),
+		remoteAddr: remoteAddr,
+		underlying: underlying,
+	}
+}
+
+func NewAssociateConn(conn net.Conn, remoteAddr M.Socksaddr, underlying net.Conn) *AssociatePacketConn {
+	return &AssociatePacketConn{
+		PacketConn: &bufio.UnbindPacketConn{Conn: conn},
+		remoteAddr: remoteAddr,
+		underlying: underlying,
 	}
 }
 
@@ -134,28 +44,29 @@ func (c *AssociatePacketConn) RemoteAddr() net.Addr {
 }
 
 func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, addr, err = c.PacketConn.ReadFrom(p)
+	buffer := buf.With(p)
+	n, _, err = bufio.ReadFrom(c.PacketConn, buffer)
 	if err != nil {
 		return
 	}
-	reader := buf.As(p[3:n])
-	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
+	buffer.Advance(3)
+	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return
 	}
 	addr = destination.UDPAddr()
-	n = copy(p, reader.Bytes())
+	n = copy(p, buffer.Bytes())
 	return
 }
 
 func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	_buffer := buf.StackNew()
+	destination := M.SocksaddrFromNet(addr)
+	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination) + len(p))
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
 	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
-
-	err = M.SocksaddrSerializer.WriteAddrPort(buffer, M.SocksaddrFromNet(addr))
+	err = M.SocksaddrSerializer.WriteAddrPort(buffer, destination)
 	if err != nil {
 		return
 	}
@@ -163,8 +74,7 @@ func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error
 	if err != nil {
 		return
 	}
-	_, err = c.PacketConn.WriteTo(buffer.Bytes(), c.addr)
-	return
+	return bufio.WriteTo(c.PacketConn, buffer, c.addr)
 }
 
 func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
@@ -173,31 +83,15 @@ func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	common.Must(buffer.WriteZeroN(3))
-
-	err = M.SocksaddrSerializer.WriteAddrPort(buffer, c.dest)
-	if err != nil {
-		return
-	}
-	_, err = buffer.Write(b)
-	if err != nil {
-		return
-	}
-	_, err = c.PacketConn.WriteTo(buffer.Bytes(), c.addr)
-	return
+	return c.WriteTo(b, c.addr)
 }
 
 func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	n, addr, err := c.PacketConn.ReadFrom(buffer.FreeBytes())
+	_, addr, err := bufio.ReadFrom(c.PacketConn, buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
 	c.addr = addr
-	buffer.Truncate(n)
 	buffer.Advance(3)
 	dest, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	return dest, err
@@ -208,5 +102,16 @@ func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Sock
 	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must(header.WriteZeroN(3))
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
-	return common.Error(c.PacketConn.WriteTo(buffer.Bytes(), c.addr))
+	return common.Error(bufio.WriteTo(c.PacketConn, buffer, c.addr))
+}
+
+func (c *AssociatePacketConn) Upstream() any {
+	return c.PacketConn
+}
+
+func (c *AssociatePacketConn) Close() error {
+	return common.Close(
+		c.PacketConn,
+		c.underlying,
+	)
 }

@@ -116,7 +116,7 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 			tcpConn.Close()
 			return nil, err
 		}
-		return NewAssociateConn(tcpConn, udpConn, address), nil
+		return NewAssociateConn(udpConn, address, tcpConn), nil
 	}
 	return nil, os.ErrInvalid
 }

@@ -146,7 +146,6 @@ func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
 	return WritePacket(c.Conn, buffer, destination)
 }
 
