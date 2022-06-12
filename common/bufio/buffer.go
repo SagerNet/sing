@@ -29,6 +29,10 @@ func (r *BufferedReader) Read(p []byte) (n int, err error) {
 	return r.buffer.Read(p)
 }
 
+func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
+	return CopyExtendedBuffer(NewExtendedWriter(w), NewExtendedReader(r.upstream), r.buffer)
+}
+
 func (w *BufferedReader) Upstream() any {
 	return w.upstream
 }
