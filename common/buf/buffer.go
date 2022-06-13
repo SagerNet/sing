@@ -13,7 +13,7 @@ import (
 
 const (
 	ReversedHeader = 1024
-	BufferSize     = 20 * 1024
+	BufferSize     = 32 * 1024
 	UDPBufferSize  = 16 * 1024
 )
 
@@ -129,9 +129,6 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 	}
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
-	}
-	if b.end+len(data) > b.Cap() {
-		panic("buffer overflow: cap " + strconv.Itoa(len(b.data)) + ",end " + strconv.Itoa(b.end) + ", need " + strconv.Itoa(len(data)))
 	}
 	n = copy(b.data[b.end:], data)
 	b.end += n
@@ -338,9 +335,7 @@ func (b *Buffer) IncRef() {
 }
 
 func (b *Buffer) DecRef() {
-	if atomic.AddInt32(&b.refs, -1) == 0 {
-		b.Release()
-	}
+	atomic.AddInt32(&b.refs, -1)
 }
 
 func (b *Buffer) Release() {

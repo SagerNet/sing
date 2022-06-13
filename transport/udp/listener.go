@@ -161,6 +161,7 @@ func (l *Listener) loop() {
 	_buffer := buf.StackNewPacket()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	buffer.IncRef()
 	defer buffer.DecRef()
 	if !l.tproxy {

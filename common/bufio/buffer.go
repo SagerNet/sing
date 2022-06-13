@@ -3,30 +3,47 @@ package bufio
 import (
 	"io"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type BufferedReader struct {
-	upstream io.Reader
+	upstream N.ExtendedReader
 	buffer   *buf.Buffer
 }
 
 func NewBufferedReader(upstream io.Reader, buffer *buf.Buffer) *BufferedReader {
 	return &BufferedReader{
-		upstream: upstream,
+		upstream: NewExtendedReader(upstream),
 		buffer:   buffer,
 	}
 }
 
 func (r *BufferedReader) Read(p []byte) (n int, err error) {
 	if r.buffer.IsEmpty() {
-		r.buffer.FullReset()
-		_, err = r.buffer.ReadFrom(r.upstream)
+		r.buffer.Reset()
+		err = r.upstream.ReadBuffer(r.buffer)
 		if err != nil {
 			return
 		}
 	}
 	return r.buffer.Read(p)
+}
+
+func (r *BufferedReader) ReadBuffer(buffer *buf.Buffer) error {
+	if r.buffer.IsEmpty() {
+		r.buffer.Reset()
+		err := r.upstream.ReadBuffer(r.buffer)
+		if err != nil {
+			return err
+		}
+	}
+	if r.buffer.Len() > buffer.FreeLen() {
+		return common.Error(buffer.ReadFullFrom(r.buffer, buffer.FreeLen()))
+	} else {
+		return common.Error(buffer.ReadFullFrom(r.buffer, r.buffer.Len()))
+	}
 }
 
 func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
@@ -35,4 +52,36 @@ func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
 
 func (w *BufferedReader) Upstream() any {
 	return w.upstream
+}
+
+type BufferedWriter struct {
+	upstream io.Writer
+	buffer   *buf.Buffer
+}
+
+func NewBufferedWriter(upstream io.Writer, buffer *buf.Buffer) *BufferedWriter {
+	return &BufferedWriter{
+		upstream: upstream,
+		buffer:   buffer,
+	}
+}
+
+func (w *BufferedWriter) Write(p []byte) (n int, err error) {
+	for {
+		var writeN int
+		writeN, err = w.buffer.Write(p[n:])
+		n += writeN
+		if n == len(p) {
+			return
+		}
+		_, err = w.upstream.Write(w.buffer.Bytes())
+		if err != nil {
+			return
+		}
+		w.buffer.FullReset()
+	}
+}
+
+func (w *BufferedWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	return CopyExtendedBuffer(NewExtendedWriter(w), NewExtendedReader(r), w.buffer)
 }

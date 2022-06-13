@@ -59,11 +59,11 @@ func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err erro
 	} else if dstUnsafe {
 		return CopyExtendedWithPool(dst, src)
 	}
-
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
-
-	return CopyExtendedBuffer(dst, src, common.Dup(_buffer))
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	return CopyExtendedBuffer(dst, src, buffer)
 }
 
 func CopyExtendedBuffer(dst N.ExtendedWriter, src N.ExtendedReader, buffer *buf.Buffer) (n int64, err error) {
@@ -145,6 +145,7 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	_buffer := buf.StackNewPacket()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	buffer.IncRef()
 	defer buffer.DecRef()
 	var destination M.Socksaddr
@@ -175,6 +176,7 @@ func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout ti
 	_buffer := buf.StackNewPacket()
 	defer common.KeepAlive(_buffer)
 	buffer := common.Dup(_buffer)
+	defer buffer.Release()
 	buffer.IncRef()
 	defer buffer.DecRef()
 	var destination M.Socksaddr
