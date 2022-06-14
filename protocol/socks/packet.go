@@ -33,7 +33,7 @@ func NewAssociatePacketConn(conn net.PacketConn, remoteAddr M.Socksaddr, underly
 
 func NewAssociateConn(conn net.Conn, remoteAddr M.Socksaddr, underlying net.Conn) *AssociatePacketConn {
 	return &AssociatePacketConn{
-		PacketConn: &bufio.UnbindPacketConn{Conn: conn},
+		PacketConn: bufio.NewUnbindPacketConn(conn),
 		remoteAddr: remoteAddr,
 		underlying: underlying,
 	}

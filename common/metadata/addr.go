@@ -116,6 +116,9 @@ func SocksaddrFromNetIP(ap netip.AddrPort) Socksaddr {
 }
 
 func SocksaddrFromNet(ap net.Addr) Socksaddr {
+	if ap == nil {
+		return Socksaddr{}
+	}
 	if socksAddr, ok := ap.(Socksaddr); ok {
 		return socksAddr
 	}

@@ -60,6 +60,11 @@ type NetPacketConn interface {
 	PacketConn
 }
 
+type BindPacketConn interface {
+	NetPacketConn
+	net.Conn
+}
+
 type UDPHandler interface {
 	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer, metadata M.Metadata) error
 }

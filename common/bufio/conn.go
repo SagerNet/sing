@@ -299,8 +299,10 @@ func CopyPacketConnTimeout(ctx context.Context, conn N.PacketConn, dest N.Packet
 	})
 }
 
-func NewPacketConn(conn net.PacketConn) N.PacketConn {
-	if udpConn, ok := conn.(*net.UDPConn); ok {
+func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
+	if packetConn, ok := conn.(N.NetPacketConn); ok {
+		return packetConn
+	} else if udpConn, ok := conn.(*net.UDPConn); ok {
 		return &ExtendedUDPConn{udpConn}
 	} else {
 		return &ExtendedPacketConn{udpConn}
@@ -380,37 +382,44 @@ func (c *BindPacketConn) Upstream() any {
 }
 
 type UnbindPacketConn struct {
-	net.Conn
+	N.ExtendedConn
+	Addr M.Socksaddr
 }
 
 func (c *UnbindPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, err = c.Conn.Read(p)
+	n, err = c.ExtendedConn.Read(p)
 	if err == nil {
-		addr = c.RemoteAddr()
+		addr = c.Addr.UDPAddr()
 	}
 	return
 }
 
 func (c *UnbindPacketConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
-	return c.Write(p)
+	return c.ExtendedConn.Write(p)
 }
 
 func (c *UnbindPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	_, err = buffer.ReadFrom(c.Conn)
+	err = c.ExtendedConn.ReadBuffer(buffer)
 	if err != nil {
 		return
 	}
-	destination = M.SocksaddrFromNet(c.RemoteAddr())
+	destination = c.Addr
 	return
 }
 
-func (c *UnbindPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
-	return common.Error(c.Conn.Write(buffer.Bytes()))
+func (c *UnbindPacketConn) WritePacket(buffer *buf.Buffer, _ M.Socksaddr) error {
+	return c.ExtendedConn.WriteBuffer(buffer)
 }
 
 func (c *UnbindPacketConn) Upstream() any {
-	return c.Conn
+	return c.ExtendedConn
+}
+
+func NewUnbindPacketConn(conn net.Conn) N.NetPacketConn {
+	return &UnbindPacketConn{
+		NewExtendedConn(conn),
+		M.SocksaddrFromNet(conn.RemoteAddr()),
+	}
 }
 
 type ExtendedReaderWrapper struct {
