@@ -237,11 +237,11 @@ func (b *Buffer) ReadFullFrom(r io.Reader, size int) (n int, err error) {
 		return 0, io.ErrShortBuffer
 	}
 	end := b.end + size
-	n, err = io.ReadFull(r, b.data[b.start:end])
+	n, err = io.ReadFull(r, b.data[b.end:end])
 	if err != nil {
-		return 0, err
+		return
 	}
-	b.end += n
+	b.end = end
 	return
 }
 
