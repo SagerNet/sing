@@ -21,8 +21,9 @@ type Buffer struct {
 	data    []byte
 	start   int
 	end     int
-	managed bool
 	refs    int32
+	managed bool
+	closed  bool
 }
 
 func New() *Buffer {
@@ -95,6 +96,10 @@ func With(data []byte) *Buffer {
 	return &Buffer{
 		data: data,
 	}
+}
+
+func (b *Buffer) Closed() bool {
+	return b.closed
 }
 
 func (b *Buffer) Byte(index int) byte {
@@ -339,14 +344,14 @@ func (b *Buffer) DecRef() {
 }
 
 func (b *Buffer) Release() {
-	if b == nil || b.data == nil || !b.managed {
+	if b == nil || b.closed || !b.managed {
 		return
 	}
 	if atomic.LoadInt32(&b.refs) > 0 {
 		return
 	}
 	common.Must(Put(b.data))
-	*b = Buffer{}
+	*b = Buffer{closed: true}
 }
 
 func (b *Buffer) Cut(start int, end int) *Buffer {

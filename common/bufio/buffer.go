@@ -2,6 +2,7 @@ package bufio
 
 import (
 	"io"
+	"os"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -21,10 +22,14 @@ func NewBufferedReader(upstream io.Reader, buffer *buf.Buffer) *BufferedReader {
 }
 
 func (r *BufferedReader) Read(p []byte) (n int, err error) {
+	if r.buffer.Closed() {
+		return 0, os.ErrClosed
+	}
 	if r.buffer.IsEmpty() {
 		r.buffer.Reset()
 		err = r.upstream.ReadBuffer(r.buffer)
 		if err != nil {
+			r.buffer.Release()
 			return
 		}
 	}
@@ -32,21 +37,34 @@ func (r *BufferedReader) Read(p []byte) (n int, err error) {
 }
 
 func (r *BufferedReader) ReadBuffer(buffer *buf.Buffer) error {
+	if r.buffer.Closed() {
+		return os.ErrClosed
+	}
+	var err error
 	if r.buffer.IsEmpty() {
 		r.buffer.Reset()
-		err := r.upstream.ReadBuffer(r.buffer)
+		err = r.upstream.ReadBuffer(r.buffer)
 		if err != nil {
+			r.buffer.Release()
 			return err
 		}
 	}
 	if r.buffer.Len() > buffer.FreeLen() {
-		return common.Error(buffer.ReadFullFrom(r.buffer, buffer.FreeLen()))
+		err = common.Error(buffer.ReadFullFrom(r.buffer, buffer.FreeLen()))
 	} else {
-		return common.Error(buffer.ReadFullFrom(r.buffer, r.buffer.Len()))
+		err = common.Error(buffer.ReadFullFrom(r.buffer, r.buffer.Len()))
 	}
+	if err != nil {
+		r.buffer.Release()
+	}
+	return err
 }
 
 func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
+	if r.buffer.Closed() {
+		return 0, os.ErrClosed
+	}
+	defer r.buffer.Release()
 	return CopyExtendedBuffer(NewExtendedWriter(w), NewExtendedReader(r.upstream), r.buffer)
 }
 

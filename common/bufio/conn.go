@@ -242,7 +242,7 @@ func CopyPacketWithSrcBufferTimeout(dest N.PacketWriter, src N.ThreadSafePacketR
 func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	var destination M.Socksaddr
 	for {
-		buffer := buf.New()
+		buffer := buf.NewPacket()
 		destination, err = src.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
@@ -261,7 +261,7 @@ func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err e
 func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
 	var destination M.Socksaddr
 	for {
-		buffer := buf.New()
+		buffer := buf.NewPacket()
 		err = src.SetReadDeadline(time.Now().Add(timeout))
 		if err != nil {
 			return
