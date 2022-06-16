@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -49,7 +49,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 				portStr = "80"
 			}
 			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), portStr)
-			_, err := fmt.Fprintf(conn, "HTTP/%d.%d %03d %s\r\n\r\n", request.ProtoMajor, request.ProtoMinor, http.StatusOK, "Connection established")
+			_, err := conn.Write([]byte(F.ToString("HTTP/", request.ProtoMajor, ".", request.ProtoMinor, " 200 Connection established\r\n\r\n")))
 			if err != nil {
 				return E.Cause(err, "write http response")
 			}

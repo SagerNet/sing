@@ -2,7 +2,6 @@ package buf
 
 import (
 	"crypto/rand"
-	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -256,10 +255,6 @@ func (b *Buffer) WriteRune(s rune) (int, error) {
 
 func (b *Buffer) WriteString(s string) (int, error) {
 	return b.Write([]byte(s))
-}
-
-func (b *Buffer) WriteSprint(s ...any) (int, error) {
-	return b.WriteString(fmt.Sprint(s...))
 }
 
 func (b *Buffer) WriteZero() error {

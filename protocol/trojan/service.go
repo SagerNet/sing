@@ -2,13 +2,13 @@ package trojan
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
@@ -156,7 +156,7 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	return fmt.Sprint("process connection from ", e.Metadata.Source, ": ", e.Inner.Error())
+	return F.ToString("process connection from ", e.Metadata.Source, ": ", e.Inner)
 }
 
 func (e *Error) Unwrap() error {

@@ -3,10 +3,11 @@ package exceptions
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
+
+	F "github.com/sagernet/sing/common/format"
 )
 
 type causeError struct {
@@ -42,15 +43,15 @@ func (e *extendedError) Unwrap() error {
 }
 
 func New(message ...any) error {
-	return errors.New(fmt.Sprint(message...))
+	return errors.New(F.ToString(message...))
 }
 
 func Cause(cause error, message ...any) error {
-	return &causeError{fmt.Sprint(message...), cause}
+	return &causeError{F.ToString(message...), cause}
 }
 
 func Extend(cause error, message ...any) error {
-	return &extendedError{fmt.Sprint(message...), cause}
+	return &extendedError{F.ToString(message...), cause}
 }
 
 type HasInnerError interface {

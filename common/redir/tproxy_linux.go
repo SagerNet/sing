@@ -2,7 +2,6 @@ package redir
 
 import (
 	"encoding/binary"
-	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"syscall"
 
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	"golang.org/x/sys/unix"
 )
@@ -88,7 +88,7 @@ func DialUDP(network string, lAddr *net.UDPAddr, rAddr *net.UDPAddr) (*net.UDPCo
 		return nil, err
 	}
 
-	fdFile := os.NewFile(uintptr(fd), fmt.Sprintf("net-udp-dial-%s", rAddr.String()))
+	fdFile := os.NewFile(uintptr(fd), F.ToString("net-udp-dial-", rAddr))
 	defer fdFile.Close()
 
 	c, err := net.FileConn(fdFile)
