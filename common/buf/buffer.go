@@ -44,6 +44,11 @@ func NewPacket() *Buffer {
 }
 
 func NewSize(size int) *Buffer {
+	if size > 65535 {
+		return &Buffer{
+			data: make([]byte, size),
+		}
+	}
 	return &Buffer{
 		data:    Get(size),
 		managed: true,
