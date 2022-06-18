@@ -60,7 +60,7 @@ func (c *ClientConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	if len(p) < int(length) {
 		return 0, nil, io.ErrShortBuffer
 	}
-	n, err = io.ReadAtLeast(c, p, int(length))
+	n, err = io.ReadFull(c, p[:length])
 	if err != nil {
 		return 0, nil, err
 	}
