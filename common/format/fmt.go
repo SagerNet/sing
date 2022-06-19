@@ -24,6 +24,8 @@ func ToString(messages ...any) string {
 			} else {
 				output += "false"
 			}
+		case uint:
+			output += strconv.FormatUint(uint64(message), 10)
 		case uint8:
 			output += strconv.FormatUint(uint64(message), 10)
 		case uint16:
@@ -32,6 +34,8 @@ func ToString(messages ...any) string {
 			output += strconv.FormatUint(uint64(message), 10)
 		case uint64:
 			output += strconv.FormatUint(message, 10)
+		case int:
+			output += strconv.FormatInt(int64(message), 10)
 		case int8:
 			output += strconv.FormatInt(int64(message), 10)
 		case int16:
