@@ -171,7 +171,7 @@ func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if c.fastClose {
 		defer c.Close()
 	}
-	return len(p), c.source.WritePacket(buf.As(p), M.SocksaddrFromNet(addr))
+	return len(p), c.source.WritePacket(buf.As(p).ToOwned(), M.SocksaddrFromNet(addr))
 }
 
 func (c *conn) Close() error {
