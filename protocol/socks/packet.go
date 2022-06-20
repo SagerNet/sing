@@ -83,7 +83,7 @@ func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
-	return c.WriteTo(b, c.addr)
+	return c.WriteTo(b, c.remoteAddr)
 }
 
 func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
