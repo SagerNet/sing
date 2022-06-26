@@ -216,6 +216,14 @@ func (c *LruCache[K, V]) CloneTo(n *LruCache[K, V]) {
 	}
 }
 
+func (c *LruCache[K, V]) Range(block func(key K, value V)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for le := c.lru.Front(); le != nil; le = le.Next() {
+		block(le.Value.key, le.Value.value)
+	}
+}
+
 func (c *LruCache[K, V]) get(key K) *entry[K, V] {
 	c.mu.Lock()
 	defer c.mu.Unlock()
