@@ -145,6 +145,15 @@ func Must2(_ any, _ any, err error) {
 	}
 }
 
+func AnyError(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Close(closers ...any) error {
 	var retErr error
 	for _, closer := range closers {
