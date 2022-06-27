@@ -305,7 +305,7 @@ func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
 	} else if udpConn, ok := conn.(*net.UDPConn); ok {
 		return &ExtendedUDPConn{udpConn}
 	} else {
-		return &ExtendedPacketConn{udpConn}
+		return &ExtendedPacketConn{conn}
 	}
 }
 
@@ -343,7 +343,7 @@ type ExtendedPacketConn struct {
 }
 
 func (w *ExtendedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	_, addr, err := ReadFrom(w, buffer)
+	_, addr, err := buffer.ReadPacketFrom(w)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
