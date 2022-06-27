@@ -303,16 +303,12 @@ func (b *Buffer) ReadBytes(n int) ([]byte, error) {
 }
 
 func (b *Buffer) Read(data []byte) (n int, err error) {
-	if b.Len() == 0 {
+	if b.IsEmpty() {
 		return 0, io.EOF
 	}
 	n = copy(data, b.data[b.start:b.end])
-	if n == b.Len() {
-		b.Reset()
-	} else {
-		b.start += n
-	}
-	return n, nil
+	b.start += n
+	return
 }
 
 func (b *Buffer) WriteTo(w io.Writer) (int64, error) {
