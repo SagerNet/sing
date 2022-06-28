@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -113,25 +114,40 @@ type packet struct {
 }
 
 type conn struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	data       chan packet
-	localAddr  M.Socksaddr
-	remoteAddr M.Socksaddr
-	source     N.PacketWriter
-	fastClose  bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	data         chan packet
+	localAddr    M.Socksaddr
+	remoteAddr   M.Socksaddr
+	source       N.PacketWriter
+	fastClose    bool
+	readDeadline atomic.Value
 }
 
 func (c *conn) ReadPacketThreadSafe() (buffer *buf.Buffer, addr M.Socksaddr, err error) {
+	var deadline <-chan time.Time
+	if d, ok := c.readDeadline.Load().(time.Time); ok && !d.IsZero() {
+		timer := time.NewTimer(time.Until(d))
+		defer timer.Stop()
+		deadline = timer.C
+	}
 	select {
 	case p := <-c.data:
 		return p.data, p.destination, nil
 	case <-c.ctx.Done():
-		return nil, M.Socksaddr{}, c.ctx.Err()
+		return nil, M.Socksaddr{}, io.ErrClosedPipe
+	case <-deadline:
+		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
 }
 
 func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
+	var deadline <-chan time.Time
+	if d, ok := c.readDeadline.Load().(time.Time); ok && !d.IsZero() {
+		timer := time.NewTimer(time.Until(d))
+		defer timer.Stop()
+		deadline = timer.C
+	}
 	select {
 	case p := <-c.data:
 		_, err = buffer.ReadFrom(p.data)
@@ -139,6 +155,8 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 		return p.destination, err
 	case <-c.ctx.Done():
 		return M.Socksaddr{}, io.ErrClosedPipe
+	case <-deadline:
+		return M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
 }
 
@@ -191,7 +209,8 @@ func (c *conn) SetDeadline(t time.Time) error {
 }
 
 func (c *conn) SetReadDeadline(t time.Time) error {
-	return os.ErrInvalid
+	c.readDeadline.Store(t)
+	return nil
 }
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
