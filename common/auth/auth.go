@@ -9,7 +9,7 @@ type Authenticator interface {
 	Users() []string
 }
 
-type AuthUser struct {
+type User struct {
 	User string
 	Pass string
 }
@@ -26,7 +26,7 @@ func (au *inMemoryAuthenticator) Verify(user string, pass string) bool {
 
 func (au *inMemoryAuthenticator) Users() []string { return au.usernames }
 
-func NewAuthenticator(users []AuthUser) Authenticator {
+func NewAuthenticator(users []User) Authenticator {
 	if len(users) == 0 {
 		return nil
 	}
@@ -34,6 +34,7 @@ func NewAuthenticator(users []AuthUser) Authenticator {
 	au := &inMemoryAuthenticator{storage: &sync.Map{}}
 	for _, user := range users {
 		au.storage.Store(user.User, user.Pass)
+		au.usernames = append(au.usernames, user.User)
 	}
 	usernames := make([]string, 0, len(users))
 	au.storage.Range(func(key, value interface{}) bool {

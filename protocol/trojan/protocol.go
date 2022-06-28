@@ -134,7 +134,7 @@ func ClientHandshakeRaw(conn net.Conn, key [KeyLength]byte, command byte, destin
 	if err != nil {
 		return err
 	}
-	_, err = conn.Write(CRLF[:])
+	_, err = conn.Write(CRLF)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func ClientHandshakeRaw(conn net.Conn, key [KeyLength]byte, command byte, destin
 	if err != nil {
 		return err
 	}
-	_, err = conn.Write(CRLF[:])
+	_, err = conn.Write(CRLF)
 	if err != nil {
 		return err
 	}

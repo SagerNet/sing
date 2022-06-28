@@ -158,11 +158,11 @@ func (b *Buffer) WriteRandom(size int) []byte {
 	return buffer
 }
 
-func (b *Buffer) WriteByte(byte byte) error {
+func (b *Buffer) WriteByte(d byte) error {
 	if b.IsFull() {
 		return io.ErrShortBuffer
 	}
-	b.data[b.end] = byte
+	b.data[b.end] = d
 	b.end++
 	return nil
 }

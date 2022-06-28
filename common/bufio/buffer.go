@@ -68,8 +68,8 @@ func (r *BufferedReader) WriteTo(w io.Writer) (n int64, err error) {
 	return CopyExtendedBuffer(NewExtendedWriter(w), NewExtendedReader(r.upstream), r.buffer)
 }
 
-func (w *BufferedReader) Upstream() any {
-	return w.upstream
+func (r *BufferedReader) Upstream() any {
+	return r.upstream
 }
 
 type BufferedWriter struct {

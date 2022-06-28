@@ -458,11 +458,11 @@ func (w *ExtendedWriterWrapper) WriteBuffer(buffer *buf.Buffer) error {
 	return common.Error(w.Write(buffer.Bytes()))
 }
 
-func (r *ExtendedWriterWrapper) Upstream() any {
-	return r.Writer
+func (w *ExtendedWriterWrapper) Upstream() any {
+	return w.Writer
 }
 
-func (r *ExtendedReaderWrapper) WriterReplaceable() bool {
+func (w *ExtendedReaderWrapper) WriterReplaceable() bool {
 	return true
 }
 

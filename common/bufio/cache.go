@@ -92,9 +92,9 @@ func NewCachedReader(upstream io.Reader, buffer *buf.Buffer) *CachedReader {
 	}
 }
 
-func (c *CachedReader) ReadCached() *buf.Buffer {
-	buffer := c.buffer
-	c.buffer = nil
+func (r *CachedReader) ReadCached() *buf.Buffer {
+	buffer := r.buffer
+	r.buffer = nil
 	return buffer
 }
 
@@ -123,15 +123,15 @@ func (r *CachedReader) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (w *CachedReader) Upstream() any {
-	return w.upstream
+func (r *CachedReader) Upstream() any {
+	return r.upstream
 }
 
-func (c *CachedReader) ReaderReplaceable() bool {
-	return c.buffer == nil
+func (r *CachedReader) ReaderReplaceable() bool {
+	return r.buffer == nil
 }
 
-func (c *CachedReader) Close() error {
-	c.buffer.Release()
+func (r *CachedReader) Close() error {
+	r.buffer.Release()
 	return nil
 }

@@ -206,7 +206,6 @@ func (l *Listener) loop() {
 				l.handler.HandleError(err)
 			}
 		}
-
 	}
 }
 
@@ -261,6 +260,5 @@ func (l *Listener) loopThreadSafe() {
 				l.handler.HandleError(err)
 			}
 		}
-
 	}
 }
