@@ -60,6 +60,9 @@ func (l *Listener) NewConnection(ctx context.Context, conn net.Conn, metadata M.
 		return l.handler.NewConnection(ctx, conn, metadata)
 	}
 	headerType, err := rw.ReadByte(conn)
+	if err != nil {
+		return err
+	}
 	switch headerType {
 	case socks4.Version, socks5.Version:
 		return socks.HandleConnection0(ctx, conn, headerType, l.authenticator, l.handler, metadata)

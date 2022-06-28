@@ -152,41 +152,6 @@ func (b *Buffer) ExtendHeader(n int) []byte {
 	return b.data[b.start : b.start+n]
 }
 
-func (b *Buffer) _WriteBufferAtFirst(buffer *Buffer) *Buffer {
-	size := buffer.Len()
-	if b.start >= size {
-		n := copy(b.data[b.start-size:b.start], buffer.Bytes())
-		b.start -= n
-		buffer.Release()
-		return b
-	} else if buffer.FreeLen() >= b.Len() {
-		common.Must1(buffer.Write(b.Bytes()))
-		b.Release()
-		return buffer
-	} else if b.FreeLen() >= size {
-		copy(b.data[b.start+size:b.end+size], b.data[b.start:b.end])
-		copy(b.data, buffer.data)
-		buffer.Release()
-		return b
-	} else {
-		panic("buffer overflow")
-	}
-}
-
-func (b *Buffer) _WriteAtFirst(data []byte) (n int, err error) {
-	size := len(data)
-	if b.start >= size {
-		n = copy(b.data[b.start-size:b.start], data)
-		b.start -= n
-	} else {
-		copy(b.data[size:], b.data[b.start:b.end])
-		n = copy(b.data[:size], data)
-		b.end += size - b.start
-		b.start = 0
-	}
-	return
-}
-
 func (b *Buffer) WriteRandom(size int) []byte {
 	buffer := b.Extend(size)
 	common.Must1(io.ReadFull(rand.Reader, buffer))

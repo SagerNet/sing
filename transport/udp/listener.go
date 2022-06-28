@@ -23,11 +23,9 @@ type Handler interface {
 type Listener struct {
 	*net.UDPConn
 	handler    Handler
-	network    string
 	bind       netip.AddrPort
 	tproxy     bool
 	forceAddr6 bool
-	ctx        context.Context
 	access     sync.RWMutex
 	closed     chan struct{}
 	outbound   chan *outboundPacket

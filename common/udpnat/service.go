@@ -124,25 +124,21 @@ type conn struct {
 
 func (c *conn) ReadPacketThreadSafe() (buffer *buf.Buffer, addr M.Socksaddr, err error) {
 	select {
-	case p, ok := <-c.data:
-		if !ok {
-			err = io.ErrClosedPipe
-			return
-		}
+	case p := <-c.data:
 		return p.data, p.destination, nil
+	case <-c.ctx.Done():
+		return nil, M.Socksaddr{}, c.ctx.Err()
 	}
 }
 
 func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	select {
-	case p, ok := <-c.data:
-		if !ok {
-			err = io.ErrClosedPipe
-			return
-		}
-		_, err := buffer.ReadFrom(p.data)
+	case p := <-c.data:
+		_, err = buffer.ReadFrom(p.data)
 		p.data.Release()
 		return p.destination, err
+	case <-c.ctx.Done():
+		return M.Socksaddr{}, io.ErrClosedPipe
 	}
 }
 
@@ -155,15 +151,13 @@ func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 
 func (c *conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	select {
-	case pkt, ok := <-c.data:
-		if !ok {
-			err = io.ErrClosedPipe
-			return
-		}
+	case pkt := <-c.data:
 		n = copy(p, pkt.data.Bytes())
 		pkt.data.Release()
 		addr = pkt.destination.UDPAddr()
-		return
+		return n, addr, nil
+	case <-c.ctx.Done():
+		return 0, nil, io.ErrClosedPipe
 	}
 }
 
@@ -175,19 +169,13 @@ func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 }
 
 func (c *conn) Close() error {
-	c.cancel()
-	for {
-		select {
-		case p, ok := <-c.data:
-			if !ok {
-				return os.ErrClosed
-			}
-			p.data.Release()
-		default:
-			close(c.data)
-			return nil
-		}
+	select {
+	case <-c.ctx.Done():
+		return os.ErrClosed
+	default:
 	}
+	c.cancel()
+	return nil
 }
 
 func (c *conn) LocalAddr() net.Addr {
