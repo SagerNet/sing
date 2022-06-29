@@ -191,7 +191,7 @@ func (c *LruCache[K, V]) StoreWithExpire(key K, value V, expires time.Time) {
 		c.cache[key] = c.lru.PushBack(e)
 
 		if c.maxSize > 0 {
-			if len := c.lru.Len(); len > c.maxSize {
+			if n := c.lru.Len(); n > c.maxSize {
 				c.deleteElement(c.lru.Front())
 			}
 		}

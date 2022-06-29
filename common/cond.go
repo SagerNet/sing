@@ -140,7 +140,7 @@ func Must1(_ any, err error) {
 	}
 }
 
-func Must2(_ any, _ any, err error) {
+func Must2(_, _ any, err error) {
 	if err != nil {
 		panic(err)
 	}
@@ -168,8 +168,6 @@ func Close(closers ...any) error {
 				retErr = err
 			}
 			continue
-		}
-		switch c := closer.(type) {
 		case WithUpstream:
 			err := Close(c.Upstream())
 			if err != nil {

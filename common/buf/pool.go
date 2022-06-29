@@ -10,29 +10,40 @@ func Put(buf []byte) error {
 
 func Make(size int) []byte {
 	var buffer []byte
-	if size <= 16 {
+	switch {
+	case size <= 2:
+		buffer = make([]byte, 2)
+	case size <= 4:
+		buffer = make([]byte, 4)
+	case size <= 8:
+		buffer = make([]byte, 8)
+	case size <= 16:
 		buffer = make([]byte, 16)
-	} else if size <= 32 {
+	case size <= 32:
 		buffer = make([]byte, 32)
-	} else if size <= 64 {
+	case size <= 64:
 		buffer = make([]byte, 64)
-	} else if size <= 128 {
+	case size <= 128:
 		buffer = make([]byte, 128)
-	} else if size <= 256 {
+	case size <= 256:
 		buffer = make([]byte, 256)
-	} else if size <= 512 {
+	case size <= 512:
 		buffer = make([]byte, 512)
-	} else if size <= 1024 {
+	case size <= 1024:
 		buffer = make([]byte, 1024)
-	} else if size <= 4*1024 {
-		buffer = make([]byte, 4*1024)
-	} else if size <= 16*1024 {
-		buffer = make([]byte, 16*1024)
-	} else if size <= 20*1024 {
-		buffer = make([]byte, 20*1024)
-	} else if size <= 65535 {
+	case size <= 2048:
+		buffer = make([]byte, 2048)
+	case size <= 4096:
+		buffer = make([]byte, 4096)
+	case size <= 8192:
+		buffer = make([]byte, 8192)
+	case size <= 16384:
+		buffer = make([]byte, 16384)
+	case size <= 32768:
+		buffer = make([]byte, 32768)
+	case size <= 65535:
 		buffer = make([]byte, 65535)
-	} else {
+	default:
 		return make([]byte, size)
 	}
 	return buffer[:size]

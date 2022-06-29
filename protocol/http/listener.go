@@ -1,14 +1,12 @@
 package http
 
 import (
-	"bufio"
 	"context"
 	"encoding/base64"
 	"net"
 	"net/http"
 	"strings"
 	"time"
-	_ "unsafe"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
@@ -130,9 +128,6 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 		}
 	}
 }
-
-//go:linkname ReadRequest net/http.readRequest
-func ReadRequest(b *bufio.Reader) (req *http.Request, err error)
 
 func removeHopByHopHeaders(header http.Header) {
 	// Strip hop-by-hop header based on RFC:

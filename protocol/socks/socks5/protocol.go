@@ -35,11 +35,11 @@ const (
 	ReplyCodeAddressTypeUnsupported byte = 8
 )
 
-//+----+----------+----------+
-//|VER | NMETHODS | METHODS  |
-//+----+----------+----------+
-//| 1  |    1     | 1 to 255 |
-//+----+----------+----------+
+// +----+----------+----------+
+// |VER | NMETHODS | METHODS  |
+// +----+----------+----------+
+// | 1  |    1     | 1 to 255 |
+// +----+----------+----------+
 
 type AuthRequest struct {
 	Methods []byte
@@ -78,11 +78,11 @@ func ReadAuthRequest0(reader io.Reader) (request AuthRequest, err error) {
 	return
 }
 
-//+----+--------+
-//|VER | METHOD |
-//+----+--------+
-//| 1  |   1    |
-//+----+--------+
+// +----+--------+
+// |VER | METHOD |
+// +----+--------+
+// | 1  |   1    |
+// +----+--------+
 
 type AuthResponse struct {
 	Method byte
@@ -105,11 +105,11 @@ func ReadAuthResponse(reader io.Reader) (response AuthResponse, err error) {
 	return
 }
 
-//+----+------+----------+------+----------+
-//|VER | ULEN |  UNAME   | PLEN |  PASSWD  |
-//+----+------+----------+------+----------+
-//| 1  |  1   | 1 to 255 |  1   | 1 to 255 |
-//+----+------+----------+------+----------+
+// +----+------+----------+------+----------+
+// |VER | ULEN |  UNAME   | PLEN |  PASSWD  |
+// +----+------+----------+------+----------+
+// | 1  |  1   | 1 to 255 |  1   | 1 to 255 |
+// +----+------+----------+------+----------+
 
 type UsernamePasswordAuthRequest struct {
 	Username string
@@ -148,11 +148,11 @@ func ReadUsernamePasswordAuthRequest(reader io.Reader) (request UsernamePassword
 	return
 }
 
-//+----+--------+
-//|VER | STATUS |
-//+----+--------+
-//| 1  |   1    |
-//+----+--------+
+// +----+--------+
+// |VER | STATUS |
+// +----+--------+
+// | 1  |   1    |
+// +----+--------+
 
 type UsernamePasswordAuthResponse struct {
 	Status byte
@@ -179,11 +179,11 @@ func ReadUsernamePasswordAuthResponse(reader io.Reader) (response UsernamePasswo
 	return
 }
 
-//+----+-----+-------+------+----------+----------+
-//|VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
-//+----+-----+-------+------+----------+----------+
-//| 1  |  1  | X'00' |  1   | Variable |    2     |
-//+----+-----+-------+------+----------+----------+
+// +----+-----+-------+------+----------+----------+
+// |VER | CMD |  RSV  | ATYP | DST.ADDR | DST.PORT |
+// +----+-----+-------+------+----------+----------+
+// | 1  |  1  | X'00' |  1   | Variable |    2     |
+// +----+-----+-------+------+----------+----------+
 
 type Request struct {
 	Command     byte
@@ -227,11 +227,11 @@ func ReadRequest(reader io.Reader) (request Request, err error) {
 	return
 }
 
-//+----+-----+-------+------+----------+----------+
-//|VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
-//+----+-----+-------+------+----------+----------+
-//| 1  |  1  | X'00' |  1   | Variable |    2     |
-//+----+-----+-------+------+----------+----------+
+// +----+-----+-------+------+----------+----------+
+// |VER | REP |  RSV  | ATYP | BND.ADDR | BND.PORT |
+// +----+-----+-------+------+----------+----------+
+// | 1  |  1  | X'00' |  1   | Variable |    2     |
+// +----+-----+-------+------+----------+----------+
 
 type Response struct {
 	ReplyCode byte

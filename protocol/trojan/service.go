@@ -59,9 +59,8 @@ func (s *Service[K]) RemoveUser(user K) bool {
 		delete(s.users, user)
 		delete(s.keys, key)
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 func (s *Service[K]) ResetUsers() {
