@@ -34,3 +34,7 @@ func (l *List[T]) Array() []T {
 	}
 	return array
 }
+
+func (e *Element[T]) List() *List[T] {
+	return e.list
+}
