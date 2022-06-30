@@ -20,7 +20,6 @@ import (
 type Handler interface {
 	N.TCPConnectionHandler
 	N.UDPConnectionHandler
-	E.Handler
 }
 
 func ClientHandshake4(conn io.ReadWriter, command byte, destination M.Socksaddr, username string) (socks4.Response, error) {
@@ -217,14 +216,12 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			}
 			metadata.Protocol = "socks5"
 			metadata.Destination = request.Destination
+			var innerError error
 			go func() {
 				defer conn.Close()
-				err = handler.NewPacketConnection(ctx, NewAssociatePacketConn(udpConn, request.Destination, conn), metadata)
-				if err != nil {
-					handler.HandleError(err)
-				}
+				innerError = handler.NewPacketConnection(ctx, NewAssociatePacketConn(udpConn, request.Destination, conn), metadata)
 			}()
-			return common.Error(io.Copy(io.Discard, conn))
+			return common.AnyError(innerError, common.Error(io.Copy(io.Discard, conn)))
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeUnsupported,
