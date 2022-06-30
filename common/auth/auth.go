@@ -1,27 +1,23 @@
 package auth
 
-import (
-	"sync"
-)
-
 type Authenticator interface {
 	Verify(user string, pass string) bool
 	Users() []string
 }
 
 type User struct {
-	User string
-	Pass string
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type inMemoryAuthenticator struct {
-	storage   *sync.Map
+	storage   map[string]string
 	usernames []string
 }
 
-func (au *inMemoryAuthenticator) Verify(user string, pass string) bool {
-	realPass, ok := au.storage.Load(user)
-	return ok && realPass == pass
+func (au *inMemoryAuthenticator) Verify(username string, password string) bool {
+	realPass, ok := au.storage[username]
+	return ok && realPass == password
 }
 
 func (au *inMemoryAuthenticator) Users() []string { return au.usernames }
@@ -30,18 +26,13 @@ func NewAuthenticator(users []User) Authenticator {
 	if len(users) == 0 {
 		return nil
 	}
-
-	au := &inMemoryAuthenticator{storage: &sync.Map{}}
-	for _, user := range users {
-		au.storage.Store(user.User, user.Pass)
-		au.usernames = append(au.usernames, user.User)
+	au := &inMemoryAuthenticator{
+		storage:   make(map[string]string),
+		usernames: make([]string, 0, len(users)),
 	}
-	usernames := make([]string, 0, len(users))
-	au.storage.Range(func(key, value interface{}) bool {
-		usernames = append(usernames, key.(string))
-		return true
-	})
-	au.usernames = usernames
-
+	for _, user := range users {
+		au.storage[user.Username] = user.Password
+		au.usernames = append(au.usernames, user.Username)
+	}
 	return au
 }
