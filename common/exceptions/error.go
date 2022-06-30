@@ -100,5 +100,5 @@ func IsTimeout(err error) bool {
 }
 
 type Handler interface {
-	HandleError(err error)
+	NewError(ctx context.Context, err error)
 }

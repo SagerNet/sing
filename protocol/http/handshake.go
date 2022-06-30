@@ -19,10 +19,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-type Handler interface {
-	N.TCPConnectionHandler
-	N.UDPConnectionHandler
-}
+type Handler = N.TCPConnectionHandler
 
 func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	reader := std_bufio.NewReader(conn)

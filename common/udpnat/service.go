@@ -87,7 +87,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Bu
 		go func() {
 			err := s.handler.NewPacketConnection(ctx, c, metadata)
 			if err != nil {
-				s.handler.HandleError(err)
+				s.handler.NewError(ctx, err)
 			}
 			c.Close()
 			s.nat.Delete(key)
