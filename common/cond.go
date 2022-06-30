@@ -155,6 +155,13 @@ func AnyError(errs ...error) error {
 	return nil
 }
 
+func PtrOrNil[T any](ptr *T) any {
+	if ptr == nil {
+		return nil
+	}
+	return ptr
+}
+
 func Close(closers ...any) error {
 	var retErr error
 	for _, closer := range closers {
