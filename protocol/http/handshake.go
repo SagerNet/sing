@@ -1,6 +1,7 @@
 package http
 
 import (
+	std_bufio "bufio"
 	"context"
 	"encoding/base64"
 	"net"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
@@ -19,7 +22,26 @@ import (
 type Handler interface {
 	N.TCPConnectionHandler
 	N.UDPConnectionHandler
-	E.Handler
+}
+
+func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+	reader := std_bufio.NewReader(conn)
+	request, err := http.ReadRequest(reader)
+	if err != nil {
+		return E.Cause(err, "read http request")
+	}
+	if reader.Buffered() > 0 {
+		_buffer := buf.StackNewSize(reader.Buffered())
+		defer common.KeepAlive(_buffer)
+		buffer := common.Dup(_buffer)
+		defer buffer.Release()
+		_, err = buffer.ReadFullFrom(reader, reader.Buffered())
+		if err != nil {
+			return err
+		}
+		conn = bufio.NewCachedConn(conn, buffer)
+	}
+	return HandleRequest(ctx, request, conn, authenticator, handler, metadata)
 }
 
 func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
@@ -72,6 +94,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 			return responseWith(request, http.StatusBadRequest).Write(conn)
 		}
 
+		var innerErr error
 		if httpClient == nil {
 			httpClient = &http.Client{
 				Transport: &http.Transport{
@@ -89,8 +112,8 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 						go func() {
 							err := handler.NewConnection(ctx, right, metadata)
 							if err != nil {
+								innerErr = err
 								common.Close(left, right)
-								handler.HandleError(err)
 							}
 						}()
 						return left, nil
@@ -104,8 +127,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 
 		response, err := httpClient.Do(request)
 		if err != nil {
-			handler.HandleError(err)
-			return responseWith(request, http.StatusBadGateway).Write(conn)
+			return common.AnyError(innerErr, err, responseWith(request, http.StatusBadGateway).Write(conn))
 		}
 
 		removeHopByHopHeaders(response.Header)
@@ -120,7 +142,7 @@ func HandleRequest(ctx context.Context, request *http.Request, conn net.Conn, au
 
 		err = response.Write(conn)
 		if err != nil {
-			return err
+			return common.AnyError(innerErr, err)
 		}
 
 		if !keepAlive {
