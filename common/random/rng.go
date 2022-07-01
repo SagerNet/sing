@@ -1,8 +1,10 @@
 package random
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"io"
+	mRand "math/rand"
 	"sync"
 
 	"github.com/sagernet/sing/common"
@@ -12,6 +14,18 @@ const (
 	rngMax  = 1 << 63
 	rngMask = rngMax - 1
 )
+
+var initSeedOnce sync.Once
+
+func InitializeSeed() {
+	initSeedOnce.Do(initializeSeed)
+}
+
+func initializeSeed() {
+	var seed int64
+	common.Must(binary.Read(rand.Reader, binary.LittleEndian, &seed))
+	mRand.Seed(seed)
+}
 
 type Source struct {
 	io.Reader
