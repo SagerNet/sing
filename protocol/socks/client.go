@@ -24,13 +24,13 @@ const (
 
 type Client struct {
 	version    Version
-	dialer     N.ContextDialer
+	dialer     N.Dialer
 	serverAddr M.Socksaddr
 	username   string
 	password   string
 }
 
-func NewClient(dialer N.ContextDialer, serverAddr M.Socksaddr, version Version, username string, password string) *Client {
+func NewClient(dialer N.Dialer, serverAddr M.Socksaddr, version Version, username string, password string) *Client {
 	return &Client{
 		version:    version,
 		dialer:     dialer,
@@ -40,7 +40,7 @@ func NewClient(dialer N.ContextDialer, serverAddr M.Socksaddr, version Version, 
 	}
 }
 
-func NewClientFromURL(dialer N.ContextDialer, rawURL string) (*Client, error) {
+func NewClientFromURL(dialer N.Dialer, rawURL string) (*Client, error) {
 	var client Client
 	if !strings.Contains(rawURL, "://") {
 		rawURL = "socks://" + rawURL

@@ -217,11 +217,14 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Protocol = "socks5"
 			metadata.Destination = request.Destination
 			var innerError error
+			done := make(chan struct{})
 			go func() {
 				defer conn.Close()
 				innerError = handler.NewPacketConnection(ctx, NewAssociatePacketConn(udpConn, request.Destination, conn), metadata)
+				close(done)
 			}()
-			return common.AnyError(innerError, common.Error(io.Copy(io.Discard, conn)))
+			err = common.Error(io.Copy(io.Discard, conn))
+			return common.AnyError(innerError, err)
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeUnsupported,

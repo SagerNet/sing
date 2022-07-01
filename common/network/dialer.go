@@ -8,11 +8,12 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
-type ContextDialer interface {
-	DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error)
+type Dialer interface {
+	DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error)
+	ListenPacket(ctx context.Context) (net.PacketConn, error)
 }
 
-var SystemDialer ContextDialer = &DefaultDialer{
+var SystemDialer Dialer = &DefaultDialer{
 	Dialer: net.Dialer{
 		Timeout: 5 * time.Second,
 	},
@@ -20,19 +21,13 @@ var SystemDialer ContextDialer = &DefaultDialer{
 
 type DefaultDialer struct {
 	net.Dialer
+	net.ListenConfig
 }
 
-func (d *DefaultDialer) ListenUDP(network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
-	return net.ListenUDP(network, laddr)
+func (d *DefaultDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	return d.Dialer.DialContext(ctx, network, destination.String())
 }
 
-func (d *DefaultDialer) DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error) {
-	return d.Dialer.DialContext(ctx, network, address.String())
+func (d *DefaultDialer) ListenPacket(ctx context.Context) (net.PacketConn, error) {
+	return d.ListenConfig.ListenPacket(ctx, "udp", "")
 }
-
-type Listener interface {
-	Listen(ctx context.Context, network, address string) (net.Listener, error)
-	ListenPacket(ctx context.Context, network, address string) (net.PacketConn, error)
-}
-
-var SystemListener Listener = &net.ListenConfig{}
