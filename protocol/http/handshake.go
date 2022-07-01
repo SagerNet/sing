@@ -75,13 +75,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			return handler.NewConnection(ctx, requestConn, metadata)
 		}
 
-		keepAlive := strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
-
-		host := request.Header.Get("Host")
-		if host != "" {
-			request.Host = host
-		}
-
+		keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
 		request.RequestURI = ""
 
 		removeHopByHopHeaders(request.Header)
