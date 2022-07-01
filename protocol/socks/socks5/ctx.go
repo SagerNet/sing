@@ -7,3 +7,7 @@ type UserContext struct {
 	Username string
 	Password string
 }
+
+func (c *UserContext) Upstream() any {
+	return c.Context
+}

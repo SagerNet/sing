@@ -6,3 +6,7 @@ type UserContext struct {
 	context.Context
 	Username string
 }
+
+func (c *UserContext) Upstream() any {
+	return c.Context
+}

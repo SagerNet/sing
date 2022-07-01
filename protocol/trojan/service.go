@@ -25,6 +25,10 @@ type Context[K comparable] struct {
 	Key  [KeyLength]byte
 }
 
+func (ctx *Context[K]) Upstream() any {
+	return ctx.Context
+}
+
 type Service[K comparable] struct {
 	handler Handler
 	keys    map[[56]byte]K
