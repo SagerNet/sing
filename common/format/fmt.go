@@ -56,3 +56,7 @@ func ToString(messages ...any) string {
 	}
 	return output
 }
+
+func ToString0[T any](message T) string {
+	return ToString(message)
+}
