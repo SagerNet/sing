@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/x/list"
 )
 
@@ -69,8 +70,7 @@ func New[K comparable, V any](options ...Option[K, V]) *LruCache[K, V] {
 func (c *LruCache[K, V]) Load(key K) (V, bool) {
 	entry := c.get(key)
 	if entry == nil {
-		var defaultValue V
-		return defaultValue, false
+		return common.DefaultValue[V](), false
 	}
 	value := entry.value
 
@@ -154,8 +154,7 @@ create:
 func (c *LruCache[K, V]) LoadWithExpire(key K) (V, time.Time, bool) {
 	entry := c.get(key)
 	if entry == nil {
-		var defaultValue V
-		return defaultValue, time.Time{}, false
+		return common.DefaultValue[V](), time.Time{}, false
 	}
 
 	return entry.value, time.Unix(entry.expires, 0), true

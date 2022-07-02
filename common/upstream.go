@@ -11,6 +11,5 @@ func Cast[T any](obj any) (T, bool) {
 	if u, ok := obj.(WithUpstream); ok {
 		return Cast[T](u.Upstream())
 	}
-	var defaultValue T
-	return defaultValue, false
+	return DefaultValue[T](), false
 }

@@ -16,9 +16,27 @@ func Any[T any](array []T, block func(it T) bool) bool {
 	return false
 }
 
+func AnyIndexed[T any](array []T, block func(index int, it T) bool) bool {
+	for i, it := range array {
+		if block(i, it) {
+			return true
+		}
+	}
+	return false
+}
+
 func All[T any](array []T, block func(it T) bool) bool {
 	for _, it := range array {
 		if !block(it) {
+			return false
+		}
+	}
+	return true
+}
+
+func AllIndexed[T any](array []T, block func(index int, it T) bool) bool {
+	for i, it := range array {
+		if !block(i, it) {
 			return false
 		}
 	}
@@ -66,8 +84,7 @@ func Find[T any](arr []T, block func(it T) bool) T {
 			return it
 		}
 	}
-	var defaultValue T
-	return defaultValue
+	return DefaultValue[T]()
 }
 
 //go:norace
@@ -164,15 +181,18 @@ func PtrOrNil[T any](ptr *T) any {
 
 func PtrValueOrDefault[T any](ptr *T) T {
 	if ptr == nil {
-		var defaultValue T
-		return defaultValue
+		return DefaultValue[T]()
 	}
 	return *ptr
 }
 
 func IsEmpty[T comparable](obj T) bool {
+	return obj == DefaultValue[T]()
+}
+
+func DefaultValue[T any]() T {
 	var defaultValue T
-	return obj == defaultValue
+	return defaultValue
 }
 
 func Close(closers ...any) error {
