@@ -162,6 +162,14 @@ func PtrOrNil[T any](ptr *T) any {
 	return ptr
 }
 
+func PtrValueOrDefault[T any](ptr *T) T {
+	if ptr == nil {
+		var defaultValue T
+		return defaultValue
+	}
+	return *ptr
+}
+
 func Close(closers ...any) error {
 	var retErr error
 	for _, closer := range closers {
