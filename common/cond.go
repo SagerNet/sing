@@ -170,6 +170,11 @@ func PtrValueOrDefault[T any](ptr *T) T {
 	return *ptr
 }
 
+func IsEmpty[T comparable](obj T) bool {
+	var defaultValue T
+	return obj == defaultValue
+}
+
 func Close(closers ...any) error {
 	var retErr error
 	for _, closer := range closers {
