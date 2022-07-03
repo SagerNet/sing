@@ -22,6 +22,33 @@ const (
 	Version5
 )
 
+func (v Version) String() string {
+	switch v {
+	case Version4:
+		return "4"
+	case Version4A:
+		return "4a"
+	case Version5:
+		return "5"
+	default:
+		return "unknown"
+	}
+}
+
+func ParseVersion(version string) (Version, error) {
+	switch version {
+	case "4":
+		return Version4, nil
+	case "4a":
+		return Version4A, nil
+	case "5":
+		return Version5, nil
+	}
+	return 0, E.New("unknown socks version: ", version)
+}
+
+var _ N.Dialer = (*Client)(nil)
+
 type Client struct {
 	version    Version
 	dialer     N.Dialer
@@ -119,6 +146,14 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 		return NewAssociateConn(udpConn, address, tcpConn), nil
 	}
 	return nil, os.ErrInvalid
+}
+
+func (c *Client) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	conn, err := c.DialContext(ctx, "udp", destination)
+	if err != nil {
+		return nil, err
+	}
+	return conn.(*AssociatePacketConn), nil
 }
 
 func (c *Client) BindContext(ctx context.Context, address M.Socksaddr) (net.Conn, error) {

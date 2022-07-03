@@ -10,7 +10,7 @@ import (
 
 type Dialer interface {
 	DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error)
-	ListenPacket(ctx context.Context) (net.PacketConn, error)
+	ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error)
 }
 
 var SystemDialer Dialer = &DefaultDialer{
@@ -28,6 +28,6 @@ func (d *DefaultDialer) DialContext(ctx context.Context, network string, destina
 	return d.Dialer.DialContext(ctx, network, destination.String())
 }
 
-func (d *DefaultDialer) ListenPacket(ctx context.Context) (net.PacketConn, error) {
+func (d *DefaultDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	return d.ListenConfig.ListenPacket(ctx, "udp", "")
 }
