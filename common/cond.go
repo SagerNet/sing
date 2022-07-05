@@ -217,3 +217,22 @@ func Close(closers ...any) error {
 	}
 	return retErr
 }
+
+type Starter interface {
+	Start() error
+}
+
+func Start(starters ...any) error {
+	for _, rawStarter := range starters {
+		if rawStarter == nil {
+			continue
+		}
+		if starter, isStarter := rawStarter.(Starter); isStarter {
+			err := starter.Start()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
