@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/sagernet/sing/common/buf"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type CachedConn struct {
@@ -134,4 +136,42 @@ func (r *CachedReader) ReaderReplaceable() bool {
 func (r *CachedReader) Close() error {
 	r.buffer.Release()
 	return nil
+}
+
+type CachedPacketConn struct {
+	N.PacketConn
+	buffer      *buf.Buffer
+	destination M.Socksaddr
+}
+
+func NewCachedPacketConn(conn N.PacketConn, buffer *buf.Buffer, destination M.Socksaddr) *CachedPacketConn {
+	return &CachedPacketConn{
+		PacketConn:  conn,
+		buffer:      buffer,
+		destination: destination,
+	}
+}
+
+func (c *CachedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	if c.buffer != nil {
+		_, err = buffer.ReadFrom(c.buffer)
+		if err != nil {
+			return M.Socksaddr{}, err
+		}
+		c.buffer = nil
+		return c.destination, nil
+	}
+	return c.PacketConn.ReadPacket(buffer)
+}
+
+func (c *CachedPacketConn) Upstream() any {
+	return c.PacketConn
+}
+
+func (c *CachedPacketConn) ReaderReplaceable() bool {
+	return c.buffer == nil
+}
+
+func (c *CachedPacketConn) WriterReplaceable() bool {
+	return true
 }

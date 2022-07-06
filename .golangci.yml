@@ -30,6 +30,7 @@ linters:
     - gocognit
     - golint
     - goimports
+    - nosnakecase
 
 linters-settings:
   revive:
@@ -42,3 +43,8 @@ linters-settings:
       - composites
       - fieldalignment
       - shadow
+  gci:
+    sections:
+      - standard
+      - prefix(github.com/sagernet/sing)
+      - default
