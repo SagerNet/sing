@@ -2,6 +2,7 @@ package buf
 
 import (
 	"crypto/rand"
+	"errors"
 	"io"
 	"net"
 	"strconv"
@@ -217,6 +218,23 @@ func (b *Buffer) ReadFullFrom(r io.Reader, size int) (n int, err error) {
 	}
 	b.end = end
 	return
+}
+
+func (b *Buffer) ReadAllFrom(reader io.Reader) (int, error) {
+	for {
+		if b.IsFull() {
+			return 0, io.ErrShortBuffer
+		}
+		readN, err := reader.Read(b.FreeBytes())
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return b.Len(), nil
+			} else {
+				return 0, err
+			}
+		}
+		b.end += readN
+	}
 }
 
 func (b *Buffer) WriteRune(s rune) (int, error) {
