@@ -4,22 +4,19 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 func Run(ctx context.Context, tasks ...func() error) error {
-	ctx, cancel := context.WithCancel(ctx)
+	runtimeCtx, cancel := context.WithCancel(ctx)
 	wg := &sync.WaitGroup{}
 	wg.Add(len(tasks))
-	var retErr error
+	var retErr []error
 	for _, task := range tasks {
-		task := task
+		currentTask := task
 		go func() {
-			if err := task(); err != nil {
-				if !common.Done(ctx) {
-					retErr = err
-				}
-				cancel()
+			if err := currentTask(); err != nil {
+				retErr = append(retErr, err)
 			}
 			wg.Done()
 		}()
@@ -28,25 +25,31 @@ func Run(ctx context.Context, tasks ...func() error) error {
 		wg.Wait()
 		cancel()
 	}()
-	<-ctx.Done()
-	return retErr
+	select {
+	case <-ctx.Done():
+		retErr = append(retErr, ctx.Err())
+	case <-runtimeCtx.Done():
+	}
+	return E.Errors(retErr...)
 }
 
+//goland:noinspection GoVetLostCancel
 func Any(ctx context.Context, tasks ...func() error) error {
-	ctx, cancel := context.WithCancel(ctx)
+	runtimeCtx, cancel := context.WithCancel(ctx)
 	var retErr error
 	for _, task := range tasks {
-		task := task
+		currentTask := task
 		go func() {
-			if err := task(); err != nil {
-				if !common.Done(ctx) {
-					retErr = err
-				}
+			if err := currentTask(); err != nil {
+				retErr = err
 			}
 			cancel()
 		}()
 	}
-	<-ctx.Done()
-	cancel()
-	return retErr
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-runtimeCtx.Done():
+		return retErr
+	}
 }
