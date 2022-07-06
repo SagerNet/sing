@@ -118,7 +118,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 
 		response, err := httpClient.Do(request)
 		if err != nil {
-			return common.AnyError(innerErr, err, responseWith(request, http.StatusBadGateway).Write(conn))
+			return E.Errors(innerErr, err, responseWith(request, http.StatusBadGateway).Write(conn))
 		}
 
 		removeHopByHopHeaders(response.Header)
@@ -133,7 +133,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 
 		err = response.Write(conn)
 		if err != nil {
-			return common.AnyError(innerErr, err)
+			return E.Errors(innerErr, err)
 		}
 
 		if !keepAlive {

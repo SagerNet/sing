@@ -78,6 +78,20 @@ func Filter[T any](arr []T, block func(it T) bool) []T {
 	return retArr
 }
 
+func FilterNotNil[T any](arr []T) []T {
+	return Filter(arr, func(it T) bool {
+		var anyIt any = it
+		return anyIt != nil
+	})
+}
+
+func FilterNotDefault[T comparable](arr []T) []T {
+	var defaultValue T
+	return Filter(arr, func(it T) bool {
+		return it != defaultValue
+	})
+}
+
 func Find[T any](arr []T, block func(it T) bool) T {
 	for _, it := range arr {
 		if block(it) {
@@ -163,6 +177,7 @@ func Must2(_, _ any, err error) {
 	}
 }
 
+// Deprecated: use E.Errors
 func AnyError(errs ...error) error {
 	for _, err := range errs {
 		if err != nil {
