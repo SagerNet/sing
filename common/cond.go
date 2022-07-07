@@ -92,6 +92,16 @@ func FilterNotDefault[T comparable](arr []T) []T {
 	})
 }
 
+func FilterIndexed[T any](arr []T, block func(index int, it T) bool) []T {
+	var retArr []T
+	for i, it := range arr {
+		if block(i, it) {
+			retArr = append(retArr, it)
+		}
+	}
+	return retArr
+}
+
 func Find[T any](arr []T, block func(it T) bool) T {
 	for _, it := range arr {
 		if block(it) {

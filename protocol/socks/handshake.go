@@ -202,7 +202,8 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Destination = request.Destination
 			return handler.NewConnection(ctx, conn, metadata)
 		case socks5.CommandUDPAssociate:
-			udpConn, err := net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNetAddr(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNetAddr(conn.LocalAddr()), 0)))
+			var udpConn *net.UDPConn
+			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNetAddr(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNetAddr(conn.LocalAddr()), 0)))
 			if err != nil {
 				return err
 			}
@@ -224,7 +225,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 				close(done)
 			}()
 			err = common.Error(io.Copy(io.Discard, conn))
-			return E.New(innerError, err)
+			return E.Errors(innerError, err)
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeUnsupported,

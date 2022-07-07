@@ -3,7 +3,7 @@ package control
 import (
 	"syscall"
 
-	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 func BindToInterface(interfaceName string) Func {
@@ -12,6 +12,6 @@ func BindToInterface(interfaceName string) Func {
 		err := conn.Control(func(fd uintptr) {
 			innerErr = syscall.BindToDevice(int(fd), interfaceName)
 		})
-		return common.AnyError(innerErr, err)
+		return E.Errors(innerErr, err)
 	}
 }

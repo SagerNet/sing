@@ -3,7 +3,7 @@ package control
 import (
 	"syscall"
 
-	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 func RoutingMark(mark int) Func {
@@ -12,6 +12,6 @@ func RoutingMark(mark int) Func {
 		err := conn.Control(func(fd uintptr) {
 			innerErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_MARK, mark)
 		})
-		return common.AnyError(innerErr, err)
+		return E.Errors(innerErr, err)
 	}
 }
