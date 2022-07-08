@@ -34,13 +34,13 @@ func Run(ctx context.Context, tasks ...func() error) error {
 }
 
 //goland:noinspection GoVetLostCancel
-func Any(ctx context.Context, tasks ...func() error) error {
+func Any(ctx context.Context, tasks ...func(ctx context.Context) error) error {
 	runtimeCtx, cancel := context.WithCancel(ctx)
 	var retErr error
 	for _, task := range tasks {
 		currentTask := task
 		go func() {
-			if err := currentTask(); err != nil {
+			if err := currentTask(runtimeCtx); err != nil {
 				retErr = err
 			}
 			cancel()

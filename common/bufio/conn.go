@@ -283,18 +283,18 @@ func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, t
 
 func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) error {
 	defer common.Close(conn, dest)
-	return task.Any(ctx, func() error {
+	return task.Any(ctx, func(ctx context.Context) error {
 		return common.Error(CopyPacket(dest, conn))
-	}, func() error {
+	}, func(ctx context.Context) error {
 		return common.Error(CopyPacket(conn, dest))
 	})
 }
 
 func CopyPacketConnTimeout(ctx context.Context, conn N.PacketConn, dest N.PacketConn, timeout time.Duration) error {
 	defer common.Close(conn, dest)
-	return task.Any(ctx, func() error {
+	return task.Any(ctx, func(ctx context.Context) error {
 		return common.Error(CopyPacketTimeout(dest, conn, timeout))
-	}, func() error {
+	}, func(ctx context.Context) error {
 		return common.Error(CopyPacketTimeout(conn, dest, timeout))
 	})
 }
