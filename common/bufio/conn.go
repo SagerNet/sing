@@ -155,6 +155,9 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 		if err != nil {
 			return
 		}
+		if buffer.IsFull() {
+			return 0, io.ErrShortBuffer
+		}
 		dataLen := buffer.Len()
 		err = dst.WritePacket(buffer, destination)
 		if err != nil {
@@ -189,6 +192,9 @@ func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout ti
 		destination, err = src.ReadPacket(buffer)
 		if err != nil {
 			return
+		}
+		if buffer.IsFull() {
+			return 0, io.ErrShortBuffer
 		}
 		dataLen := buffer.Len()
 		err = dst.WritePacket(buffer, destination)
@@ -248,6 +254,10 @@ func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err e
 			buffer.Release()
 			return
 		}
+		if buffer.IsFull() {
+			buffer.Release()
+			return 0, io.ErrShortBuffer
+		}
 		dataLen := buffer.Len()
 		err = dest.WritePacket(buffer, destination)
 		if err != nil {
@@ -270,6 +280,10 @@ func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, t
 		if err != nil {
 			buffer.Release()
 			return
+		}
+		if buffer.IsFull() {
+			buffer.Release()
+			return 0, io.ErrShortBuffer
 		}
 		dataLen := buffer.Len()
 		err = dest.WritePacket(buffer, destination)
