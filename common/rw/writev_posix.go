@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-func WriteV(fd uintptr, data ...[]byte) (int, error) {
+func WriteV(fd uintptr, data [][]byte) (int, error) {
 	iovecs := make([]syscall.Iovec, len(data))
 	for i := range iovecs {
 		iovecs[i].Base = &data[i][0]
