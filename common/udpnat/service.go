@@ -39,6 +39,9 @@ func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 	}
 }
 
+func (s *Service[T]) WriteIsThreadUnsafe() {
+}
+
 func (s *Service[T]) NewPacketDirect(ctx context.Context, key T, conn N.PacketConn, buffer *buf.Buffer, metadata M.Metadata) {
 	s.NewContextPacket(ctx, key, buffer, metadata, func(natConn N.PacketConn) (context.Context, N.PacketWriter) {
 		return ctx, &DirectBackWriter{conn, natConn}
