@@ -33,9 +33,9 @@ func Run(ctx context.Context, tasks ...func() error) error {
 	return E.Errors(retErr...)
 }
 
-//goland:noinspection GoVetLostCancel
 func Any(ctx context.Context, tasks ...func(ctx context.Context) error) error {
 	runtimeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var retErr error
 	for _, task := range tasks {
 		currentTask := task

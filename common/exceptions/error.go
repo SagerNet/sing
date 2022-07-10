@@ -1,4 +1,3 @@
-//nolint:errorlint
 package exceptions
 
 import (
