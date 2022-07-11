@@ -3,7 +3,6 @@ package network
 import (
 	"context"
 	"net"
-	"time"
 
 	M "github.com/sagernet/sing/common/metadata"
 )
@@ -13,11 +12,7 @@ type Dialer interface {
 	ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error)
 }
 
-var SystemDialer Dialer = &DefaultDialer{
-	Dialer: net.Dialer{
-		Timeout: 5 * time.Second,
-	},
-}
+var SystemDialer Dialer = &DefaultDialer{}
 
 type DefaultDialer struct {
 	net.Dialer
