@@ -11,6 +11,8 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
+const DefaultFallbackDelay = 300 * time.Millisecond
+
 func DialSerial(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error) {
 	var conn net.Conn
 	var err error
@@ -43,6 +45,10 @@ func ListenSerial(ctx context.Context, dialer Dialer, destination M.Socksaddr, d
 
 func DialParallel(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr, preferIPv6 bool, fallbackDelay time.Duration) (net.Conn, error) {
 	// kanged form net.Dial
+
+	if fallbackDelay == 0 {
+		fallbackDelay = DefaultFallbackDelay
+	}
 
 	returned := make(chan struct{})
 	defer close(returned)
