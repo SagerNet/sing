@@ -45,21 +45,6 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			}
 		}
 
-		var requestConn net.Conn
-		if reader.Buffered() > 0 {
-			_buffer := buf.StackNewSize(reader.Buffered())
-			defer common.KeepAlive(_buffer)
-			buffer := common.Dup(_buffer)
-			defer buffer.Release()
-			_, err = buffer.ReadFullFrom(reader, reader.Buffered())
-			if err != nil {
-				return err
-			}
-			requestConn = bufio.NewCachedConn(conn, buffer)
-		} else {
-			requestConn = conn
-		}
-
 		if request.Method == "CONNECT" {
 			portStr := request.URL.Port()
 			if portStr == "" {
@@ -72,6 +57,21 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			}
 			metadata.Protocol = "http"
 			metadata.Destination = destination
+
+			var requestConn net.Conn
+			if reader.Buffered() > 0 {
+				_buffer := buf.StackNewSize(reader.Buffered())
+				defer common.KeepAlive(_buffer)
+				buffer := common.Dup(_buffer)
+				defer buffer.Release()
+				_, err = buffer.ReadFullFrom(reader, reader.Buffered())
+				if err != nil {
+					return err
+				}
+				requestConn = bufio.NewCachedConn(conn, buffer)
+			} else {
+				requestConn = conn
+			}
 			return handler.NewConnection(ctx, requestConn, metadata)
 		}
 
