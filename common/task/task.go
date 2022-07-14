@@ -27,9 +27,9 @@ func Run(ctx context.Context, tasks ...func() error) error {
 	}()
 	select {
 	case <-ctx.Done():
-		retErr = append(retErr, ctx.Err())
 	case <-runtimeCtx.Done():
 	}
+	retErr = append(retErr, ctx.Err())
 	return E.Errors(retErr...)
 }
 
@@ -48,8 +48,7 @@ func Any(ctx context.Context, tasks ...func(ctx context.Context) error) error {
 	}
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
 	case <-runtimeCtx.Done():
-		return retErr
 	}
+	return E.Errors(retErr, ctx.Err())
 }
