@@ -17,7 +17,7 @@ func LocalAddrs() ([]netip.Addr, error) {
 }
 
 func IsPublicAddr(addr netip.Addr) bool {
-	return !(addr.IsPrivate() || addr.IsLoopback() || addr.IsMulticast() || addr.IsGlobalUnicast() || addr.IsLinkLocalUnicast() || addr.IsInterfaceLocalMulticast())
+	return !(addr.IsPrivate() || addr.IsLoopback() || addr.IsMulticast() || addr.IsLinkLocalUnicast() || addr.IsInterfaceLocalMulticast())
 }
 
 func LocalPublicAddrs() ([]netip.Addr, error) {

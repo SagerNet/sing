@@ -10,7 +10,7 @@ linters-settings:
   gci:
     sections:
       - standard
-      - prefix(github.com/sagernet/sing)
+      - prefix(github.com/sagernet/)
       - default
   staticcheck:
     go: '1.18'
