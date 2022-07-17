@@ -123,11 +123,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			}
 			metadata.Protocol = "socks4"
 			metadata.Destination = request.Destination
-			ctx = &socks4.UserContext{
-				Context:  ctx,
-				Username: request.Username,
-			}
-			return handler.NewConnection(ctx, conn, metadata)
+			return handler.NewConnection(auth.ContextWithUser(ctx, request.Username), conn, metadata)
 		default:
 			err = socks4.WriteResponse(conn, socks4.Response{
 				ReplyCode:   socks4.ReplyCodeRejectedOrFailed,
@@ -163,16 +159,12 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		if err != nil {
 			return err
 		}
-		userCtx := &socks5.UserContext{
-			Context: ctx,
-		}
 		if authMethod == socks5.AuthTypeUsernamePassword {
 			usernamePasswordAuthRequest, err := socks5.ReadUsernamePasswordAuthRequest(conn)
 			if err != nil {
 				return err
 			}
-			userCtx.Username = usernamePasswordAuthRequest.Username
-			userCtx.Password = usernamePasswordAuthRequest.Password
+			ctx = auth.ContextWithUser(ctx, usernamePasswordAuthRequest.Username)
 			response := socks5.UsernamePasswordAuthResponse{}
 			if authenticator.Verify(usernamePasswordAuthRequest.Username, usernamePasswordAuthRequest.Password) {
 				response.Status = socks5.UsernamePasswordStatusSuccess
@@ -184,7 +176,6 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 				return err
 			}
 		}
-		ctx = userCtx
 		request, err := socks5.ReadRequest(conn)
 		if err != nil {
 			return err

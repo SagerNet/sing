@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -17,16 +18,6 @@ import (
 type Handler interface {
 	N.TCPConnectionHandler
 	N.UDPConnectionHandler
-}
-
-type Context[K comparable] struct {
-	context.Context
-	User K
-	Key  [KeyLength]byte
-}
-
-func (ctx *Context[K]) Upstream() any {
-	return ctx.Context
 }
 
 type Service[K comparable] struct {
@@ -91,11 +82,8 @@ returnErr:
 
 process:
 
-	var userCtx Context[K]
-	userCtx.Context = ctx
 	if user, loaded := s.keys[key]; loaded {
-		userCtx.User = user
-		userCtx.Key = key
+		ctx = auth.ContextWithUser(ctx, user)
 	} else {
 		err = E.New("bad request")
 		goto returnErr
@@ -134,9 +122,9 @@ process:
 	metadata.Destination = destination
 
 	if command == CommandTCP {
-		return s.handler.NewConnection(&userCtx, conn, metadata)
+		return s.handler.NewConnection(ctx, conn, metadata)
 	} else {
-		return s.handler.NewPacketConnection(&userCtx, &PacketConn{conn}, metadata)
+		return s.handler.NewPacketConnection(ctx, &PacketConn{conn}, metadata)
 	}
 }
 

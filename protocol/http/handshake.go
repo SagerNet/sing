@@ -36,6 +36,9 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 				userPassword, _ := base64.URLEncoding.DecodeString(authorization[6:])
 				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
 				authOk = authenticator.Verify(userPswdArr[0], userPswdArr[1])
+				if authOk {
+					ctx = auth.ContextWithUser(ctx, userPswdArr[0])
+				}
 			}
 			if !authOk {
 				err = responseWith(request, http.StatusProxyAuthRequired).Write(conn)
