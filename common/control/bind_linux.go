@@ -2,8 +2,6 @@ package control
 
 import (
 	"syscall"
-
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 func NewBindManager() BindManager {
@@ -12,11 +10,9 @@ func NewBindManager() BindManager {
 
 func BindToInterface(manager BindManager, interfaceName string) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		var innerErr error
-		err := conn.Control(func(fd uintptr) {
-			innerErr = syscall.BindToDevice(int(fd), interfaceName)
+		return Control(conn, func(fd uintptr) error {
+			return syscall.BindToDevice(int(fd), interfaceName)
 		})
-		return E.Errors(innerErr, err)
 	}
 }
 
@@ -26,11 +22,9 @@ func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func() string) F
 		if interfaceName == "" {
 			return nil
 		}
-		var innerErr error
-		err := conn.Control(func(fd uintptr) {
-			innerErr = syscall.BindToDevice(int(fd), interfaceName)
+		return Control(conn, func(fd uintptr) error {
+			return syscall.BindToDevice(int(fd), interfaceName)
 		})
-		return E.Errors(innerErr, err)
 	}
 }
 

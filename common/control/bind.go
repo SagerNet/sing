@@ -11,11 +11,11 @@ type BindManager interface {
 	Update() error
 }
 
-type simpleBindManager struct {
+type myBindManager struct {
 	interfaceIndexByName map[string]int
 }
 
-func (m *simpleBindManager) IndexByName(name string) (int, error) {
+func (m *myBindManager) IndexByName(name string) (int, error) {
 	if index, loaded := m.interfaceIndexByName[name]; loaded {
 		return index, nil
 	}
@@ -29,7 +29,7 @@ func (m *simpleBindManager) IndexByName(name string) (int, error) {
 	return 0, E.New("interface ", name, " not found")
 }
 
-func (m *simpleBindManager) Update() error {
+func (m *myBindManager) Update() error {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return err

@@ -1,5 +1,3 @@
-//go:build linux
-
 package control
 
 import (
@@ -36,10 +34,8 @@ func sendAncillaryFileDescriptors(protectPath string, fileDescriptors []int) err
 
 func ProtectPath(protectPath string) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		var innerErr error
-		err := conn.Control(func(fd uintptr) {
-			innerErr = sendAncillaryFileDescriptors(protectPath, []int{int(fd)})
+		return Control(conn, func(fd uintptr) error {
+			return sendAncillaryFileDescriptors(protectPath, []int{int(fd)})
 		})
-		return E.Errors(innerErr, err)
 	}
 }

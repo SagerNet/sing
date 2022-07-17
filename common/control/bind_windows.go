@@ -6,8 +6,6 @@ import (
 	"net/netip"
 	"syscall"
 	"unsafe"
-
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 const (
@@ -16,7 +14,7 @@ const (
 )
 
 func NewBindManager() BindManager {
-	return &simpleBindManager{
+	return &myBindManager{
 		interfaceIndexByName: make(map[string]int),
 	}
 }
@@ -39,28 +37,25 @@ func bindInterfaceIndex(network string, address string, conn syscall.RawConn, in
 			return err
 		}
 	}
-	var innerErr error
-	err = conn.Control(func(fd uintptr) {
+	return Control(conn, func(fd uintptr) error {
 		handle := syscall.Handle(fd)
 		// handle ip empty, e.g. net.Listen("udp", ":0")
 		if ipStr == "" {
-			innerErr = bind4(handle, interfaceIndex)
-			if innerErr != nil {
-				return
+			err = bind4(handle, interfaceIndex)
+			if err != nil {
+				return err
 			}
 			// try bind ipv6, if failed, ignore. it's a workaround for windows disable interface ipv6
 			bind6(handle, interfaceIndex)
-			return
+			return nil
 		}
-
 		switch network {
 		case "tcp4", "udp4", "ip4":
-			innerErr = bind4(handle, interfaceIndex)
-		case "tcp6", "udp6":
-			innerErr = bind6(handle, interfaceIndex)
+			return bind4(handle, interfaceIndex)
+		default:
+			return bind6(handle, interfaceIndex)
 		}
 	})
-	return E.Errors(innerErr, err)
 }
 
 func BindToInterface(manager BindManager, interfaceName string) Func {

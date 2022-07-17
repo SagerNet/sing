@@ -2,6 +2,8 @@ package control
 
 import (
 	"syscall"
+
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type Func = func(network, address string, conn syscall.RawConn) error
@@ -18,4 +20,12 @@ func Append(oldFunc Func, newFunc Func) Func {
 		}
 		return newFunc(network, address, conn)
 	}
+}
+
+func Control(conn syscall.RawConn, block func(fd uintptr) error) error {
+	var innerErr error
+	err := conn.Control(func(fd uintptr) {
+		innerErr = block(fd)
+	})
+	return E.Errors(innerErr, err)
 }
