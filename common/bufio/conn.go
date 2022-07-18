@@ -69,13 +69,19 @@ func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err erro
 func CopyExtendedBuffer(dst N.ExtendedWriter, src N.ExtendedReader, buffer *buf.Buffer) (n int64, err error) {
 	buffer.IncRef()
 	defer buffer.DecRef()
+
+	readBufferRaw := buffer.Slice()
+	readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-1024])
+
 	for {
 		buffer.Reset()
-		err = src.ReadBuffer(buffer)
+		readBuffer.Reset()
+		err = src.ReadBuffer(readBuffer)
 		if err != nil {
 			return
 		}
-		dataLen := buffer.Len()
+		dataLen := readBuffer.Len()
+		buffer.Resize(readBuffer.Start(), dataLen)
 		err = dst.WriteBuffer(buffer)
 		if err != nil {
 			return
@@ -104,12 +110,16 @@ func CopyExtendedWithSrcBuffer(dst N.ExtendedWriter, src N.ThreadSafeReader) (n 
 func CopyExtendedWithPool(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
 	for {
 		buffer := buf.New()
-		err = src.ReadBuffer(buffer)
+		readBufferRaw := buffer.Slice()
+		readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-1024])
+		readBuffer.Reset()
+		err = src.ReadBuffer(readBuffer)
 		if err != nil {
 			buffer.Release()
 			return
 		}
-		dataLen := buffer.Len()
+		dataLen := readBuffer.Len()
+		buffer.Resize(readBuffer.Start(), dataLen)
 		err = dst.WriteBuffer(buffer)
 		if err != nil {
 			buffer.Release()
@@ -449,6 +459,10 @@ func (r *ExtendedReaderWrapper) ReadBuffer(buffer *buf.Buffer) error {
 	return nil
 }
 
+func (r *ExtendedReaderWrapper) WriteTo(w io.Writer) (n int64, err error) {
+	return Copy(w, r.Reader)
+}
+
 func (r *ExtendedReaderWrapper) Upstream() any {
 	return r.Reader
 }
@@ -470,6 +484,10 @@ type ExtendedWriterWrapper struct {
 
 func (w *ExtendedWriterWrapper) WriteBuffer(buffer *buf.Buffer) error {
 	return common.Error(w.Write(buffer.Bytes()))
+}
+
+func (w *ExtendedWriterWrapper) ReadFrom(r io.Reader) (n int64, err error) {
+	return Copy(w.Writer, r)
 }
 
 func (w *ExtendedWriterWrapper) Upstream() any {
