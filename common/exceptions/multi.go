@@ -16,16 +16,22 @@ func (e *multiError) Error() string {
 	return "multi error: (" + strings.Join(F.MapToString(e.errors), " | ") + ")"
 }
 
-func (e *multiError) Unwrap() error {
-	return e.errors[0]
-}
-
 func (e *multiError) UnwrapMulti() []error {
 	return e.errors
 }
 
-func (e *multiError) Is(err error) bool {
-	return common.Any(e.errors, func(it error) bool {
-		return errors.Is(it, err)
+func IsMulti(err error, targetList ...error) bool {
+	for _, target := range targetList {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	err = Unwrap(err)
+	multiErr, isMulti := err.(MultiError)
+	if !isMulti {
+		return false
+	}
+	return common.All(multiErr.UnwrapMulti(), func(it error) bool {
+		return IsMulti(it, targetList...)
 	})
 }

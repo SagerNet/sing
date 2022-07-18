@@ -45,9 +45,9 @@ func Errors(errors ...error) error {
 }
 
 func IsCanceled(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	return IsMulti(err, context.Canceled, context.DeadlineExceeded)
 }
 
 func IsClosed(err error) bool {
-	return errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) || errors.Is(err, os.ErrClosed)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed)
 }
