@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	F "github.com/sagernet/sing/common/format"
+	"syscall"
 )
 
 type Handler interface {
@@ -49,5 +50,5 @@ func IsCanceled(err error) bool {
 }
 
 func IsClosed(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE)
 }
