@@ -81,7 +81,7 @@ func WriteRequest(writer io.Writer, request Request) error {
 	if err != nil {
 		return err
 	}
-	if request.Destination.Family().IsIPv4() {
+	if request.Destination.IsIPv4() {
 		dstIP := request.Destination.Addr.As4()
 		_, err = writer.Write(dstIP[:])
 		if err != nil {

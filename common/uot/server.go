@@ -54,7 +54,7 @@ func (c *ServerConn) loopInput() {
 		if err != nil {
 			break
 		}
-		if destination.Family().IsFqdn() {
+		if destination.IsFqdn() {
 			addr, err := net.ResolveUDPAddr("udp", destination.String())
 			if err != nil {
 				continue

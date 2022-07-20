@@ -111,7 +111,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		switch request.Command {
 		case socks4.CommandConnect:
 			responseAddr := request.Destination
-			if !responseAddr.Family().IsIPv4() {
+			if !responseAddr.IsIPv4() {
 				responseAddr = M.SocksaddrFromAddrPort(netip.IPv4Unspecified(), responseAddr.Port)
 			}
 			err = socks4.WriteResponse(conn, socks4.Response{

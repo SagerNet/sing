@@ -113,7 +113,7 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 	if err != nil {
 		return nil, err
 	}
-	if c.version == Version4 && address.Family().IsFqdn() {
+	if c.version == Version4 && address.IsFqdn() {
 		tcpAddr, err := net.ResolveTCPAddr(network, address.String())
 		if err != nil {
 			tcpConn.Close()

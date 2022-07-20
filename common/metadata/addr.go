@@ -4,12 +4,13 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"unsafe"
 )
 
 type Socksaddr struct {
 	Addr netip.Addr
-	Fqdn string
 	Port uint16
+	Fqdn string
 }
 
 func (ap Socksaddr) Network() string {
@@ -20,23 +21,20 @@ func (ap Socksaddr) IsIP() bool {
 	return ap.Addr.IsValid()
 }
 
+func (ap Socksaddr) IsIPv4() bool {
+	return ap.Addr.Is4()
+}
+
+func (ap Socksaddr) IsIPv6() bool {
+	return ap.Addr.Is6()
+}
+
 func (ap Socksaddr) IsFqdn() bool {
-	return !ap.IsIP()
+	return !ap.Addr.IsValid()
 }
 
 func (ap Socksaddr) IsValid() bool {
 	return ap.Addr.IsValid() || ap.Fqdn != ""
-}
-
-func (ap Socksaddr) Family() Family {
-	if ap.Addr.IsValid() {
-		if ap.Addr.Is4() || ap.Addr.Is4In6() {
-			return AddressFamilyIPv4
-		} else {
-			return AddressFamilyIPv6
-		}
-	}
-	return AddressFamilyFqdn
 }
 
 func (ap Socksaddr) AddrString() string {
@@ -68,7 +66,7 @@ func (ap Socksaddr) UDPAddr() *net.UDPAddr {
 }
 
 func (ap Socksaddr) AddrPort() netip.AddrPort {
-	return netip.AddrPortFrom(ap.Addr, ap.Port)
+	return *(*netip.AddrPort)(unsafe.Pointer(&ap))
 }
 
 func (ap Socksaddr) String() string {

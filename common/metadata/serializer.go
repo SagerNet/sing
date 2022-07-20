@@ -43,7 +43,15 @@ func NewSerializer(options ...SerializerOption) *Serializer {
 }
 
 func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
-	err := rw.WriteByte(writer, s.familyByteMap[addr.Family()])
+	var family Family
+	if addr.IsIPv4() {
+		family = AddressFamilyIPv4
+	} else if addr.IsIPv6() {
+		family = AddressFamilyIPv6
+	} else {
+		family = AddressFamilyFqdn
+	}
+	err := rw.WriteByte(writer, family)
 	if err != nil {
 		return err
 	}
@@ -56,12 +64,11 @@ func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
 }
 
 func (s *Serializer) AddressLen(addr Socksaddr) int {
-	switch addr.Family() {
-	case AddressFamilyIPv4:
+	if addr.IsIPv4() {
 		return 5
-	case AddressFamilyIPv6:
+	} else if addr.IsIPv6() {
 		return 17
-	default:
+	} else {
 		return 2 + len(addr.Fqdn)
 	}
 }

@@ -354,7 +354,7 @@ func (w *ExtendedUDPConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 
 func (w *ExtendedUDPConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	if destination.Family().IsFqdn() {
+	if destination.IsFqdn() {
 		udpAddr, err := net.ResolveUDPAddr("udp", destination.String())
 		if err != nil {
 			return err
