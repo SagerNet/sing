@@ -6,10 +6,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"syscall"
+	_ "unsafe"
 
 	"github.com/sagernet/sing/common"
 	F "github.com/sagernet/sing/common/format"
-	"syscall"
 )
 
 type Handler interface {
@@ -45,10 +46,17 @@ func Errors(errors ...error) error {
 	}
 }
 
-func IsCanceled(err error) bool {
-	return IsMulti(err, context.Canceled, context.DeadlineExceeded)
+//go:linkname errCanceled net.errCanceled
+var errCanceled error
+
+func IsClosedOrCanceled(err error) bool {
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded, errCanceled)
 }
 
 func IsClosed(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET)
+}
+
+func IsCanceled(err error) bool {
+	return IsMulti(err, context.Canceled, context.DeadlineExceeded, errCanceled)
 }

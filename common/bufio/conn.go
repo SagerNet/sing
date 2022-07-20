@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
@@ -37,6 +38,11 @@ func needReadFromWrapper(dst io.ReaderFrom, src io.Reader) bool {
 }
 
 func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
+	if src == nil {
+		return 0, E.New("nil reader")
+	} else if dst == nil {
+		return 0, E.New("nil writer")
+	}
 	src = N.UnwrapReader(src)
 	dst = N.UnwrapWriter(dst)
 	if wt, ok := src.(io.WriterTo); ok {
