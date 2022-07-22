@@ -18,7 +18,7 @@ func DialSerial(ctx context.Context, dialer Dialer, network string, destination 
 	var err error
 	var connErrors []error
 	for _, address := range destinationAddresses {
-		conn, err = dialer.DialContext(ctx, network, M.SocksaddrFromAddrPort(address, destination.Port))
+		conn, err = dialer.DialContext(ctx, network, M.SocksaddrFrom(address, destination.Port))
 		if err != nil {
 			connErrors = append(connErrors, err)
 			continue
@@ -33,7 +33,7 @@ func ListenSerial(ctx context.Context, dialer Dialer, destination M.Socksaddr, d
 	var err error
 	var connErrors []error
 	for _, address := range destinationAddresses {
-		conn, err = dialer.ListenPacket(ctx, M.SocksaddrFromAddrPort(address, destination.Port))
+		conn, err = dialer.ListenPacket(ctx, M.SocksaddrFrom(address, destination.Port))
 		if err != nil {
 			connErrors = append(connErrors, err)
 			continue

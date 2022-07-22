@@ -22,11 +22,21 @@ func (ap Socksaddr) IsIP() bool {
 }
 
 func (ap Socksaddr) IsIPv4() bool {
-	return ap.Addr.Is4()
+	return ap.Addr.Is4() || ap.Addr.Is4In6()
 }
 
 func (ap Socksaddr) IsIPv6() bool {
-	return ap.Addr.Is6()
+	return ap.Addr.Is6() && !ap.Addr.Is4In6()
+}
+
+func (ap Socksaddr) Unwrap() Socksaddr {
+	if ap.Addr.Is4In6() {
+		return Socksaddr{
+			Addr: netip.AddrFrom4(ap.Addr.As4()),
+			Port: ap.Port,
+		}
+	}
+	return ap
 }
 
 func (ap Socksaddr) IsFqdn() bool {
@@ -88,25 +98,14 @@ func UDPAddr(ap netip.AddrPort) *net.UDPAddr {
 }
 
 func AddrPortFrom(ip net.IP, port uint16) netip.AddrPort {
-	addr, _ := netip.AddrFromSlice(ip)
-	return netip.AddrPortFrom(addr, port)
+	return netip.AddrPortFrom(AddrFromIP(ip), port)
 }
 
-func SocksaddrFrom(ip net.IP, port uint16) Socksaddr {
-	return SocksaddrFromNetIP(AddrPortFrom(ip, port))
-}
-
-func SocksaddrFromAddrPort(addr netip.Addr, port uint16) Socksaddr {
+func SocksaddrFrom(addr netip.Addr, port uint16) Socksaddr {
 	return SocksaddrFromNetIP(netip.AddrPortFrom(addr, port))
 }
 
 func SocksaddrFromNetIP(ap netip.AddrPort) Socksaddr {
-	if ap.Addr().Is4In6() {
-		return Socksaddr{
-			Addr: netip.AddrFrom4(ap.Addr().As4()),
-			Port: ap.Port(),
-		}
-	}
 	return Socksaddr{
 		Addr: ap.Addr(),
 		Port: ap.Port(),
@@ -163,17 +162,11 @@ func AddrPortFromNet(netAddr net.Addr) netip.AddrPort {
 
 func AddrFromIP(ip net.IP) netip.Addr {
 	addr, _ := netip.AddrFromSlice(ip)
-	if addr.Is4In6() {
-		addr = netip.AddrFrom4(addr.As4())
-	}
 	return addr
 }
 
 func ParseAddr(s string) netip.Addr {
 	addr, _ := netip.ParseAddr(s)
-	if addr.Is4In6() {
-		addr = netip.AddrFrom4(addr.As4())
-	}
 	return addr
 }
 
@@ -187,9 +180,6 @@ func ParseSocksaddr(address string) Socksaddr {
 
 func ParseSocksaddrHostPort(host string, port uint16) Socksaddr {
 	netAddr, err := netip.ParseAddr(host)
-	if netAddr.Is4In6() {
-		netAddr = netip.AddrFrom4(netAddr.As4())
-	}
 	if err != nil {
 		return Socksaddr{
 			Fqdn: host,
@@ -206,9 +196,6 @@ func ParseSocksaddrHostPort(host string, port uint16) Socksaddr {
 func ParseSocksaddrHostPortStr(host string, portStr string) Socksaddr {
 	port, _ := strconv.Atoi(portStr)
 	netAddr, err := netip.ParseAddr(host)
-	if netAddr.Is4In6() {
-		netAddr = netip.AddrFrom4(netAddr.As4())
-	}
 	if err != nil {
 		return Socksaddr{
 			Fqdn: host,

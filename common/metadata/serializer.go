@@ -56,7 +56,7 @@ func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
 		return err
 	}
 	if addr.Addr.IsValid() {
-		err = rw.WriteBytes(writer, addr.Addr.AsSlice())
+		err = rw.WriteBytes(writer, addr.Unwrap().Addr.AsSlice())
 	} else {
 		err = WriteSocksString(writer, addr.Fqdn)
 	}
@@ -129,11 +129,8 @@ func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
 			if err != nil {
 				return Socksaddr{}, E.Cause(err, "read ipv6 address")
 			}
-			netAddr := netip.AddrFrom16(addr)
-			if netAddr.Is4In6() {
-				netAddr = netip.AddrFrom4(netAddr.As4())
-			}
-			return Socksaddr{Addr: netAddr}, nil
+
+			return Socksaddr{Addr: netip.AddrFrom16(addr)}.Unwrap(), nil
 		default:
 			return Socksaddr{}, E.New("unknown address family: ", af)
 		}
