@@ -120,8 +120,8 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 	if err != nil {
 		return
 	}
-	if version != 4 {
-		err = E.New("excepted socks version 4, got ", version)
+	if version != 0 {
+		err = E.New("excepted socks4 response version 0, got ", version)
 		return
 	}
 	response.ReplyCode, err = rw.ReadByte(reader)
@@ -142,7 +142,7 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 }
 
 func WriteResponse(writer io.Writer, response Response) error {
-	_, err := writer.Write([]byte{Version, response.ReplyCode})
+	_, err := writer.Write([]byte{0, response.ReplyCode})
 	if err != nil {
 		return err
 	}
