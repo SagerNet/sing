@@ -154,6 +154,18 @@ func FilterIsInstance[T any, N any](arr []T, block func(it T) (N, bool)) []N {
 	return retArr
 }
 
+func Reverse[T any](arr []T) []T {
+	length := len(arr)
+	half := length / 2
+
+	for i := 0; i < half; i = i + 1 {
+		j := length - 1 - i
+		arr[i], arr[j] = arr[j], arr[i]
+	}
+
+	return arr
+}
+
 func Done(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
