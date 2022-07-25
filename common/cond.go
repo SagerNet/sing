@@ -144,6 +144,23 @@ func Uniq[T comparable](arr []T) []T {
 	return result
 }
 
+func UniqBy[T any, C comparable](arr []T, block func(it T) C) []T {
+	result := make([]T, 0, len(arr))
+	seen := make(map[C]struct{}, len(arr))
+
+	for _, item := range arr {
+		c := block(item)
+		if _, ok := seen[c]; ok {
+			continue
+		}
+
+		seen[c] = struct{}{}
+		result = append(result, item)
+	}
+
+	return result
+}
+
 func FilterIsInstance[T any, N any](arr []T, block func(it T) (N, bool)) []N {
 	var retArr []N
 	for _, it := range arr {

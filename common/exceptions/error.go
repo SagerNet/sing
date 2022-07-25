@@ -35,6 +35,7 @@ func Extend(cause error, message ...any) error {
 
 func Errors(errors ...error) error {
 	errors = common.FilterNotNil(errors)
+	errors = common.UniqBy(errors, error.Error)
 	switch len(errors) {
 	case 0:
 		return nil
