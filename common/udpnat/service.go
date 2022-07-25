@@ -68,19 +68,11 @@ func (s *Service[T]) NewPacket(ctx context.Context, key T, buffer *buf.Buffer, m
 }
 
 func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Buffer, metadata M.Metadata, init func(natConn N.PacketConn) (context.Context, N.PacketWriter)) {
-	var maxAge int64
-	switch metadata.Destination.Port {
-	case 443, 853:
-		maxAge = 30
-	case 53, 3478:
-		maxAge = 10
-	}
-	c, loaded := s.nat.LoadOrStoreWithAge(key, maxAge, func() *conn {
+	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet, 64),
 			localAddr:  metadata.Source,
 			remoteAddr: metadata.Destination,
-			fastClose:  metadata.Destination.Port == 53,
 		}
 		c.ctx, c.cancel = context.WithCancel(ctx)
 		return c
@@ -123,7 +115,6 @@ type conn struct {
 	localAddr    M.Socksaddr
 	remoteAddr   M.Socksaddr
 	source       N.PacketWriter
-	fastClose    bool
 	readDeadline atomic.Value
 }
 
@@ -164,9 +155,6 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 }
 
 func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	if c.fastClose {
-		defer c.Close()
-	}
 	return c.source.WritePacket(buffer, destination)
 }
 
@@ -183,9 +171,6 @@ func (c *conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	if c.fastClose {
-		defer c.Close()
-	}
 	return len(p), c.source.WritePacket(buf.As(p).ToOwned(), M.SocksaddrFromNet(addr))
 }
 
