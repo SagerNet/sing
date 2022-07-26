@@ -72,7 +72,7 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	case http.StatusOK:
 		if reader.Buffered() > 0 {
 			buffer := buf.NewSize(reader.Buffered())
-			_, err = buffer.ReadFrom(reader)
+			_, err = buffer.ReadFullFrom(reader, buffer.FreeLen())
 			if err != nil {
 				return nil, err
 			}

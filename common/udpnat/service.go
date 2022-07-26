@@ -144,7 +144,7 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	}
 	select {
 	case p := <-c.data:
-		_, err = buffer.ReadFrom(p.data)
+		_, err = buffer.ReadOnceFrom(p.data)
 		p.data.Release()
 		return p.destination, err
 	case <-c.ctx.Done():

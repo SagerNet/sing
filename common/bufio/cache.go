@@ -154,7 +154,7 @@ func NewCachedPacketConn(conn N.PacketConn, buffer *buf.Buffer, destination M.So
 
 func (c *CachedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
 	if c.buffer != nil {
-		_, err = buffer.ReadFrom(c.buffer)
+		_, err = buffer.ReadOnceFrom(c.buffer)
 		if err != nil {
 			return M.Socksaddr{}, err
 		}

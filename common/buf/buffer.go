@@ -168,16 +168,13 @@ func (b *Buffer) WriteByte(d byte) error {
 	return nil
 }
 
-func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
+func (b *Buffer) ReadOnceFrom(r io.Reader) (int64, error) {
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
 	n, err := r.Read(b.FreeBytes())
-	if err != nil {
-		return 0, err
-	}
 	b.end += n
-	return int64(n), nil
+	return int64(n), err
 }
 
 func (b *Buffer) ReadPacketFrom(r net.PacketConn) (int64, net.Addr, error) {
@@ -185,55 +182,46 @@ func (b *Buffer) ReadPacketFrom(r net.PacketConn) (int64, net.Addr, error) {
 		return 0, nil, io.ErrShortBuffer
 	}
 	n, addr, err := r.ReadFrom(b.FreeBytes())
-	if err != nil {
-		return 0, nil, err
-	}
 	b.end += n
-	return int64(n), addr, nil
+	return int64(n), addr, err
 }
 
 func (b *Buffer) ReadAtLeastFrom(r io.Reader, min int) (int64, error) {
 	if min <= 0 {
-		return b.ReadFrom(r)
+		return b.ReadOnceFrom(r)
 	}
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
 	n, err := io.ReadAtLeast(r, b.FreeBytes(), min)
-	if err != nil {
-		return 0, err
-	}
 	b.end += n
-	return int64(n), nil
+	return int64(n), err
 }
 
 func (b *Buffer) ReadFullFrom(r io.Reader, size int) (n int, err error) {
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
-	end := b.end + size
-	n, err = io.ReadFull(r, b.data[b.end:end])
-	if err != nil {
-		return
-	}
-	b.end = end
+	n, err = io.ReadFull(r, b.data[b.end:b.end+size])
+	b.end += n
 	return
 }
 
-func (b *Buffer) ReadAllFrom(reader io.Reader) (int, error) {
+func (b *Buffer) ReadFrom(reader io.Reader) (n int64, err error) {
 	for {
 		if b.IsFull() {
 			return 0, io.ErrShortBuffer
 		}
-		readN, err := reader.Read(b.FreeBytes())
+		var readN int
+		readN, err = reader.Read(b.FreeBytes())
+		b.end += readN
+		n += int64(readN)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return b.Len(), nil
-			} else {
-				return 0, err
+				err = nil
 			}
+			return
 		}
-		b.end += readN
 	}
 }
 
