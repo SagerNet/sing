@@ -445,7 +445,7 @@ func (c *UnbindPacketConn) Upstream() any {
 	return c.ExtendedConn
 }
 
-func NewUnbindPacketConn(conn net.Conn) N.NetPacketConn {
+func NewUnbindPacketConn(conn net.Conn) *UnbindPacketConn {
 	return &UnbindPacketConn{
 		NewExtendedConn(conn),
 		M.SocksaddrFromNet(conn.RemoteAddr()),
