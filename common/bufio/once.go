@@ -44,12 +44,12 @@ func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err 
 	return
 }
 
-type ReaderFromWriter interface {
+type ReadFromWriter interface {
 	io.ReaderFrom
 	io.Writer
 }
 
-func ReadFrom0(readerFrom ReaderFromWriter, reader io.Reader) (n int64, err error) {
+func ReadFrom0(readerFrom ReadFromWriter, reader io.Reader) (n int64, err error) {
 	n, err = CopyOnce(readerFrom, reader)
 	if err != nil {
 		return
@@ -60,5 +60,24 @@ func ReadFrom0(readerFrom ReaderFromWriter, reader io.Reader) (n int64, err erro
 		return
 	}
 	n += rn
+	return
+}
+
+type WriteToReader interface {
+	io.WriterTo
+	io.Reader
+}
+
+func WriteTo0(writerTo WriteToReader, writer io.Writer) (n int64, err error) {
+	n, err = CopyOnce(writer, writerTo)
+	if err != nil {
+		return
+	}
+	var wn int64
+	wn, err = writerTo.WriteTo(writer)
+	if err != nil {
+		return
+	}
+	n += wn
 	return
 }
