@@ -100,16 +100,20 @@ func NewClientFromURL(dialer N.Dialer, rawURL string) (*Client, error) {
 }
 
 func (c *Client) DialContext(ctx context.Context, network string, address M.Socksaddr) (net.Conn, error) {
+	network = N.NetworkName(network)
 	var command byte
-	if strings.HasPrefix(network, "tcp") {
+	switch network {
+	case N.NetworkTCP:
 		command = socks4.CommandConnect
-	} else {
+	case N.NetworkUDP:
 		if c.version != Version5 {
 			return nil, E.New("socks4: udp unsupported")
 		}
 		command = socks5.CommandUDPAssociate
+	default:
+		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
-	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.serverAddr)
+	tcpConn, err := c.dialer.DialContext(ctx, N.NetworkTCP, c.serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +142,7 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 		if command == socks5.CommandConnect {
 			return tcpConn, nil
 		}
-		udpConn, err := c.dialer.DialContext(ctx, "udp", response.Bind)
+		udpConn, err := c.dialer.DialContext(ctx, N.NetworkUDP, response.Bind)
 		if err != nil {
 			tcpConn.Close()
 			return nil, err
@@ -149,7 +153,7 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 }
 
 func (c *Client) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	conn, err := c.DialContext(ctx, "udp", destination)
+	conn, err := c.DialContext(ctx, N.NetworkUDP, destination)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +161,7 @@ func (c *Client) ListenPacket(ctx context.Context, destination M.Socksaddr) (net
 }
 
 func (c *Client) BindContext(ctx context.Context, address M.Socksaddr) (net.Conn, error) {
-	tcpConn, err := c.dialer.DialContext(ctx, "tcp", c.serverAddr)
+	tcpConn, err := c.dialer.DialContext(ctx, N.NetworkTCP, c.serverAddr)
 	if err != nil {
 		return nil, err
 	}

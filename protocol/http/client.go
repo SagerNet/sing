@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -36,11 +35,16 @@ func NewClient(dialer N.Dialer, serverAddr M.Socksaddr, username string, passwor
 }
 
 func (c *Client) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	if !strings.HasPrefix(network, "tcp") {
+	network = N.NetworkName(network)
+	switch network {
+	case N.NetworkTCP:
+	case N.NetworkUDP:
 		return nil, os.ErrInvalid
+	default:
+		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
 	var conn net.Conn
-	conn, err := c.dialer.DialContext(ctx, "tcp", c.serverAddr)
+	conn, err := c.dialer.DialContext(ctx, N.NetworkTCP, c.serverAddr)
 	if err != nil {
 		return nil, err
 	}

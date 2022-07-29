@@ -97,9 +97,6 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 					TLSHandshakeTimeout:   10 * time.Second,
 					ExpectContinueTimeout: 1 * time.Second,
 					DialContext: func(context context.Context, network, address string) (net.Conn, error) {
-						if network != "tcp" && network != "tcp4" && network != "tcp6" {
-							return nil, E.New("unsupported network ", network)
-						}
 						metadata.Destination = M.ParseSocksaddr(address)
 						metadata.Protocol = "http"
 						left, right := net.Pipe()
