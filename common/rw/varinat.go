@@ -26,6 +26,15 @@ func ReadUVariant(reader io.Reader) (uint64, error) {
 	return binary.ReadUvarint(ToByteReader(reader))
 }
 
+func UVariantLen(x uint64) int {
+	i := 0
+	for x >= 0x80 {
+		x >>= 7
+		i++
+	}
+	return i + 1
+}
+
 func WriteUVariant(writer io.Writer, value uint64) error {
 	var b [8]byte
 	return common.Error(writer.Write(b[:binary.PutUvarint(b[:], value)]))
