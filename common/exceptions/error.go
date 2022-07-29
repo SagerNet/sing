@@ -9,7 +9,6 @@ import (
 	"syscall"
 	_ "unsafe"
 
-	"github.com/sagernet/sing/common"
 	F "github.com/sagernet/sing/common/format"
 )
 
@@ -31,20 +30,6 @@ func Cause(cause error, message ...any) error {
 
 func Extend(cause error, message ...any) error {
 	return &extendedError{F.ToString(message...), cause}
-}
-
-func Errors(errors ...error) error {
-	errors = common.FilterNotNil(errors)
-	errors = common.UniqBy(errors, error.Error)
-	switch len(errors) {
-	case 0:
-		return nil
-	case 1:
-		return errors[0]
-	}
-	return &multiError{
-		errors: errors,
-	}
 }
 
 //go:linkname errCanceled net.errCanceled
