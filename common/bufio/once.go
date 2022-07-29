@@ -32,6 +32,7 @@ func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err 
 	err = src.ReadBuffer(buffer)
 	if err != nil {
 		buffer.Release()
+		err = N.HandshakeFailure(dst, err)
 		return
 	}
 	dataLen := buffer.Len()

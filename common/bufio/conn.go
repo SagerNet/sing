@@ -58,18 +58,28 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 }
 
 func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
+	if _, isHandshakeConn := common.Cast[N.HandshakeConn](dst); isHandshakeConn {
+		n, err = CopyExtendedOnce(dst, src)
+		if err != nil {
+			return
+		}
+	}
+	var copyN int64
 	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafeReader](src)
 	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
 	if srcUnsafe {
-		return CopyExtendedWithSrcBuffer(dst, unsafeSrc)
+		copyN, err = CopyExtendedWithSrcBuffer(dst, unsafeSrc)
 	} else if dstUnsafe {
-		return CopyExtendedWithPool(dst, src)
+		copyN, err = CopyExtendedWithPool(dst, src)
+	} else {
+		_buffer := buf.StackNew()
+		defer common.KeepAlive(_buffer)
+		buffer := common.Dup(_buffer)
+		defer buffer.Release()
+		copyN, err = CopyExtendedBuffer(dst, src, buffer)
 	}
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	return CopyExtendedBuffer(dst, src, buffer)
+	n += copyN
+	return
 }
 
 func CopyExtendedBuffer(dst N.ExtendedWriter, src N.ExtendedReader, buffer *buf.Buffer) (n int64, err error) {
@@ -165,10 +175,14 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	buffer.IncRef()
 	defer buffer.DecRef()
 	var destination M.Socksaddr
+	var notFirstTime bool
 	for {
 		buffer.Reset()
 		destination, err = src.ReadPacket(buffer)
 		if err != nil {
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
 			return
 		}
 		if buffer.IsFull() {
@@ -180,6 +194,7 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 			return
 		}
 		n += int64(dataLen)
+		notFirstTime = true
 	}
 }
 
@@ -221,30 +236,39 @@ func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout ti
 	}
 }
 
-func CopyPacketWithSrcBuffer(dest N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
+func CopyPacketWithSrcBuffer(dst N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
 	var buffer *buf.Buffer
 	var destination M.Socksaddr
+	var notFirstTime bool
 	for {
 		buffer, destination, err = src.ReadPacketThreadSafe()
 		if err != nil {
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
 			return
 		}
 		dataLen := buffer.Len()
-		err = dest.WritePacket(buffer, destination)
+		err = dst.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
+		notFirstTime = true
 	}
 }
 
-func CopyPacketWithSrcBufferTimeout(dest N.PacketWriter, src N.ThreadSafePacketReader, tSrc N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
+func CopyPacketWithSrcBufferTimeout(dst N.PacketWriter, src N.ThreadSafePacketReader, tSrc N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
 	var buffer *buf.Buffer
 	var destination M.Socksaddr
+	var notFirstTime bool
 	for {
 		err = tSrc.SetReadDeadline(time.Now().Add(timeout))
 		if err != nil {
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
 			return
 		}
 		buffer, destination, err = src.ReadPacketThreadSafe()
@@ -252,22 +276,27 @@ func CopyPacketWithSrcBufferTimeout(dest N.PacketWriter, src N.ThreadSafePacketR
 			return
 		}
 		dataLen := buffer.Len()
-		err = dest.WritePacket(buffer, destination)
+		err = dst.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
+		notFirstTime = true
 	}
 }
 
-func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err error) {
+func CopyPacketWithPool(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	var destination M.Socksaddr
+	var notFirstTime bool
 	for {
 		buffer := buf.NewPacket()
 		destination, err = src.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
 			return
 		}
 		if buffer.IsFull() {
@@ -275,17 +304,19 @@ func CopyPacketWithPool(dest N.PacketWriter, src N.PacketReader) (n int64, err e
 			return 0, io.ErrShortBuffer
 		}
 		dataLen := buffer.Len()
-		err = dest.WritePacket(buffer, destination)
+		err = dst.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
+		notFirstTime = true
 	}
 }
 
-func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
+func CopyPacketWithPoolTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
 	var destination M.Socksaddr
+	var notFirstTime bool
 	for {
 		buffer := buf.NewPacket()
 		err = src.SetReadDeadline(time.Now().Add(timeout))
@@ -295,6 +326,9 @@ func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, t
 		destination, err = src.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
 			return
 		}
 		if buffer.IsFull() {
@@ -302,12 +336,13 @@ func CopyPacketWithPoolTimeout(dest N.PacketWriter, src N.TimeoutPacketReader, t
 			return 0, io.ErrShortBuffer
 		}
 		dataLen := buffer.Len()
-		err = dest.WritePacket(buffer, destination)
+		err = dst.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
+		notFirstTime = true
 	}
 }
 
