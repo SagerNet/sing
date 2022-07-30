@@ -1,7 +1,5 @@
 package observable
 
-import "time"
-
 type Subscription[T any] <-chan T
 
 type Subscriber[T any] struct {
@@ -23,15 +21,6 @@ func (s *Subscriber[T]) Emit(item T) {
 
 func (s *Subscriber[T]) Close() error {
 	close(s.done)
-	go func() {
-		time.Sleep(time.Second)
-		for {
-			_, loaded := <-s.buffer
-			if !loaded {
-				break
-			}
-		}
-	}()
 	return nil
 }
 
