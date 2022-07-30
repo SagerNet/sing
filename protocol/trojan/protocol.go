@@ -75,6 +75,17 @@ func (c *ClientConn) WriteTo(w io.Writer) (n int64, err error) {
 	return bufio.Copy(w, c.Conn)
 }
 
+func (c *ClientConn) Headroom() int {
+	if !c.headerWritten {
+		return KeyLength + 5 + M.MaxSocksaddrLength
+	}
+	return 0
+}
+
+func (c *ClientConn) Upstream() any {
+	return c.Conn
+}
+
 type ClientPacketConn struct {
 	net.Conn
 	key           [KeyLength]byte
@@ -119,6 +130,17 @@ func (c *ClientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		n = len(p)
 	}
 	return
+}
+
+func (c *ClientPacketConn) Headroom() int {
+	if !c.headerWritten {
+		return KeyLength + 2*M.MaxSocksaddrLength + 9
+	}
+	return 0
+}
+
+func (c *ClientPacketConn) Upstream() any {
+	return c.Conn
 }
 
 func Key(password string) [KeyLength]byte {

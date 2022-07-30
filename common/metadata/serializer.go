@@ -10,6 +10,8 @@ import (
 	"github.com/sagernet/sing/common/rw"
 )
 
+const MaxSocksaddrLength = 2 + 255 + 2
+
 type SerializerOption func(*Serializer)
 
 func AddressFamilyByte(b byte, f Family) SerializerOption {

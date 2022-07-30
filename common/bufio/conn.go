@@ -163,8 +163,12 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
 	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
 	if srcUnsafe {
-		return CopyPacketWithSrcBuffer(dst, unsafeSrc)
-	} else if dstUnsafe {
+		dstHeadroom := N.CalculateHeadroom(dst)
+		if dstHeadroom == 0 {
+			return CopyPacketWithSrcBuffer(dst, unsafeSrc)
+		}
+	}
+	if dstUnsafe {
 		return CopyPacketWithPool(dst, src)
 	}
 
@@ -202,8 +206,12 @@ func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout ti
 	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
 	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
 	if srcUnsafe {
-		return CopyPacketWithSrcBufferTimeout(dst, unsafeSrc, src, timeout)
-	} else if dstUnsafe {
+		dstHeadroom := N.CalculateHeadroom(dst)
+		if dstHeadroom == 0 {
+			return CopyPacketWithSrcBufferTimeout(dst, unsafeSrc, src, timeout)
+		}
+	}
+	if dstUnsafe {
 		return CopyPacketWithPoolTimeout(dst, src, timeout)
 	}
 

@@ -109,6 +109,10 @@ func (c *AssociatePacketConn) Upstream() any {
 	return c.PacketConn
 }
 
+func (c *AssociatePacketConn) Headroom() int {
+	return 3 + M.MaxSocksaddrLength
+}
+
 func (c *AssociatePacketConn) Close() error {
 	return common.Close(
 		c.PacketConn,
