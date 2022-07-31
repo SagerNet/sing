@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/netip"
 
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/rw"
@@ -46,15 +48,16 @@ type AuthRequest struct {
 }
 
 func WriteAuthRequest(writer io.Writer, request AuthRequest) error {
-	err := rw.WriteByte(writer, Version)
-	if err != nil {
-		return err
-	}
-	err = rw.WriteByte(writer, byte(len(request.Methods)))
-	if err != nil {
-		return err
-	}
-	return rw.WriteBytes(writer, request.Methods)
+	_buffer := buf.StackNewSize(len(request.Methods) + 2)
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(
+		buffer.WriteByte(Version),
+		buffer.WriteByte(byte(len(request.Methods))),
+		common.Error(buffer.Write(request.Methods)),
+	)
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 func ReadAuthRequest(reader io.Reader) (request AuthRequest, err error) {
@@ -117,15 +120,16 @@ type UsernamePasswordAuthRequest struct {
 }
 
 func WriteUsernamePasswordAuthRequest(writer io.Writer, request UsernamePasswordAuthRequest) error {
-	err := rw.WriteByte(writer, 1)
-	if err != nil {
-		return err
-	}
-	err = M.WriteSocksString(writer, request.Username)
-	if err != nil {
-		return err
-	}
-	return M.WriteSocksString(writer, request.Password)
+	_buffer := buf.StackNewSize(3 + len(request.Username) + len(request.Password))
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(
+		buffer.WriteByte(1),
+		M.WriteSocksString(buffer, request.Username),
+		M.WriteSocksString(writer, request.Password),
+	)
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 func ReadUsernamePasswordAuthRequest(reader io.Reader) (request UsernamePasswordAuthRequest, err error) {
@@ -159,11 +163,7 @@ type UsernamePasswordAuthResponse struct {
 }
 
 func WriteUsernamePasswordAuthResponse(writer io.Writer, response UsernamePasswordAuthResponse) error {
-	err := rw.WriteByte(writer, 1)
-	if err != nil {
-		return err
-	}
-	return rw.WriteByte(writer, response.Status)
+	return rw.WriteBytes(writer, []byte{1, response.Status})
 }
 
 func ReadUsernamePasswordAuthResponse(reader io.Reader) (response UsernamePasswordAuthResponse, err error) {
@@ -191,19 +191,17 @@ type Request struct {
 }
 
 func WriteRequest(writer io.Writer, request Request) error {
-	err := rw.WriteByte(writer, Version)
-	if err != nil {
-		return err
-	}
-	err = rw.WriteByte(writer, request.Command)
-	if err != nil {
-		return err
-	}
-	err = rw.WriteZero(writer)
-	if err != nil {
-		return err
-	}
-	return M.SocksaddrSerializer.WriteAddrPort(writer, request.Destination)
+	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(request.Destination))
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(
+		buffer.WriteByte(Version),
+		buffer.WriteByte(request.Command),
+		buffer.WriteZero(),
+		M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination),
+	)
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 func ReadRequest(reader io.Reader) (request Request, err error) {
@@ -239,24 +237,24 @@ type Response struct {
 }
 
 func WriteResponse(writer io.Writer, response Response) error {
-	err := rw.WriteByte(writer, Version)
-	if err != nil {
-		return err
+	var bind M.Socksaddr
+	if response.Bind.IsValid() {
+		bind = response.Bind
+	} else {
+		bind.Addr = netip.IPv4Unspecified()
 	}
-	err = rw.WriteByte(writer, response.ReplyCode)
-	if err != nil {
-		return err
-	}
-	err = rw.WriteZero(writer)
-	if err != nil {
-		return err
-	}
-	if !response.Bind.IsValid() {
-		return M.SocksaddrSerializer.WriteAddrPort(writer, M.Socksaddr{
-			Addr: netip.IPv4Unspecified(),
-		})
-	}
-	return M.SocksaddrSerializer.WriteAddrPort(writer, response.Bind)
+
+	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(bind))
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(
+		buffer.WriteByte(Version),
+		buffer.WriteByte(response.ReplyCode),
+		buffer.WriteZero(),
+		M.SocksaddrSerializer.WriteAddrPort(buffer, bind),
+	)
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 func ReadResponse(reader io.Reader) (response Response, err error) {

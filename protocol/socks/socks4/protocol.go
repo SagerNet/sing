@@ -5,8 +5,9 @@ import (
 	"encoding/binary"
 	"io"
 	"net/netip"
-	"os"
 
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/rw"
@@ -70,44 +71,40 @@ func ReadRequest0(reader io.Reader) (request Request, err error) {
 }
 
 func WriteRequest(writer io.Writer, request Request) error {
-	if request.Command != CommandConnect && request.Command != CommandBind {
-		return os.ErrInvalid
-	}
-	_, err := writer.Write([]byte{Version, request.Command})
-	if err != nil {
-		return err
-	}
-	err = binary.Write(writer, binary.BigEndian, request.Destination.Port)
-	if err != nil {
-		return err
-	}
-	if request.Destination.IsIPv4() {
-		dstIP := request.Destination.Addr.As4()
-		_, err = writer.Write(dstIP[:])
-		if err != nil {
-			return err
-		}
-	} else {
-		err = rw.WriteZeroN(writer, 4)
-		if err != nil {
-			return err
-		}
-		_, err = writer.Write([]byte(request.Destination.AddrString()))
-		if err != nil {
-			return err
-		}
-		err = rw.WriteZero(writer)
-		if err != nil {
-			return err
-		}
+	var requestLen int
+	requestLen += 1 // version
+	requestLen += 1 // command
+	requestLen += 2 // port
+	requestLen += 4 // ip
+	if !request.Destination.IsIPv4() {
+		requestLen += len(request.Destination.AddrString()) + 1
 	}
 	if request.Username != "" {
-		_, err = writer.Write([]byte(request.Username))
-		if err != nil {
-			return err
-		}
+		requestLen += len(request.Username) + 1
 	}
-	return rw.WriteZero(writer)
+
+	_buffer := buf.StackNewSize(requestLen)
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+
+	common.Must(
+		buffer.WriteByte(Version),
+		buffer.WriteByte(request.Command),
+		binary.Write(buffer, binary.BigEndian, request.Destination.Port),
+	)
+	if request.Destination.IsIPv4() {
+		common.Must1(buffer.Write(request.Destination.Unwrap().Addr.AsSlice()))
+	} else {
+		common.Must(buffer.WriteZeroN(4))
+		common.Must1(buffer.WriteString(request.Destination.AddrString()))
+		common.Must(buffer.WriteZero())
+	}
+	if request.Username != "" {
+		common.Must1(buffer.WriteString(request.Destination.AddrString()))
+	}
+	common.Must(buffer.WriteZero())
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 type Response struct {
@@ -142,16 +139,17 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 }
 
 func WriteResponse(writer io.Writer, response Response) error {
-	_, err := writer.Write([]byte{0, response.ReplyCode})
-	if err != nil {
-		return err
-	}
-	err = binary.Write(writer, binary.BigEndian, response.Destination.Port)
-	if err != nil {
-		return err
-	}
-	dstIP := response.Destination.Addr.As4()
-	return rw.WriteBytes(writer, dstIP[:])
+	_buffer := buf.StackNewSize(8)
+	defer common.KeepAlive(_buffer)
+	buffer := common.Dup(_buffer)
+	defer buffer.Release()
+	common.Must(
+		buffer.WriteByte(0),
+		buffer.WriteByte(response.ReplyCode),
+		binary.Write(buffer, binary.BigEndian, response.Destination.Port),
+		common.Error(buffer.Write(response.Destination.Unwrap().Addr.AsSlice())),
+	)
+	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
 func readString(reader io.Reader) (string, error) {
