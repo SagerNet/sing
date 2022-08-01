@@ -532,6 +532,7 @@ type ExtendedWriterWrapper struct {
 }
 
 func (w *ExtendedWriterWrapper) WriteBuffer(buffer *buf.Buffer) error {
+	defer buffer.Release()
 	return common.Error(w.Write(buffer.Bytes()))
 }
 

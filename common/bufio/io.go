@@ -22,7 +22,6 @@ func ReadFrom(reader N.PacketReader, buffer *buf.Buffer) (n int, addr net.Addr, 
 }
 
 func Write(writer N.ExtendedWriter, buffer *buf.Buffer) (n int, err error) {
-	defer buffer.Release()
 	dataLen := buffer.Len()
 	err = writer.WriteBuffer(buffer)
 	if err == nil {
@@ -32,7 +31,6 @@ func Write(writer N.ExtendedWriter, buffer *buf.Buffer) (n int, err error) {
 }
 
 func WriteTo(writer N.PacketWriter, buffer *buf.Buffer, addr net.Addr) (n int, err error) {
-	defer buffer.Release()
 	dataLen := buffer.Len()
 	err = writer.WritePacket(buffer, M.SocksaddrFromNet(addr))
 	if err == nil {

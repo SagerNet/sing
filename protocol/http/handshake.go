@@ -63,10 +63,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 
 			var requestConn net.Conn
 			if reader.Buffered() > 0 {
-				_buffer := buf.StackNewSize(reader.Buffered())
-				defer common.KeepAlive(_buffer)
-				buffer := common.Dup(_buffer)
-				defer buffer.Release()
+				buffer := buf.NewSize(reader.Buffered())
 				_, err = buffer.ReadFullFrom(reader, reader.Buffered())
 				if err != nil {
 					return err

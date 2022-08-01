@@ -43,6 +43,7 @@ func (c *AssociatePacketConn) RemoteAddr() net.Addr {
 	return c.addr
 }
 
+//warn:unsafe
 func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	buffer := buf.With(p)
 	n, _, err = bufio.ReadFrom(c.PacketConn, buffer)
@@ -59,6 +60,7 @@ func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err erro
 	return
 }
 
+//warn:unsafe
 func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	destination := M.SocksaddrFromNet(addr)
 	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination) + len(p))
@@ -98,7 +100,6 @@ func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error
 }
 
 func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
 	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must(header.WriteZeroN(3))
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))

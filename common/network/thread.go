@@ -22,6 +22,11 @@ type HeadroomWriter interface {
 	Headroom() int
 }
 
+func IsUnsafeWriter(writer any) bool {
+	_, isUnsafe := common.Cast[ThreadUnsafeWriter](writer)
+	return isUnsafe
+}
+
 func CalculateHeadroom(writer any) int {
 	var headroom int
 	if headroomWriter, needHeadroom := writer.(HeadroomWriter); needHeadroom {

@@ -44,6 +44,7 @@ func (c *ServerConn) RemoteAddr() net.Addr {
 	return pipeAddr{}
 }
 
+//warn:unsafe
 func (c *ServerConn) loopInput() {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)
@@ -79,6 +80,7 @@ func (c *ServerConn) loopInput() {
 	c.Close()
 }
 
+//warn:unsafe
 func (c *ServerConn) loopOutput() {
 	_buffer := buf.StackNew()
 	defer common.KeepAlive(_buffer)

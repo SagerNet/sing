@@ -22,7 +22,7 @@ func CopyOnce(dst io.Writer, src io.Reader) (n int64, err error) {
 
 func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
 	var buffer *buf.Buffer
-	if _, unsafe := common.Cast[N.ThreadUnsafeWriter](dst); unsafe {
+	if N.IsUnsafeWriter(dst) {
 		buffer = buf.New()
 	} else {
 		_buffer := buf.StackNew()
