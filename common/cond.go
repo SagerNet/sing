@@ -133,9 +133,10 @@ func Find[T any](arr []T, block func(it T) bool) T {
 //go:norace
 func Dup[T any](obj T) T {
 	if UnsafeBuffer {
+		pointer := uintptr(unsafe.Pointer(&obj))
 		//nolint:staticcheck
 		//goland:noinspection GoVetUnsafePointer
-		return *(*T)(unsafe.Pointer(uintptr(unsafe.Pointer(&obj)) ^ 0))
+		return *(*T)(unsafe.Pointer(pointer))
 	} else {
 		return obj
 	}
