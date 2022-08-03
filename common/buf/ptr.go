@@ -4,6 +4,8 @@ package buf
 
 import (
 	"unsafe"
+
+	"github.com/sagernet/sing/common"
 )
 
 type dbgVar struct {
@@ -17,8 +19,10 @@ var dbgvars any
 // go.info.runtime.dbgvars: relocation target go.info.[]github.com/sagernet/sing/common/buf.dbgVar not defined
 // var dbgvars []dbgVar
 
-//nolint:gochecknoinits
 func init() {
+	if !common.UnsafeBuffer {
+		return
+	}
 	debugVars := *(*[]dbgVar)(unsafe.Pointer(&dbgvars))
 	for _, v := range debugVars {
 		if v.name == "invalidptr" {

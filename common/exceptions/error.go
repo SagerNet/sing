@@ -32,11 +32,8 @@ func Extend(cause error, message ...any) error {
 	return &extendedError{F.ToString(message...), cause}
 }
 
-//go:linkname errCanceled net.errCanceled
-var errCanceled error
-
 func IsClosedOrCanceled(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded, errCanceled)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded)
 }
 
 func IsClosed(err error) bool {
@@ -44,5 +41,5 @@ func IsClosed(err error) bool {
 }
 
 func IsCanceled(err error) bool {
-	return IsMulti(err, context.Canceled, context.DeadlineExceeded, errCanceled)
+	return IsMulti(err, context.Canceled, context.DeadlineExceeded)
 }
