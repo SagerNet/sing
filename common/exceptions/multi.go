@@ -13,7 +13,7 @@ type multiError struct {
 }
 
 func (e *multiError) Error() string {
-	return "multi error: (" + strings.Join(F.MapToString(e.errors), " | ") + ")"
+	return strings.Join(F.MapToString(e.errors), " | ")
 }
 
 func (e *multiError) UnwrapMulti() []error {
@@ -50,7 +50,7 @@ func Append(err error, other error, block func(error) error) error {
 	if other == nil {
 		return err
 	}
-	return Errors(err, block(err))
+	return Errors(err, block(other))
 }
 
 func IsMulti(err error, targetList ...error) bool {

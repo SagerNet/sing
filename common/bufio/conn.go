@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -146,17 +145,21 @@ func CopyExtendedWithPool(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, 
 }
 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
-	defer common.Close(conn, dest)
-	err := task.Run(ctx, func() error {
+	var group task.Group
+	group.Append("upload", func(ctx context.Context) error {
 		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(dest)
 		return common.Error(Copy(dest, conn))
-	}, func() error {
+	})
+	group.Append("download", func(ctx context.Context) error {
 		defer rw.CloseRead(dest)
 		defer rw.CloseWrite(conn)
 		return common.Error(Copy(conn, dest))
 	})
-	return err
+	group.Cleanup(func() {
+		common.Close(conn, dest)
+	})
+	return group.Run(ctx)
 }
 
 func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
@@ -202,48 +205,6 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	}
 }
 
-func CopyPacketTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
-	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
-	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
-	if srcUnsafe {
-		dstHeadroom := N.CalculateHeadroom(dst)
-		if dstHeadroom == 0 {
-			return CopyPacketWithSrcBufferTimeout(dst, unsafeSrc, src, timeout)
-		}
-	}
-	if dstUnsafe {
-		return CopyPacketWithPoolTimeout(dst, src, timeout)
-	}
-
-	_buffer := buf.StackNewPacket()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	buffer.IncRef()
-	defer buffer.DecRef()
-	var destination M.Socksaddr
-	for {
-		buffer.Reset()
-		err = src.SetReadDeadline(time.Now().Add(timeout))
-		if err != nil {
-			return
-		}
-		destination, err = src.ReadPacket(buffer)
-		if err != nil {
-			return
-		}
-		if buffer.IsFull() {
-			return 0, io.ErrShortBuffer
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			return
-		}
-		n += int64(dataLen)
-	}
-}
-
 func CopyPacketWithSrcBuffer(dst N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
 	var buffer *buf.Buffer
 	var destination M.Socksaddr
@@ -254,33 +215,6 @@ func CopyPacketWithSrcBuffer(dst N.PacketWriter, src N.ThreadSafePacketReader) (
 			if !notFirstTime {
 				err = N.HandshakeFailure(dst, err)
 			}
-			return
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-		notFirstTime = true
-	}
-}
-
-func CopyPacketWithSrcBufferTimeout(dst N.PacketWriter, src N.ThreadSafePacketReader, tSrc N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
-	var buffer *buf.Buffer
-	var destination M.Socksaddr
-	var notFirstTime bool
-	for {
-		err = tSrc.SetReadDeadline(time.Now().Add(timeout))
-		if err != nil {
-			if !notFirstTime {
-				err = N.HandshakeFailure(dst, err)
-			}
-			return
-		}
-		buffer, destination, err = src.ReadPacketThreadSafe()
-		if err != nil {
 			return
 		}
 		dataLen := buffer.Len()
@@ -322,54 +256,19 @@ func CopyPacketWithPool(dst N.PacketWriter, src N.PacketReader) (n int64, err er
 	}
 }
 
-func CopyPacketWithPoolTimeout(dst N.PacketWriter, src N.TimeoutPacketReader, timeout time.Duration) (n int64, err error) {
-	var destination M.Socksaddr
-	var notFirstTime bool
-	for {
-		buffer := buf.NewPacket()
-		err = src.SetReadDeadline(time.Now().Add(timeout))
-		if err != nil {
-			return
-		}
-		destination, err = src.ReadPacket(buffer)
-		if err != nil {
-			buffer.Release()
-			if !notFirstTime {
-				err = N.HandshakeFailure(dst, err)
-			}
-			return
-		}
-		if buffer.IsFull() {
-			buffer.Release()
-			return 0, io.ErrShortBuffer
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-		notFirstTime = true
-	}
-}
-
 func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) error {
-	defer common.Close(conn, dest)
-	return task.Any(ctx, func(ctx context.Context) error {
+	var group task.Group
+	group.Append("upload", func(ctx context.Context) error {
 		return common.Error(CopyPacket(dest, conn))
-	}, func(ctx context.Context) error {
+	})
+	group.Append("download", func(ctx context.Context) error {
 		return common.Error(CopyPacket(conn, dest))
 	})
-}
-
-func CopyPacketConnTimeout(ctx context.Context, conn N.PacketConn, dest N.PacketConn, timeout time.Duration) error {
-	defer common.Close(conn, dest)
-	return task.Any(ctx, func(ctx context.Context) error {
-		return common.Error(CopyPacketTimeout(dest, conn, timeout))
-	}, func(ctx context.Context) error {
-		return common.Error(CopyPacketTimeout(conn, dest, timeout))
+	group.Cleanup(func() {
+		common.Close(conn, dest)
 	})
+	group.FastFail()
+	return group.Run(ctx)
 }
 
 func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
