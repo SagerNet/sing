@@ -45,15 +45,15 @@ func NewSerializer(options ...SerializerOption) *Serializer {
 }
 
 func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
-	var family Family
+	var af Family
 	if addr.IsIPv4() {
-		family = AddressFamilyIPv4
+		af = AddressFamilyIPv4
 	} else if addr.IsIPv6() {
-		family = AddressFamilyIPv6
+		af = AddressFamilyIPv6
 	} else {
-		family = AddressFamilyFqdn
+		af = AddressFamilyFqdn
 	}
-	err := rw.WriteByte(writer, family)
+	err := rw.WriteByte(writer, s.familyByteMap[af])
 	if err != nil {
 		return err
 	}
