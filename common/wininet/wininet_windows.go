@@ -52,7 +52,7 @@ type internetPerConnOptionList struct {
 
 type internetPerConnOption struct {
 	dwOption uint32
-	value    [8]byte
+	value    uint64
 }
 
 func internetSetOption(option uintptr, lpBuffer uintptr, dwBufferSize uintptr) error {
