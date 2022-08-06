@@ -52,7 +52,7 @@ type internetPerConnOptionList struct {
 
 type internetPerConnOption struct {
 	dwOption uint32
-	value    [8]byte
+	value    uint64
 }
 
 func internetSetOption(option uintptr, lpBuffer uintptr, dwBufferSize uintptr) error {
@@ -71,7 +71,7 @@ func setOptions(options ...internetPerConnOption) error {
 	optionList.pOptions = uintptr(unsafe.Pointer(&options[0]))
 	err := internetSetOption(internetOptionPerConnectionOption, uintptr(unsafe.Pointer(&optionList)), uintptr(optionList.dwSize))
 	if err != nil {
-		return os.NewSyscallError("InternetSetOption(Direct)", err)
+		return os.NewSyscallError("InternetSetOption(PerConnectionOption)", err)
 	}
 	err = internetSetOption(internetOptionSettingsChanged, 0, 0)
 	if err != nil {
