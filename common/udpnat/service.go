@@ -181,6 +181,9 @@ func (c *conn) Close() error {
 	default:
 	}
 	c.cancel()
+	if sourceCloser, sourceIsCloser := c.source.(io.Closer); sourceIsCloser {
+		return sourceCloser.Close()
+	}
 	return nil
 }
 
