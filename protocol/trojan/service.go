@@ -22,45 +22,37 @@ type Handler interface {
 
 type Service[K comparable] struct {
 	handler Handler
-	keys    map[[56]byte]K
 	users   map[K][56]byte
+	keys    map[[56]byte]K
 }
 
-func NewService[K comparable](handler Handler) Service[K] {
-	return Service[K]{
+func NewService[K comparable](handler Handler) *Service[K] {
+	return &Service[K]{
 		handler: handler,
-		keys:    make(map[[56]byte]K),
 		users:   make(map[K][56]byte),
+		keys:    make(map[[56]byte]K),
 	}
 }
 
 var ErrUserExists = E.New("user already exists")
 
-func (s *Service[K]) AddUser(user K, password string) error {
-	if _, loaded := s.users[user]; loaded {
-		return ErrUserExists
+func (s *Service[K]) UpdateUsers(userList []K, passwordList []string) error {
+	users := make(map[K][56]byte)
+	keys := make(map[[56]byte]K)
+	for i, user := range userList {
+		if _, loaded := users[user]; loaded {
+			return ErrUserExists
+		}
+		key := Key(passwordList[i])
+		if oldUser, loaded := keys[key]; loaded {
+			return E.Extend(ErrUserExists, "password used by ", oldUser)
+		}
+		users[user] = key
+		keys[key] = user
 	}
-	key := Key(password)
-	if oldUser, loaded := s.keys[key]; loaded {
-		return E.New("password used by ", oldUser)
-	}
-	s.users[user] = key
-	s.keys[key] = user
+	s.users = users
+	s.keys = keys
 	return nil
-}
-
-func (s *Service[K]) RemoveUser(user K) bool {
-	if key, loaded := s.users[user]; loaded {
-		delete(s.users, user)
-		delete(s.keys, key)
-		return true
-	}
-	return false
-}
-
-func (s *Service[K]) ResetUsers() {
-	s.keys = make(map[[56]byte]K)
-	s.users = make(map[K][56]byte)
 }
 
 func (s *Service[K]) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
