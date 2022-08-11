@@ -1,275 +1,14 @@
 package bufio
 
 import (
-	"context"
 	"io"
 	"net"
-	"os"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/rw"
-	"github.com/sagernet/sing/common/task"
 )
-
-type readOnlyReader struct {
-	io.Reader
-}
-
-func (r *readOnlyReader) WriteTo(w io.Writer) (n int64, err error) {
-	return Copy(w, r.Reader)
-}
-
-func needReadFromWrapper(dst io.ReaderFrom, src io.Reader) bool {
-	_, isTCPConn := dst.(*net.TCPConn)
-	if !isTCPConn {
-		return false
-	}
-	switch src.(type) {
-	case *net.TCPConn, *net.UnixConn, *os.File:
-		return false
-	default:
-		return true
-	}
-}
-
-func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
-	if src == nil {
-		return 0, E.New("nil reader")
-	} else if dst == nil {
-		return 0, E.New("nil writer")
-	}
-	src = N.UnwrapReader(src)
-	dst = N.UnwrapWriter(dst)
-	if wt, ok := src.(io.WriterTo); ok {
-		return wt.WriteTo(dst)
-	}
-	if rt, ok := dst.(io.ReaderFrom); ok {
-		if needReadFromWrapper(rt, src) {
-			src = &readOnlyReader{src}
-		}
-		return rt.ReadFrom(src)
-	}
-	return CopyExtended(NewExtendedWriter(dst), NewExtendedReader(src))
-}
-
-func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	if _, isHandshakeConn := common.Cast[N.HandshakeConn](dst); isHandshakeConn {
-		n, err = CopyExtendedOnce(dst, src)
-		if err != nil {
-			return
-		}
-	}
-	var copyN int64
-	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafeReader](src)
-	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
-	if srcUnsafe {
-		copyN, err = CopyExtendedWithSrcBuffer(dst, unsafeSrc)
-	} else if dstUnsafe {
-		copyN, err = CopyExtendedWithPool(dst, src)
-	} else {
-		_buffer := buf.StackNew()
-		defer common.KeepAlive(_buffer)
-		buffer := common.Dup(_buffer)
-		defer buffer.Release()
-		copyN, err = CopyExtendedBuffer(dst, src, buffer)
-	}
-	n += copyN
-	return
-}
-
-func CopyExtendedBuffer(dst N.ExtendedWriter, src N.ExtendedReader, buffer *buf.Buffer) (n int64, err error) {
-	buffer.IncRef()
-	defer buffer.DecRef()
-
-	readBufferRaw := buffer.Slice()
-	readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-1024])
-
-	for {
-		buffer.Reset()
-		readBuffer.Reset()
-		err = src.ReadBuffer(readBuffer)
-		if err != nil {
-			return
-		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
-		err = dst.WriteBuffer(buffer)
-		if err != nil {
-			return
-		}
-		n += int64(dataLen)
-	}
-}
-
-func CopyExtendedWithSrcBuffer(dst N.ExtendedWriter, src N.ThreadSafeReader) (n int64, err error) {
-	for {
-		var buffer *buf.Buffer
-		buffer, err = src.ReadBufferThreadSafe()
-		if err != nil {
-			return
-		}
-		dataLen := buffer.Len()
-		err = dst.WriteBuffer(buffer)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-	}
-}
-
-func CopyExtendedWithPool(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	for {
-		buffer := buf.New()
-		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-1024])
-		readBuffer.Reset()
-		err = src.ReadBuffer(readBuffer)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
-		err = dst.WriteBuffer(buffer)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-	}
-}
-
-func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
-	var group task.Group
-	group.Append("upload", func(ctx context.Context) error {
-		defer rw.CloseRead(conn)
-		defer rw.CloseWrite(dest)
-		return common.Error(Copy(dest, conn))
-	})
-	group.Append("download", func(ctx context.Context) error {
-		defer rw.CloseRead(dest)
-		defer rw.CloseWrite(conn)
-		return common.Error(Copy(conn, dest))
-	})
-	group.Cleanup(func() {
-		common.Close(conn, dest)
-	})
-	return group.Run(ctx)
-}
-
-func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
-	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
-	_, dstUnsafe := common.Cast[N.ThreadUnsafeWriter](dst)
-	if srcUnsafe {
-		dstHeadroom := N.CalculateHeadroom(dst)
-		if dstHeadroom == 0 {
-			return CopyPacketWithSrcBuffer(dst, unsafeSrc)
-		}
-	}
-	if dstUnsafe {
-		return CopyPacketWithPool(dst, src)
-	}
-
-	_buffer := buf.StackNewPacket()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	buffer.IncRef()
-	defer buffer.DecRef()
-	var destination M.Socksaddr
-	var notFirstTime bool
-	for {
-		buffer.Reset()
-		destination, err = src.ReadPacket(buffer)
-		if err != nil {
-			if !notFirstTime {
-				err = N.HandshakeFailure(dst, err)
-			}
-			return
-		}
-		if buffer.IsFull() {
-			return 0, io.ErrShortBuffer
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			return
-		}
-		n += int64(dataLen)
-		notFirstTime = true
-	}
-}
-
-func CopyPacketWithSrcBuffer(dst N.PacketWriter, src N.ThreadSafePacketReader) (n int64, err error) {
-	var buffer *buf.Buffer
-	var destination M.Socksaddr
-	var notFirstTime bool
-	for {
-		buffer, destination, err = src.ReadPacketThreadSafe()
-		if err != nil {
-			if !notFirstTime {
-				err = N.HandshakeFailure(dst, err)
-			}
-			return
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-		notFirstTime = true
-	}
-}
-
-func CopyPacketWithPool(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
-	var destination M.Socksaddr
-	var notFirstTime bool
-	for {
-		buffer := buf.NewPacket()
-		destination, err = src.ReadPacket(buffer)
-		if err != nil {
-			buffer.Release()
-			if !notFirstTime {
-				err = N.HandshakeFailure(dst, err)
-			}
-			return
-		}
-		if buffer.IsFull() {
-			buffer.Release()
-			return 0, io.ErrShortBuffer
-		}
-		dataLen := buffer.Len()
-		err = dst.WritePacket(buffer, destination)
-		if err != nil {
-			buffer.Release()
-			return
-		}
-		n += int64(dataLen)
-		notFirstTime = true
-	}
-}
-
-func CopyPacketConn(ctx context.Context, conn N.PacketConn, dest N.PacketConn) error {
-	var group task.Group
-	group.Append("upload", func(ctx context.Context) error {
-		return common.Error(CopyPacket(dest, conn))
-	})
-	group.Append("download", func(ctx context.Context) error {
-		return common.Error(CopyPacket(conn, dest))
-	})
-	group.Cleanup(func() {
-		common.Close(conn, dest)
-	})
-	group.FastFail()
-	return group.Run(ctx)
-}
 
 func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
 	if packetConn, ok := conn.(N.NetPacketConn); ok {
@@ -466,6 +205,34 @@ func (w *ExtendedConnWrapper) ReadBuffer(buffer *buf.Buffer) error {
 
 func (w *ExtendedConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
 	return w.writer.WriteBuffer(buffer)
+}
+
+func (w *ExtendedConnWrapper) ReadFrom(r io.Reader) (n int64, err error) {
+	return Copy(w.writer, r)
+}
+
+func (r *ExtendedConnWrapper) WriteTo(w io.Writer) (n int64, err error) {
+	return Copy(w, r.reader)
+}
+
+func (w *ExtendedConnWrapper) UpstreamReader() io.Reader {
+	return w.reader
+}
+
+func (w *ExtendedConnWrapper) ReaderReplaceable() bool {
+	return true
+}
+
+func (w *ExtendedConnWrapper) UpstreamWriter() io.Writer {
+	return w.writer
+}
+
+func (w *ExtendedConnWrapper) WriterReplaceable() bool {
+	return true
+}
+
+func (w *ExtendedConnWrapper) Upstream() any {
+	return w.Conn
 }
 
 func NewExtendedConn(conn net.Conn) N.ExtendedConn {

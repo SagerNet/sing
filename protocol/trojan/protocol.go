@@ -75,7 +75,7 @@ func (c *ClientConn) WriteTo(w io.Writer) (n int64, err error) {
 	return bufio.Copy(w, c.Conn)
 }
 
-func (c *ClientConn) Headroom() int {
+func (c *ClientConn) FrontHeadroom() int {
 	if !c.headerWritten {
 		return KeyLength + 5 + M.MaxSocksaddrLength
 	}
@@ -132,11 +132,11 @@ func (c *ClientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return
 }
 
-func (c *ClientPacketConn) Headroom() int {
+func (c *ClientPacketConn) FrontHeadroom() int {
 	if !c.headerWritten {
 		return KeyLength + 2*M.MaxSocksaddrLength + 9
 	}
-	return 0
+	return M.MaxSocksaddrLength + 4
 }
 
 func (c *ClientPacketConn) Upstream() any {

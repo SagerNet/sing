@@ -29,6 +29,7 @@ func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
 	if !c.cache.IsEmpty() {
 		return common.Error(buffer.ReadFrom(c.cache))
 	}
+	c.cache.FullReset()
 	err := c.upstream.ReadBuffer(c.cache)
 	if err != nil {
 		return err
@@ -40,6 +41,7 @@ func (c *ChunkReader) Read(p []byte) (n int, err error) {
 	if !c.cache.IsEmpty() {
 		return c.cache.Read(p)
 	}
+	c.cache.FullReset()
 	err = c.upstream.ReadBuffer(c.cache)
 	if err != nil {
 		return
@@ -50,6 +52,10 @@ func (c *ChunkReader) Read(p []byte) (n int, err error) {
 func (c *ChunkReader) Close() error {
 	c.cache.Release()
 	return nil
+}
+
+func (c *ChunkReader) MTU() int {
+	return c.maxChunkSize
 }
 
 type ChunkWriter struct {
@@ -95,4 +101,8 @@ func (w *ChunkWriter) WriteBuffer(buffer *buf.Buffer) error {
 
 func (w *ChunkWriter) Upstream() any {
 	return w.upstream
+}
+
+func (w *ChunkWriter) MTU() int {
+	return w.maxChunkSize
 }

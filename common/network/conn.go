@@ -77,26 +77,44 @@ type CachedReader interface {
 	ReadCached() *buf.Buffer
 }
 
+type WithUpstreamReader interface {
+	UpstreamReader() io.Reader
+}
+
+type WithUpstreamWriter interface {
+	UpstreamWriter() io.Writer
+}
+
 type ReaderWithUpstream interface {
-	common.WithUpstream
 	ReaderReplaceable() bool
 }
 
 type WriterWithUpstream interface {
-	common.WithUpstream
 	WriterReplaceable() bool
 }
 
 func UnwrapReader(reader io.Reader) io.Reader {
-	if u, ok := reader.(ReaderWithUpstream); ok && u.ReaderReplaceable() {
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return reader
+	}
+	if u, ok := reader.(WithUpstreamReader); ok {
+		return UnwrapReader(u.UpstreamReader())
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
 		return UnwrapReader(u.Upstream().(io.Reader))
 	}
-	return reader
+	panic("bad reader")
 }
 
 func UnwrapWriter(writer io.Writer) io.Writer {
-	if u, ok := writer.(WriterWithUpstream); ok && u.WriterReplaceable() {
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return writer
+	}
+	if u, ok := writer.(WithUpstreamWriter); ok {
+		return UnwrapWriter(u.UpstreamWriter())
+	}
+	if u, ok := writer.(common.WithUpstream); ok {
 		return UnwrapWriter(u.Upstream().(io.Writer))
 	}
-	return writer
+	panic("bad writer")
 }

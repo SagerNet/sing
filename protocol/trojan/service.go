@@ -132,6 +132,10 @@ func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 	return WritePacket(c.Conn, buffer, destination)
 }
 
+func (c *PacketConn) FrontHeadroom() int {
+	return M.MaxSocksaddrLength + 4
+}
+
 type Error struct {
 	Metadata M.Metadata
 	Conn     net.Conn

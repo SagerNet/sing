@@ -8,40 +8,55 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-func CopyOnce(dst io.Writer, src io.Reader) (n int64, err error) {
-	extendedSrc, srcExtended := src.(N.ExtendedReader)
-	extendedDst, dstExtended := dst.(N.ExtendedWriter)
-	if !srcExtended {
-		extendedSrc = &ExtendedReaderWrapper{src}
-	}
-	if !dstExtended {
-		extendedDst = &ExtendedWriterWrapper{dst}
-	}
-	return CopyExtendedOnce(extendedDst, extendedSrc)
+func CopyTimes(dst io.Writer, src io.Reader, times int) (n int64, err error) {
+	return CopyExtendedTimes(NewExtendedWriter(N.UnwrapWriter(dst)), NewExtendedReader(N.UnwrapReader(src)), times)
 }
 
-func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	var buffer *buf.Buffer
-	if N.IsUnsafeWriter(dst) {
-		buffer = buf.New()
+func CopyExtendedTimes(dst N.ExtendedWriter, src N.ExtendedReader, times int) (n int64, err error) {
+	frontHeadroom := N.CalculateFrontHeadroom(dst)
+	rearHeadroom := N.CalculateRearHeadroom(dst)
+	bufferSize := N.CalculateMTU(src, dst)
+	if bufferSize > 0 {
+		bufferSize += frontHeadroom + rearHeadroom
 	} else {
-		_buffer := buf.StackNew()
+		bufferSize = buf.BufferSize
+	}
+	dstUnsafe := N.IsUnsafeWriter(dst)
+	var buffer *buf.Buffer
+	if !dstUnsafe {
+		_buffer := buf.StackNewSize(bufferSize)
 		defer common.KeepAlive(_buffer)
 		buffer = common.Dup(_buffer)
+		defer buffer.Release()
+		buffer.IncRef()
+		defer buffer.DecRef()
 	}
-	err = src.ReadBuffer(buffer)
-	if err != nil {
-		buffer.Release()
-		err = N.HandshakeFailure(dst, err)
-		return
+	notFirstTime := true
+	for i := 0; i < times; i++ {
+		if dstUnsafe {
+			buffer = buf.NewSize(bufferSize)
+		}
+		readBufferRaw := buffer.Slice()
+		readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-rearHeadroom])
+		readBuffer.Resize(frontHeadroom, 0)
+		err = src.ReadBuffer(readBuffer)
+		if err != nil {
+			buffer.Release()
+			if !notFirstTime {
+				err = N.HandshakeFailure(dst, err)
+			}
+			return
+		}
+		dataLen := readBuffer.Len()
+		buffer.Resize(readBuffer.Start(), dataLen)
+		err = dst.WriteBuffer(buffer)
+		if err != nil {
+			buffer.Release()
+			return
+		}
+		n += int64(dataLen)
+		notFirstTime = true
 	}
-	dataLen := buffer.Len()
-	err = dst.WriteBuffer(buffer)
-	if err != nil {
-		buffer.Release()
-		return
-	}
-	n += int64(dataLen)
 	return
 }
 
@@ -51,7 +66,21 @@ type ReadFromWriter interface {
 }
 
 func ReadFrom0(readerFrom ReadFromWriter, reader io.Reader) (n int64, err error) {
-	n, err = CopyOnce(readerFrom, reader)
+	n, err = CopyTimes(readerFrom, reader, 1)
+	if err != nil {
+		return
+	}
+	var rn int64
+	rn, err = readerFrom.ReadFrom(reader)
+	if err != nil {
+		return
+	}
+	n += rn
+	return
+}
+
+func ReadFromN(readerFrom ReadFromWriter, reader io.Reader, times int) (n int64, err error) {
+	n, err = CopyTimes(readerFrom, reader, times)
 	if err != nil {
 		return
 	}
@@ -70,7 +99,21 @@ type WriteToReader interface {
 }
 
 func WriteTo0(writerTo WriteToReader, writer io.Writer) (n int64, err error) {
-	n, err = CopyOnce(writer, writerTo)
+	n, err = CopyTimes(writer, writerTo, 1)
+	if err != nil {
+		return
+	}
+	var wn int64
+	wn, err = writerTo.WriteTo(writer)
+	if err != nil {
+		return
+	}
+	n += wn
+	return
+}
+
+func WriteToN(writerTo WriteToReader, writer io.Writer, times int) (n int64, err error) {
+	n, err = CopyTimes(writer, writerTo, times)
 	if err != nil {
 		return
 	}

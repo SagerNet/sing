@@ -110,7 +110,7 @@ func (c *AssociatePacketConn) Upstream() any {
 	return c.PacketConn
 }
 
-func (c *AssociatePacketConn) Headroom() int {
+func (c *AssociatePacketConn) FrontHeadroom() int {
 	return 3 + M.MaxSocksaddrLength
 }
 

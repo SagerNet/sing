@@ -10,7 +10,10 @@ import (
 	"github.com/sagernet/sing/common/rw"
 )
 
-const MaxSocksaddrLength = 2 + 255 + 2
+const (
+	MaxSocksaddrLength   = 2 + 255 + 2
+	MaxIPSocksaddrLength = 1 + 16 + 2
+)
 
 type SerializerOption func(*Serializer)
 
