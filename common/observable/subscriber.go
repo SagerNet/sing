@@ -1,5 +1,9 @@
 package observable
 
+import (
+	"os"
+)
+
 type Subscription[T any] <-chan T
 
 type Subscriber[T any] struct {
@@ -20,6 +24,11 @@ func (s *Subscriber[T]) Emit(item T) {
 }
 
 func (s *Subscriber[T]) Close() error {
+	select {
+	case <-s.done:
+		return os.ErrClosed
+	default:
+	}
 	close(s.done)
 	return nil
 }
