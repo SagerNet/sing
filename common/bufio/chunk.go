@@ -8,6 +8,50 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
+type ChunkReader struct {
+	upstream     N.ExtendedReader
+	cache        *buf.Buffer
+	maxChunkSize int
+}
+
+func NewChunkReader(upstream io.Reader, maxChunkSize int) *ChunkReader {
+	return &ChunkReader{
+		upstream:     NewExtendedReader(upstream),
+		cache:        buf.NewSize(maxChunkSize),
+		maxChunkSize: maxChunkSize,
+	}
+}
+
+func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
+	if buffer.FreeLen() >= c.maxChunkSize {
+		return c.upstream.ReadBuffer(buffer)
+	}
+	if !c.cache.IsEmpty() {
+		return common.Error(buffer.ReadFrom(c.cache))
+	}
+	err := c.upstream.ReadBuffer(c.cache)
+	if err != nil {
+		return err
+	}
+	return common.Error(buffer.ReadFrom(c.cache))
+}
+
+func (c *ChunkReader) Read(p []byte) (n int, err error) {
+	if !c.cache.IsEmpty() {
+		return c.cache.Read(p)
+	}
+	err = c.upstream.ReadBuffer(c.cache)
+	if err != nil {
+		return
+	}
+	return c.cache.Read(p)
+}
+
+func (c *ChunkReader) Close() error {
+	c.cache.Release()
+	return nil
+}
+
 type ChunkWriter struct {
 	upstream     N.ExtendedWriter
 	maxChunkSize int
