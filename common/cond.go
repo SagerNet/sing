@@ -194,6 +194,7 @@ func MinBy[T any, C constraints.Ordered](arr []T, block func(it T) C) T {
 		return min
 	}
 	min = arr[0]
+	minValue = block(min)
 	for i := 1; i < len(arr); i++ {
 		item := arr[i]
 		value := block(item)
@@ -212,6 +213,7 @@ func MaxBy[T any, C constraints.Ordered](arr []T, block func(it T) C) T {
 		return max
 	}
 	max = arr[0]
+	maxValue = block(max)
 	for i := 1; i < len(arr); i++ {
 		item := arr[i]
 		value := block(item)
