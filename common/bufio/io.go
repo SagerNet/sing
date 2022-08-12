@@ -38,3 +38,17 @@ func WriteTo(writer N.PacketWriter, buffer *buf.Buffer, addr net.Addr) (n int, e
 	}
 	return
 }
+
+func WriteVectorised(writer N.VectorisedWriter, data [][]byte) (n int, err error) {
+	var dataLen int
+	buffers := make([]*buf.Buffer, 0, len(data))
+	for _, p := range data {
+		dataLen += len(p)
+		buffers = append(buffers, buf.As(p))
+	}
+	err = writer.WriteVectorised(buffers)
+	if err == nil {
+		n = dataLen
+	}
+	return
+}

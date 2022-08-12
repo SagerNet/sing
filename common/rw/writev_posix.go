@@ -7,6 +7,7 @@ import (
 	"unsafe"
 )
 
+// Deprecated: use vectorised writer
 func WriteV(fd uintptr, data [][]byte) (int, error) {
 	iovecs := make([]syscall.Iovec, len(data))
 	for i := range iovecs {

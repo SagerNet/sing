@@ -4,6 +4,7 @@ import (
 	"syscall"
 )
 
+// Deprecated: use vectorised writer
 func WriteV(fd uintptr, data [][]byte) (int, error) {
 	var n uint32
 	buffers := make([]*syscall.WSABuf, len(data))
