@@ -168,15 +168,20 @@ func CopyExtendedWithPool(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, 
 func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 	var group task.Group
 	group.Append("upload", func(ctx context.Context) error {
-		defer rw.CloseRead(conn)
 		defer rw.CloseWrite(dest)
 		return common.Error(Copy(dest, conn))
 	})
-	group.Append("download", func(ctx context.Context) error {
-		defer rw.CloseRead(dest)
-		defer rw.CloseWrite(conn)
-		return common.Error(Copy(conn, dest))
-	})
+	if _, srcDuplex := common.Cast[rw.WriteCloser](conn); srcDuplex {
+		group.Append("download", func(ctx context.Context) error {
+			defer rw.CloseWrite(conn)
+			return common.Error(Copy(conn, dest))
+		})
+	} else {
+		group.Append("download", func(ctx context.Context) error {
+			defer common.Close(conn)
+			return common.Error(Copy(conn, dest))
+		})
+	}
 	group.Cleanup(func() {
 		common.Close(conn, dest)
 	})
