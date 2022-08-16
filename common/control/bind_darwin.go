@@ -44,7 +44,7 @@ func BindToInterfaceIndexFunc(interfaceIndexFunc func() int) Func {
 }
 
 func bindToInterface(conn syscall.RawConn, network string, index int) error {
-	return Control(conn, func(fd uintptr) error {
+	return Raw(conn, func(fd uintptr) error {
 		switch network {
 		case "tcp6", "udp6":
 			return unix.SetsockoptInt(int(fd), unix.IPPROTO_IPV6, unix.IPV6_BOUND_IF, index)

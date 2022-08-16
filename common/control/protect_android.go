@@ -34,7 +34,7 @@ func sendAncillaryFileDescriptors(protectPath string, fileDescriptors []int) err
 
 func ProtectPath(protectPath string) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		return Control(conn, func(fd uintptr) error {
+		return Raw(conn, func(fd uintptr) error {
 			return sendAncillaryFileDescriptors(protectPath, []int{int(fd)})
 		})
 	}

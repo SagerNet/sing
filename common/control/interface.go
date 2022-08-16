@@ -22,9 +22,17 @@ func Append(oldFunc Func, newFunc Func) Func {
 	}
 }
 
-func Control(conn syscall.RawConn, block func(fd uintptr) error) error {
+func Conn(conn syscall.Conn, block func(fd uintptr) error) error {
+	rawConn, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+	return Raw(rawConn, block)
+}
+
+func Raw(rawConn syscall.RawConn, block func(fd uintptr) error) error {
 	var innerErr error
-	err := conn.Control(func(fd uintptr) {
+	err := rawConn.Control(func(fd uintptr) {
 		innerErr = block(fd)
 	})
 	return E.Errors(innerErr, err)

@@ -37,7 +37,7 @@ func bindInterfaceIndex(network string, address string, conn syscall.RawConn, in
 			return err
 		}
 	}
-	return Control(conn, func(fd uintptr) error {
+	return Raw(conn, func(fd uintptr) error {
 		handle := syscall.Handle(fd)
 		// handle ip empty, e.g. net.Listen("udp", ":0")
 		if ipStr == "" {

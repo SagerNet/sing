@@ -12,7 +12,7 @@ import (
 
 func ReuseAddr() Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		return Control(conn, func(fd uintptr) error {
+		return Raw(conn, func(fd uintptr) error {
 			return E.Errors(
 				unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1),
 				unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1),

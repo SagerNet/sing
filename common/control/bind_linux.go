@@ -10,7 +10,7 @@ func NewBindManager() BindManager {
 
 func BindToInterface(manager BindManager, interfaceName string) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		return Control(conn, func(fd uintptr) error {
+		return Raw(conn, func(fd uintptr) error {
 			return syscall.BindToDevice(int(fd), interfaceName)
 		})
 	}
@@ -22,7 +22,7 @@ func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func() string) F
 		if interfaceName == "" {
 			return nil
 		}
-		return Control(conn, func(fd uintptr) error {
+		return Raw(conn, func(fd uintptr) error {
 			return syscall.BindToDevice(int(fd), interfaceName)
 		})
 	}
