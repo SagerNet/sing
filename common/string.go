@@ -33,3 +33,7 @@ func SubstringBeforeLast(s string, substr string) string {
 	}
 	return s[:index]
 }
+
+func SubstringBetween(s string, after string, before string) string {
+	return SubstringBefore(SubstringAfter(s, after), before)
+}
