@@ -216,6 +216,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 				close(done)
 			}()
 			err = common.Error(io.Copy(io.Discard, conn))
+			<-done
 			return E.Errors(innerError, err)
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
