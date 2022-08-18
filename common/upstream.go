@@ -13,3 +13,12 @@ func Cast[T any](obj any) (T, bool) {
 	}
 	return DefaultValue[T](), false
 }
+
+func MustCast[T any](obj any) T {
+	value, ok := Cast[T](obj)
+	if !ok {
+		// make panic
+		return obj.(T)
+	}
+	return value
+}
