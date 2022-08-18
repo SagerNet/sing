@@ -10,14 +10,13 @@ import (
 
 type ChunkReader struct {
 	upstream     N.ExtendedReader
-	cache        *buf.Buffer
 	maxChunkSize int
+	cache        *buf.Buffer
 }
 
 func NewChunkReader(upstream io.Reader, maxChunkSize int) *ChunkReader {
 	return &ChunkReader{
 		upstream:     NewExtendedReader(upstream),
-		cache:        buf.NewSize(maxChunkSize),
 		maxChunkSize: maxChunkSize,
 	}
 }
@@ -26,7 +25,9 @@ func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
 	if buffer.FreeLen() >= c.maxChunkSize {
 		return c.upstream.ReadBuffer(buffer)
 	}
-	if !c.cache.IsEmpty() {
+	if c.cache == nil {
+		c.cache = buf.NewSize(c.maxChunkSize)
+	} else if !c.cache.IsEmpty() {
 		return common.Error(buffer.ReadFrom(c.cache))
 	}
 	c.cache.FullReset()
@@ -38,7 +39,9 @@ func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
 }
 
 func (c *ChunkReader) Read(p []byte) (n int, err error) {
-	if !c.cache.IsEmpty() {
+	if c.cache == nil {
+		c.cache = buf.NewSize(c.maxChunkSize)
+	} else if !c.cache.IsEmpty() {
 		return c.cache.Read(p)
 	}
 	c.cache.FullReset()
