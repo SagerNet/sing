@@ -52,3 +52,17 @@ func WriteVectorised(writer N.VectorisedWriter, data [][]byte) (n int, err error
 	}
 	return
 }
+
+func WriteVectorisedPacket(writer N.VectorisedPacketWriter, data [][]byte, destination M.Socksaddr) (n int, err error) {
+	var dataLen int
+	buffers := make([]*buf.Buffer, 0, len(data))
+	for _, p := range data {
+		dataLen += len(p)
+		buffers = append(buffers, buf.As(p))
+	}
+	err = writer.WriteVectorisedPacket(buffers, destination)
+	if err == nil {
+		n = dataLen
+	}
+	return
+}
