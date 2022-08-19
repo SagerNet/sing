@@ -69,11 +69,12 @@ type WriterWithMTU interface {
 }
 
 func CalculateMTU(reader any, writer any) int {
-	mtu := calculateReaderMTU(reader)
-	if mtu == 0 {
-		return mtu
+	readerMTU := calculateReaderMTU(reader)
+	writerMTU := calculateWriterMTU(writer)
+	if readerMTU > writerMTU {
+		return readerMTU
 	}
-	return calculateWriterMTU(writer)
+	return writerMTU
 }
 
 func calculateReaderMTU(reader any) int {
