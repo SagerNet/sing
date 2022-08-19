@@ -116,9 +116,7 @@ func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
 		if err != nil {
 			return Socksaddr{}, E.Cause(err, "read fqdn")
 		}
-		return Socksaddr{
-			Fqdn: fqdn,
-		}, nil
+		return ParseSocksaddrHostPort(fqdn, 0), nil
 	default:
 		switch family {
 		case AddressFamilyIPv4:

@@ -66,6 +66,7 @@ func ReadRequest0(reader io.Reader) (request Request, err error) {
 	request.Username, err = readString(reader)
 	if readHostName {
 		request.Destination.Fqdn, err = readString(reader)
+		request.Destination = M.ParseSocksaddrHostPort(request.Destination.Fqdn, request.Destination.Port)
 	}
 	return
 }
