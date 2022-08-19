@@ -25,7 +25,7 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 		return &NetVectorisedWriterWrapper{w}, true
 	case syscall.Conn:
 		rawConn, err := w.SyscallConn()
-		if err != nil {
+		if err == nil {
 			return &SyscallVectorisedWriter{writer, rawConn}, true
 		}
 	case syscall.RawConn:
@@ -40,7 +40,7 @@ func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {
 		return w, true
 	case syscall.Conn:
 		rawConn, err := w.SyscallConn()
-		if err != nil {
+		if err == nil {
 			return &SyscallVectorisedPacketWriter{writer, rawConn}, true
 		}
 	case syscall.RawConn:
