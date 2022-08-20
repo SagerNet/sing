@@ -2,14 +2,13 @@ package trojan
 
 import (
 	"context"
-	"io"
 	"net"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
-	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
@@ -21,16 +20,18 @@ type Handler interface {
 }
 
 type Service[K comparable] struct {
-	handler Handler
-	users   map[K][56]byte
-	keys    map[[56]byte]K
+	users           map[K][56]byte
+	keys            map[[56]byte]K
+	handler         Handler
+	fallbackHandler N.TCPConnectionHandler
 }
 
-func NewService[K comparable](handler Handler) *Service[K] {
+func NewService[K comparable](handler Handler, fallbackHandler N.TCPConnectionHandler) *Service[K] {
 	return &Service[K]{
-		handler: handler,
-		users:   make(map[K][56]byte),
-		keys:    make(map[[56]byte]K),
+		users:           make(map[K][56]byte),
+		keys:            make(map[[56]byte]K),
+		handler:         handler,
+		fallbackHandler: fallbackHandler,
 	}
 }
 
@@ -57,57 +58,41 @@ func (s *Service[K]) UpdateUsers(userList []K, passwordList []string) error {
 
 func (s *Service[K]) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	var key [KeyLength]byte
-	_, err := io.ReadFull(conn, common.Dup(key[:]))
+	n, err := conn.Read(common.Dup(key[:]))
 	if err != nil {
 		return err
+	} else if n != KeyLength {
+		return s.fallback(ctx, conn, metadata, key[:n], E.New("bad request size"))
 	}
-
-	goto process
-
-returnErr:
-	err = &Error{
-		Metadata: metadata,
-		Conn:     conn,
-		Inner:    err,
-	}
-	return err
-
-process:
 
 	if user, loaded := s.keys[key]; loaded {
 		ctx = auth.ContextWithUser(ctx, user)
 	} else {
-		err = E.New("bad request")
-		goto returnErr
+		return s.fallback(ctx, conn, metadata, key[:], E.New("bad request"))
 	}
 
 	err = rw.SkipN(conn, 2)
 	if err != nil {
-		err = E.Cause(err, "skip crlf")
-		goto returnErr
+		return E.Cause(err, "skip crlf")
 	}
 
 	command, err := rw.ReadByte(conn)
 	if err != nil {
-		err = E.Cause(err, "read command")
-		goto returnErr
+		return E.Cause(err, "read command")
 	}
 
 	if command != CommandTCP && command != CommandUDP {
-		err = E.New("unknown command ", command)
-		goto returnErr
+		return E.New("unknown command ", command)
 	}
 
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(conn)
 	if err != nil {
-		err = E.Cause(err, "read destination")
-		goto returnErr
+		return E.Cause(err, "read destination")
 	}
 
 	err = rw.SkipN(conn, 2)
 	if err != nil {
-		err = E.Cause(err, "skip crlf")
-		goto returnErr
+		return E.Cause(err, "skip crlf")
 	}
 
 	metadata.Protocol = "trojan"
@@ -118,6 +103,14 @@ process:
 	} else {
 		return s.handler.NewPacketConnection(ctx, &PacketConn{conn}, metadata)
 	}
+}
+
+func (s *Service[K]) fallback(ctx context.Context, conn net.Conn, metadata M.Metadata, header []byte, err error) error {
+	if s.fallbackHandler == nil {
+		return E.Extend(err, "fallback disabled")
+	}
+	conn = bufio.NewCachedConn(conn, buf.As(header).ToOwned())
+	return s.fallbackHandler.NewConnection(ctx, conn, metadata)
 }
 
 type PacketConn struct {
@@ -134,22 +127,4 @@ func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 
 func (c *PacketConn) FrontHeadroom() int {
 	return M.MaxSocksaddrLength + 4
-}
-
-type Error struct {
-	Metadata M.Metadata
-	Conn     net.Conn
-	Inner    error
-}
-
-func (e *Error) Error() string {
-	return F.ToString("process connection from ", e.Metadata.Source, ": ", e.Inner)
-}
-
-func (e *Error) Unwrap() error {
-	return e.Inner
-}
-
-func (e *Error) Close() error {
-	return e.Conn.Close()
 }
