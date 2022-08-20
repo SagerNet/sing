@@ -127,7 +127,7 @@ func WriteUsernamePasswordAuthRequest(writer io.Writer, request UsernamePassword
 	common.Must(
 		buffer.WriteByte(1),
 		M.WriteSocksString(buffer, request.Username),
-		M.WriteSocksString(writer, request.Password),
+		M.WriteSocksString(buffer, request.Password),
 	)
 	return rw.WriteBytes(writer, buffer.Bytes())
 }
