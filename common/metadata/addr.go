@@ -106,10 +106,7 @@ func SocksaddrFrom(addr netip.Addr, port uint16) Socksaddr {
 }
 
 func SocksaddrFromNetIP(ap netip.AddrPort) Socksaddr {
-	return Socksaddr{
-		Addr: ap.Addr(),
-		Port: ap.Port(),
-	}
+	return *(*Socksaddr)(unsafe.Pointer(&ap))
 }
 
 func SocksaddrFromNet(ap net.Addr) Socksaddr {

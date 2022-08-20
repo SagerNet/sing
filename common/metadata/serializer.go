@@ -6,6 +6,7 @@ import (
 	"net/netip"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/rw"
 )
@@ -47,7 +48,7 @@ func NewSerializer(options ...SerializerOption) *Serializer {
 	return s
 }
 
-func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
+func (s *Serializer) WriteAddress(buffer *buf.Buffer, addr Socksaddr) error {
 	var af Family
 	if addr.IsIPv4() {
 		af = AddressFamilyIPv4
@@ -56,14 +57,14 @@ func (s *Serializer) WriteAddress(writer io.Writer, addr Socksaddr) error {
 	} else {
 		af = AddressFamilyFqdn
 	}
-	err := rw.WriteByte(writer, s.familyByteMap[af])
+	err := buffer.WriteByte(s.familyByteMap[af])
 	if err != nil {
 		return err
 	}
 	if addr.Addr.IsValid() {
-		err = rw.WriteBytes(writer, addr.Unwrap().Addr.AsSlice())
+		_, err = buffer.Write(addr.Unwrap().Addr.AsSlice())
 	} else {
-		err = WriteSocksString(writer, addr.Fqdn)
+		err = WriteSocksString(buffer, addr.Fqdn)
 	}
 	return err
 }
@@ -83,19 +84,30 @@ func (s *Serializer) WritePort(writer io.Writer, port uint16) error {
 }
 
 func (s *Serializer) WriteAddrPort(writer io.Writer, destination Socksaddr) error {
+	buffer, isBuffer := writer.(*buf.Buffer)
+	if !isBuffer {
+		buffer = buf.NewSize(s.AddrPortLen(destination))
+		defer buffer.Release()
+	}
 	var err error
 	if !s.portFirst {
-		err = s.WriteAddress(writer, destination)
+		err = s.WriteAddress(buffer, destination)
 	} else {
-		err = s.WritePort(writer, destination.Port)
+		err = s.WritePort(buffer, destination.Port)
 	}
 	if err != nil {
 		return err
 	}
 	if s.portFirst {
-		err = s.WriteAddress(writer, destination)
+		err = s.WriteAddress(buffer, destination)
 	} else {
-		err = s.WritePort(writer, destination.Port)
+		err = s.WritePort(buffer, destination.Port)
+	}
+	if err != nil {
+		return err
+	}
+	if !isBuffer {
+		err = rw.WriteBytes(writer, buffer.Bytes())
 	}
 	return err
 }
@@ -179,14 +191,14 @@ func ReadSockString(reader io.Reader) (string, error) {
 	return rw.ReadString(reader, int(strLen))
 }
 
-func WriteSocksString(writer io.Writer, str string) error {
+func WriteSocksString(buffer *buf.Buffer, str string) error {
 	strLen := len(str)
 	if strLen > 255 {
 		return E.New("fqdn too long")
 	}
-	err := rw.WriteByte(writer, byte(strLen))
+	err := buffer.WriteByte(byte(strLen))
 	if err != nil {
 		return err
 	}
-	return rw.WriteString(writer, str)
+	return rw.WriteString(buffer, str)
 }
