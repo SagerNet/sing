@@ -164,6 +164,12 @@ func (c *CachedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksad
 	return c.PacketConn.ReadPacket(buffer)
 }
 
+func (c *CachedPacketConn) ReadCachedPacket() (destination M.Socksaddr, buffer *buf.Buffer) {
+	buffer = c.buffer
+	c.buffer = nil
+	return c.destination, buffer
+}
+
 func (c *CachedPacketConn) Upstream() any {
 	return c.PacketConn
 }

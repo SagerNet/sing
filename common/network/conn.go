@@ -77,12 +77,16 @@ type CachedReader interface {
 	ReadCached() *buf.Buffer
 }
 
+type CachedPacketReader interface {
+	ReadCachedPacket() (destination M.Socksaddr, buffer *buf.Buffer)
+}
+
 type WithUpstreamReader interface {
-	UpstreamReader() io.Reader
+	UpstreamReader() any
 }
 
 type WithUpstreamWriter interface {
-	UpstreamWriter() io.Writer
+	UpstreamWriter() any
 }
 
 type ReaderWithUpstream interface {
@@ -98,10 +102,23 @@ func UnwrapReader(reader io.Reader) io.Reader {
 		return reader
 	}
 	if u, ok := reader.(WithUpstreamReader); ok {
-		return UnwrapReader(u.UpstreamReader())
+		return UnwrapReader(u.UpstreamReader().(io.Reader))
 	}
 	if u, ok := reader.(common.WithUpstream); ok {
 		return UnwrapReader(u.Upstream().(io.Reader))
+	}
+	panic("bad reader")
+}
+
+func UnwrapPacketReader(reader PacketReader) PacketReader {
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return reader
+	}
+	if u, ok := reader.(WithUpstreamReader); ok {
+		return UnwrapPacketReader(u.UpstreamReader().(PacketReader))
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		return UnwrapPacketReader(u.Upstream().(PacketReader))
 	}
 	panic("bad reader")
 }
@@ -111,10 +128,23 @@ func UnwrapWriter(writer io.Writer) io.Writer {
 		return writer
 	}
 	if u, ok := writer.(WithUpstreamWriter); ok {
-		return UnwrapWriter(u.UpstreamWriter())
+		return UnwrapWriter(u.UpstreamWriter().(io.Writer))
 	}
 	if u, ok := writer.(common.WithUpstream); ok {
 		return UnwrapWriter(u.Upstream().(io.Writer))
+	}
+	panic("bad writer")
+}
+
+func UnwrapPacketWriter(writer PacketWriter) PacketWriter {
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return writer
+	}
+	if u, ok := writer.(WithUpstreamWriter); ok {
+		return UnwrapPacketWriter(u.UpstreamWriter().(PacketWriter))
+	}
+	if u, ok := writer.(common.WithUpstream); ok {
+		return UnwrapPacketWriter(u.Upstream().(PacketWriter))
 	}
 	panic("bad writer")
 }

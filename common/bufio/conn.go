@@ -215,7 +215,7 @@ func (r *ExtendedConnWrapper) WriteTo(w io.Writer) (n int64, err error) {
 	return Copy(w, r.reader)
 }
 
-func (w *ExtendedConnWrapper) UpstreamReader() io.Reader {
+func (w *ExtendedConnWrapper) UpstreamReader() any {
 	return w.reader
 }
 
@@ -223,7 +223,7 @@ func (w *ExtendedConnWrapper) ReaderReplaceable() bool {
 	return true
 }
 
-func (w *ExtendedConnWrapper) UpstreamWriter() io.Writer {
+func (w *ExtendedConnWrapper) UpstreamWriter() any {
 	return w.writer
 }
 

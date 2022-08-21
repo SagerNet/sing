@@ -23,6 +23,38 @@ func IsUnsafeWriter(writer any) bool {
 	return isUnsafe
 }
 
+func IsSafeReader(reader any) ThreadSafeReader {
+	if safeReader, isSafe := reader.(ThreadSafeReader); isSafe {
+		return safeReader
+	}
+	if upstream, hasUpstream := reader.(ReaderWithUpstream); !hasUpstream || !upstream.ReaderReplaceable() {
+		return nil
+	}
+	if upstream, hasUpstream := reader.(common.WithUpstream); hasUpstream {
+		return IsSafeReader(upstream.Upstream())
+	}
+	if upstream, hasUpstream := reader.(WithUpstreamReader); hasUpstream {
+		return IsSafeReader(upstream.UpstreamReader())
+	}
+	return nil
+}
+
+func IsSafePacketReader(reader any) ThreadSafePacketReader {
+	if safeReader, isSafe := reader.(ThreadSafePacketReader); isSafe {
+		return safeReader
+	}
+	if upstream, hasUpstream := reader.(ReaderWithUpstream); !hasUpstream || !upstream.ReaderReplaceable() {
+		return nil
+	}
+	if upstream, hasUpstream := reader.(common.WithUpstream); hasUpstream {
+		return IsSafePacketReader(upstream.Upstream())
+	}
+	if upstream, hasUpstream := reader.(WithUpstreamReader); hasUpstream {
+		return IsSafePacketReader(upstream.UpstreamReader())
+	}
+	return nil
+}
+
 type FrontHeadroom interface {
 	FrontHeadroom() int
 }
@@ -53,7 +85,6 @@ func CalculateRearHeadroom(writer any) int {
 	if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
 		headroom += CalculateRearHeadroom(upstream.Upstream())
 	}
-
 	if upstream, hasUpstream := writer.(WithUpstreamWriter); hasUpstream {
 		headroom += CalculateRearHeadroom(upstream.UpstreamWriter())
 	}

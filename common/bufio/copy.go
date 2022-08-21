@@ -57,11 +57,11 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 }
 
 func CopyExtended(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafeReader](src)
+	safeSrc := N.IsSafeReader(src)
 	headroom := N.CalculateFrontHeadroom(dst) + N.CalculateRearHeadroom(dst)
-	if srcUnsafe {
+	if safeSrc != nil {
 		if headroom == 0 {
-			return CopyExtendedWithSrcBuffer(dst, unsafeSrc)
+			return CopyExtendedWithSrcBuffer(dst, safeSrc)
 		}
 	}
 	if N.IsUnsafeWriter(dst) {
@@ -189,13 +189,15 @@ func CopyConn(ctx context.Context, conn net.Conn, dest net.Conn) error {
 }
 
 func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
-	unsafeSrc, srcUnsafe := common.Cast[N.ThreadSafePacketReader](src)
+	src = N.UnwrapPacketReader(src)
+	dst = N.UnwrapPacketWriter(dst)
+	safeSrc := N.IsSafePacketReader(src)
 	frontHeadroom := N.CalculateFrontHeadroom(dst)
 	rearHeadroom := N.CalculateRearHeadroom(dst)
 	headroom := frontHeadroom + rearHeadroom
-	if srcUnsafe {
+	if safeSrc != nil {
 		if headroom == 0 {
-			return CopyPacketWithSrcBuffer(dst, unsafeSrc)
+			return CopyPacketWithSrcBuffer(dst, safeSrc)
 		}
 	}
 	if N.IsUnsafeWriter(dst) {
