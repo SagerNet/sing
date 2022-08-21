@@ -32,25 +32,25 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 }
 
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
-	iovecList := make([]unix.Iovec, 0, len(buffers))
-	for _, buffer := range buffers {
-		var iovec unix.Iovec
-		iovec.Base = &buffer.Bytes()[0]
-		iovec.SetLen(buffer.Len())
-		iovecList = append(iovecList, iovec)
+	defer buf.ReleaseMulti(buffers)
+	var sockaddr unix.Sockaddr
+	if destination.IsIPv4() {
+		sockaddr = &unix.SockaddrInet4{
+			Port: int(destination.Port),
+			Addr: destination.Addr.As4(),
+		}
+	} else {
+		sockaddr = &unix.SockaddrInet6{
+			Port: int(destination.Port),
+			Addr: destination.Addr.As16(),
+		}
 	}
-	name, nameLen := destination.Sockaddr()
-	var msgHdr unix.Msghdr
-	msgHdr.Name = (*byte)(name)
-	msgHdr.Namelen = nameLen
-	msgHdr.Iov = &iovecList[0]
-	msgHdr.SetIovlen(len(iovecList))
-	var innerErr unix.Errno
+	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		_, _, innerErr = unix.Syscall(unix.SYS_SENDMSG, fd, uintptr(unsafe.Pointer(&msgHdr)), 0)
+		_, innerErr = unix.SendmsgBuffers(int(fd), buf.ToSliceMulti(buffers), nil, sockaddr, 0)
 		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
 	})
-	if innerErr != 0 {
+	if innerErr != nil {
 		err = innerErr
 	}
 	return err

@@ -37,10 +37,22 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 			Buf: &buffer.Bytes()[0],
 		}
 	}
+	var sockaddr windows.Sockaddr
+	if destination.IsIPv4() {
+		sockaddr = &windows.SockaddrInet4{
+			Port: int(destination.Port),
+			Addr: destination.Addr.As4(),
+		}
+	} else {
+		sockaddr = &windows.SockaddrInet6{
+			Port: int(destination.Port),
+			Addr: destination.Addr.As16(),
+		}
+	}
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		innerErr = windows.WSASendto(windows.Handle(fd), iovecList[0], uint32(len(iovecList)), &n, 0, destination.Sockaddr(), nil, nil)
+		innerErr = windows.WSASendto(windows.Handle(fd), iovecList[0], uint32(len(iovecList)), &n, 0, sockaddr, nil, nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
 	if innerErr != nil {
