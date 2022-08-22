@@ -105,6 +105,9 @@ func CalculateMTU(reader any, writer any) int {
 	if readerMTU > writerMTU {
 		return readerMTU
 	}
+	if writerMTU > buf.BufferSize {
+		return 0
+	}
 	return writerMTU
 }
 
