@@ -48,6 +48,10 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			}
 		}
 
+		if sourceAddress := SourceAddress(request); sourceAddress.IsValid() {
+			metadata.Source = sourceAddress
+		}
+
 		if request.Method == "CONNECT" {
 			portStr := request.URL.Port()
 			if portStr == "" {
