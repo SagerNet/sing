@@ -2,13 +2,13 @@ package buf
 
 import (
 	"crypto/rand"
-	"errors"
 	"io"
 	"net"
 	"strconv"
 	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 const (
@@ -217,7 +217,7 @@ func (b *Buffer) ReadFrom(reader io.Reader) (n int64, err error) {
 		b.end += readN
 		n += int64(readN)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			if E.IsMulti(err, io.EOF) {
 				err = nil
 			}
 			return
