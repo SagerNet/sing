@@ -7,8 +7,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
-
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
@@ -93,22 +91,19 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		if httpClient == nil {
 			httpClient = &http.Client{
 				Transport: &http.Transport{
-					MaxIdleConns:          100,
-					IdleConnTimeout:       90 * time.Second,
-					TLSHandshakeTimeout:   10 * time.Second,
-					ExpectContinueTimeout: 1 * time.Second,
+					DisableCompression: true,
 					DialContext: func(context context.Context, network, address string) (net.Conn, error) {
 						metadata.Destination = M.ParseSocksaddr(address)
 						metadata.Protocol = "http"
-						left, right := net.Pipe()
+						input, output := net.Pipe()
 						go func() {
-							err := handler.NewConnection(ctx, right, metadata)
-							if err != nil {
-								innerErr = err
-								common.Close(left, right)
+							hErr := handler.NewConnection(ctx, output, metadata)
+							if hErr != nil {
+								innerErr = hErr
+								common.Close(input, output)
 							}
 						}()
-						return left, nil
+						return input, nil
 					},
 				},
 				CheckRedirect: func(req *http.Request, via []*http.Request) error {
