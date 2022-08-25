@@ -2,6 +2,7 @@ package trojan
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 
 	"github.com/sagernet/sing/common"
@@ -108,6 +109,10 @@ func (s *Service[K]) NewConnection(ctx context.Context, conn net.Conn, metadata 
 func (s *Service[K]) fallback(ctx context.Context, conn net.Conn, metadata M.Metadata, header []byte, err error) error {
 	if s.fallbackHandler == nil {
 		return E.Extend(err, "fallback disabled")
+	}
+	if tlsConn, ok := conn.(*tls.Conn); ok {
+		cs := tlsConn.ConnectionState()
+		metadata.Alpn = cs.NegotiatedProtocol
 	}
 	conn = bufio.NewCachedConn(conn, buf.As(header).ToOwned())
 	return s.fallbackHandler.NewConnection(ctx, conn, metadata)
