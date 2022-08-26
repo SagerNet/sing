@@ -22,9 +22,9 @@ func BindToInterface(manager BindManager, interfaceName string) Func {
 	}
 }
 
-func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func() string) Func {
+func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func(network, address string) string) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		interfaceName := interfaceNameFunc()
+		interfaceName := interfaceNameFunc(network, address)
 		if interfaceName == "" {
 			return nil
 		}
@@ -36,9 +36,9 @@ func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func() string) F
 	}
 }
 
-func BindToInterfaceIndexFunc(interfaceIndexFunc func() int) Func {
+func BindToInterfaceIndexFunc(interfaceIndexFunc func(network, address string) int) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		index := interfaceIndexFunc()
+		index := interfaceIndexFunc(network, address)
 		return bindToInterface(conn, network, index)
 	}
 }

@@ -10,10 +10,10 @@ func BindToInterface(manager BindManager, interfaceName string) Func {
 	return nil
 }
 
-func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func() string) Func {
+func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func(network, address string) string) Func {
 	return nil
 }
 
-func BindToInterfaceIndexFunc(interfaceIndexFunc func() int) Func {
+func BindToInterfaceIndexFunc(interfaceIndexFunc func(network, address string) int) Func {
 	return nil
 }

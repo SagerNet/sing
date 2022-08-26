@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
