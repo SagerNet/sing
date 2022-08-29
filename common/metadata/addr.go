@@ -18,7 +18,7 @@ func (ap Socksaddr) Network() string {
 }
 
 func (ap Socksaddr) IsIP() bool {
-	return ap.Addr.IsValid()
+	return ap.Addr.IsValid() && ap.Fqdn == ""
 }
 
 func (ap Socksaddr) IsIPv4() bool {
@@ -40,11 +40,11 @@ func (ap Socksaddr) Unwrap() Socksaddr {
 }
 
 func (ap Socksaddr) IsFqdn() bool {
-	return !ap.Addr.IsValid()
+	return !ap.Addr.IsValid() && ap.Fqdn != ""
 }
 
 func (ap Socksaddr) IsValid() bool {
-	return ap.Addr.IsValid() || ap.Fqdn != ""
+	return ap.IsIP() || ap.IsFqdn()
 }
 
 func (ap Socksaddr) AddrString() string {
