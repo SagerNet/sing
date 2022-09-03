@@ -20,6 +20,14 @@ type TimeoutPacketReader interface {
 	SetReadDeadline(t time.Time) error
 }
 
+type NetPacketReader interface {
+	ReadFrom(p []byte) (n int, addr net.Addr, err error)
+}
+
+type NetPacketWriter interface {
+	WriteTo(p []byte, addr net.Addr) (n int, err error)
+}
+
 type PacketWriter interface {
 	WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error
 }
@@ -56,8 +64,9 @@ type TCPConnectionHandler interface {
 }
 
 type NetPacketConn interface {
-	net.PacketConn
 	PacketConn
+	NetPacketReader
+	NetPacketWriter
 }
 
 type BindPacketConn interface {

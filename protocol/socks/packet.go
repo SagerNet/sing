@@ -18,7 +18,6 @@ import (
 
 type AssociatePacketConn struct {
 	N.NetPacketConn
-	addr       net.Addr
 	remoteAddr M.Socksaddr
 	underlying net.Conn
 }
@@ -40,16 +39,17 @@ func NewAssociateConn(conn net.Conn, remoteAddr M.Socksaddr, underlying net.Conn
 }
 
 func (c *AssociatePacketConn) RemoteAddr() net.Addr {
-	return c.addr
+	return c.remoteAddr.UDPAddr()
 }
 
 //warn:unsafe
 func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	buffer := buf.With(p)
-	n, _, err = bufio.ReadFrom(c.NetPacketConn, buffer)
+	n, addr, err = bufio.ReadPacket(c.NetPacketConn, buffer)
 	if err != nil {
 		return
 	}
+	c.remoteAddr = M.SocksaddrFromNet(addr)
 	buffer.Advance(3)
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
@@ -76,7 +76,7 @@ func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error
 	if err != nil {
 		return
 	}
-	return bufio.WriteTo(c.NetPacketConn, buffer, c.addr)
+	return bufio.WritePacketBuffer(c.NetPacketConn, buffer, c.remoteAddr)
 }
 
 func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
@@ -89,11 +89,11 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	_, addr, err := bufio.ReadFrom(c.NetPacketConn, buffer)
+	_, addr, err := bufio.ReadPacket(c.NetPacketConn, buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
-	c.addr = addr
+	c.remoteAddr = M.SocksaddrFromNet(addr)
 	buffer.Advance(3)
 	dest, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
 	return dest, err
@@ -103,7 +103,7 @@ func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Sock
 	header := buf.With(buffer.ExtendHeader(3 + M.SocksaddrSerializer.AddrPortLen(destination)))
 	common.Must(header.WriteZeroN(3))
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
-	return common.Error(bufio.WriteTo(c.NetPacketConn, buffer, c.addr))
+	return common.Error(bufio.WritePacketBuffer(c.NetPacketConn, buffer, c.remoteAddr))
 }
 
 func (c *AssociatePacketConn) Upstream() any {
