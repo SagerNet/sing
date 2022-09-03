@@ -14,6 +14,9 @@ import (
 const DefaultFallbackDelay = 300 * time.Millisecond
 
 func DialSerial(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error) {
+	if parallelDialer, isParallel := dialer.(ParallelDialer); isParallel {
+		return parallelDialer.DialParallel(ctx, network, destination, destinationAddresses)
+	}
 	var conn net.Conn
 	var err error
 	var connErrors []error
