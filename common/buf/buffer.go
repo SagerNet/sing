@@ -237,8 +237,8 @@ func (b *Buffer) WriteZero() error {
 	if b.IsFull() {
 		return io.ErrShortBuffer
 	}
-	b.end++
 	b.data[b.end] = 0
+	b.end++
 	return nil
 }
 
