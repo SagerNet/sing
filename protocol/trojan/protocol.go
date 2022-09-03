@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net"
+	"os"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -125,11 +126,16 @@ func (c *ClientPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) 
 }
 
 func (c *ClientPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	err = c.WritePacket(buf.With(p), M.SocksaddrFromNet(addr))
-	if err == nil {
-		n = len(p)
-	}
+	return bufio.WritePacket(c, p, addr)
+}
+
+func (c *ClientPacketConn) Read(p []byte) (n int, err error) {
+	n, _, err = c.ReadFrom(p)
 	return
+}
+
+func (c *ClientPacketConn) Write(p []byte) (n int, err error) {
+	return 0, os.ErrInvalid
 }
 
 func (c *ClientPacketConn) FrontHeadroom() int {
