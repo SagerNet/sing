@@ -58,7 +58,7 @@ func ReadRequest0(reader io.Reader) (request Request, err error) {
 		return
 	}
 	var readHostName bool
-	if dstIP[0] == 0 && dstIP[1] == 0 && dstIP[2] == 0 {
+	if dstIP[0] == 0 && dstIP[1] == 0 && dstIP[2] == 0 && dstIP[3] != 0 {
 		readHostName = true
 	} else {
 		request.Destination.Addr = netip.AddrFrom4(dstIP)
@@ -98,7 +98,7 @@ func WriteRequest(writer io.Writer, request Request) error {
 	if request.Destination.IsIPv4() {
 		common.Must1(buffer.Write(request.Destination.Unwrap().Addr.AsSlice()))
 	} else {
-		// 0.0.0.1
+		// 0.0.0.X
 		common.Must(buffer.WriteZeroN(3))
 		common.Must(buffer.WriteByte(1))
 	}
