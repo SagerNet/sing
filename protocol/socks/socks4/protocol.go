@@ -77,11 +77,12 @@ func WriteRequest(writer io.Writer, request Request) error {
 	requestLen += 1 // command
 	requestLen += 2 // port
 	requestLen += 4 // ip
+	requestLen += 1 // NUL
 	if !request.Destination.IsIPv4() {
 		requestLen += len(request.Destination.AddrString()) + 1
 	}
 	if request.Username != "" {
-		requestLen += len(request.Username) + 1
+		requestLen += len(request.Username)
 	}
 
 	_buffer := buf.StackNewSize(requestLen)
@@ -97,14 +98,18 @@ func WriteRequest(writer io.Writer, request Request) error {
 	if request.Destination.IsIPv4() {
 		common.Must1(buffer.Write(request.Destination.Unwrap().Addr.AsSlice()))
 	} else {
-		common.Must(buffer.WriteZeroN(4))
+		// 0.0.0.1
+		common.Must(buffer.WriteZeroN(3))
+		common.Must(buffer.WriteByte(1))
+	}
+	if request.Username != "" {
+		common.Must1(buffer.WriteString(request.Username))
+	}
+	common.Must(buffer.WriteZero())
+	if !request.Destination.IsIPv4() {
 		common.Must1(buffer.WriteString(request.Destination.AddrString()))
 		common.Must(buffer.WriteZero())
 	}
-	if request.Username != "" {
-		common.Must1(buffer.WriteString(request.Destination.AddrString()))
-	}
-	common.Must(buffer.WriteZero())
 	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
