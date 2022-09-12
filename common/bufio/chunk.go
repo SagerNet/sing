@@ -33,6 +33,8 @@ func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
 	c.cache.FullReset()
 	err := c.upstream.ReadBuffer(c.cache)
 	if err != nil {
+		c.cache.Release()
+		c.cache = nil
 		return err
 	}
 	return common.Error(buffer.ReadFrom(c.cache))
@@ -50,11 +52,6 @@ func (c *ChunkReader) Read(p []byte) (n int, err error) {
 		return
 	}
 	return c.cache.Read(p)
-}
-
-func (c *ChunkReader) Close() error {
-	c.cache.Release()
-	return nil
 }
 
 func (c *ChunkReader) MTU() int {
