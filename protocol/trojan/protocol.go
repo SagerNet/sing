@@ -53,8 +53,8 @@ func (c *ClientConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *ClientConn) WriteBuffer(buffer *buf.Buffer) error {
-	defer buffer.Release()
 	if c.headerWritten {
+		defer buffer.Release()
 		return common.Error(c.Conn.Write(buffer.Bytes()))
 	}
 	err := ClientHandshakeBuffer(c.Conn, c.key, c.destination, buffer)
@@ -105,7 +105,6 @@ func (c *ClientPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *ClientPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	defer buffer.Release()
 	if !c.headerWritten {
 		err := ClientHandshakePacket(c.Conn, c.key, destination, buffer)
 		c.headerWritten = true
