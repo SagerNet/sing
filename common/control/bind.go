@@ -1,43 +1,44 @@
 package control
 
 import (
-	"net"
-
-	E "github.com/sagernet/sing/common/exceptions"
+	"os"
+	"runtime"
+	"syscall"
 )
 
-type BindManager interface {
-	IndexByName(name string) (int, error)
-	Update() error
+func BindToInterface(finder InterfaceFinder, interfaceName string, interfaceIndex int) Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		return BindToInterface0(finder, conn, network, address, interfaceName, interfaceIndex)
+	}
 }
 
-type myBindManager struct {
-	interfaceIndexByName map[string]int
+func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, address string) (interfaceName string, interfaceIndex int)) Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		interfaceName, interfaceIndex := block(network, address)
+		return BindToInterface0(finder, conn, network, address, interfaceName, interfaceIndex)
+	}
 }
 
-func (m *myBindManager) IndexByName(name string) (int, error) {
-	if index, loaded := m.interfaceIndexByName[name]; loaded {
-		return index, nil
-	}
-	err := m.Update()
-	if err != nil {
-		return 0, err
-	}
-	if index, loaded := m.interfaceIndexByName[name]; loaded {
-		return index, nil
-	}
-	return 0, E.New("interface ", name, " not found")
-}
+const useInterfaceName = runtime.GOOS == "linux" || runtime.GOOS == "android"
 
-func (m *myBindManager) Update() error {
-	interfaces, err := net.Interfaces()
+func BindToInterface0(finder InterfaceFinder, conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
+	if interfaceName == "" && interfaceIndex == -1 {
+		return nil
+	}
+	if interfaceName != "" && useInterfaceName || interfaceIndex != -1 && !useInterfaceName {
+		return bindToInterface(conn, network, address, interfaceName, interfaceIndex)
+	}
+	if finder == nil {
+		return os.ErrInvalid
+	}
+	var err error
+	if useInterfaceName {
+		interfaceName, err = finder.InterfaceNameByIndex(interfaceIndex)
+	} else {
+		interfaceIndex, err = finder.InterfaceIndexByName(interfaceName)
+	}
 	if err != nil {
 		return err
 	}
-	interfaceIndexByName := make(map[string]int)
-	for _, iface := range interfaces {
-		interfaceIndexByName[iface.Name] = iface.Index
-	}
-	m.interfaceIndexByName = interfaceIndexByName
-	return nil
+	return bindToInterface(conn, network, address, interfaceName, interfaceIndex)
 }

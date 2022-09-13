@@ -2,46 +2,17 @@ package control
 
 import (
 	"encoding/binary"
-	"net"
-	"net/netip"
 	"syscall"
 	"unsafe"
+
+	M "github.com/sagernet/sing/common/metadata"
 )
 
-const (
-	IP_UNICAST_IF   = 31
-	IPV6_UNICAST_IF = 31
-)
-
-func NewBindManager() BindManager {
-	return &myBindManager{
-		interfaceIndexByName: make(map[string]int),
-	}
-}
-
-func bind4(handle syscall.Handle, ifaceIdx int) error {
-	var bytes [4]byte
-	binary.BigEndian.PutUint32(bytes[:], uint32(ifaceIdx))
-	idx := *(*uint32)(unsafe.Pointer(&bytes[0]))
-	return syscall.SetsockoptInt(handle, syscall.IPPROTO_IP, IP_UNICAST_IF, int(idx))
-}
-
-func bind6(handle syscall.Handle, ifaceIdx int) error {
-	return syscall.SetsockoptInt(handle, syscall.IPPROTO_IPV6, IPV6_UNICAST_IF, ifaceIdx)
-}
-
-func bindInterfaceIndex(network string, address string, conn syscall.RawConn, interfaceIndex int) error {
-	ipStr, _, err := net.SplitHostPort(address)
-	if err == nil {
-		if ip, err := netip.ParseAddr(ipStr); err == nil && !ip.IsGlobalUnicast() {
-			return err
-		}
-	}
+func bindToInterface(conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
 	return Raw(conn, func(fd uintptr) error {
 		handle := syscall.Handle(fd)
-		// handle ip empty, e.g. net.Listen("udp", ":0")
-		if ipStr == "" {
-			err = bind4(handle, interfaceIndex)
+		if M.ParseSocksaddr(address).AddrString() == "" {
+			err := bind4(handle, interfaceIndex)
 			if err != nil {
 				return err
 			}
@@ -58,36 +29,18 @@ func bindInterfaceIndex(network string, address string, conn syscall.RawConn, in
 	})
 }
 
-func BindToInterface(manager BindManager, interfaceName string) Func {
-	return func(network, address string, conn syscall.RawConn) error {
-		index, err := manager.IndexByName(interfaceName)
-		if err != nil {
-			return err
-		}
-		return bindInterfaceIndex(network, address, conn, index)
-	}
+const (
+	IP_UNICAST_IF   = 31
+	IPV6_UNICAST_IF = 31
+)
+
+func bind4(handle syscall.Handle, ifaceIdx int) error {
+	var bytes [4]byte
+	binary.BigEndian.PutUint32(bytes[:], uint32(ifaceIdx))
+	idx := *(*uint32)(unsafe.Pointer(&bytes[0]))
+	return syscall.SetsockoptInt(handle, syscall.IPPROTO_IP, IP_UNICAST_IF, int(idx))
 }
 
-func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func(network, address string) string) Func {
-	return func(network, address string, conn syscall.RawConn) error {
-		interfaceName := interfaceNameFunc(network, address)
-		if interfaceName == "" {
-			return nil
-		}
-		index, err := manager.IndexByName(interfaceName)
-		if err != nil {
-			return err
-		}
-		return bindInterfaceIndex(network, address, conn, index)
-	}
-}
-
-func BindToInterfaceIndexFunc(interfaceIndexFunc func(network, address string) int) Func {
-	return func(network, address string, conn syscall.RawConn) error {
-		index := interfaceIndexFunc(network, address)
-		if index == -1 {
-			return nil
-		}
-		return bindInterfaceIndex(network, address, conn, index)
-	}
+func bind6(handle syscall.Handle, ifaceIdx int) error {
+	return syscall.SetsockoptInt(handle, syscall.IPPROTO_IPV6, IPV6_UNICAST_IF, ifaceIdx)
 }

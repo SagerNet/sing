@@ -2,18 +2,8 @@
 
 package control
 
-func NewBindManager() BindManager {
-	return nil
-}
+import "syscall"
 
-func BindToInterface(manager BindManager, interfaceName string) Func {
-	return nil
-}
-
-func BindToInterfaceFunc(manager BindManager, interfaceNameFunc func(network, address string) string) Func {
-	return nil
-}
-
-func BindToInterfaceIndexFunc(interfaceIndexFunc func(network, address string) int) Func {
+func bindToInterface(conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
 	return nil
 }
