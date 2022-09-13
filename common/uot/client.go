@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -12,13 +13,20 @@ import (
 
 type ClientConn struct {
 	net.Conn
+	readAccess  sync.Mutex
+	writeAccess sync.Mutex
 }
 
 func NewClientConn(conn net.Conn) *ClientConn {
-	return &ClientConn{conn}
+	return &ClientConn{
+		Conn: conn,
+	}
 }
 
 func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
+
 	destination, err := AddrParser.ReadAddrPort(c)
 	if err != nil {
 		return M.Socksaddr{}, err
@@ -35,6 +43,9 @@ func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 }
 
 func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+
 	defer buffer.Release()
 	err := AddrParser.WriteAddrPort(c, destination)
 	if err != nil {
@@ -48,6 +59,9 @@ func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 }
 
 func (c *ClientConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	c.readAccess.Lock()
+	defer c.readAccess.Unlock()
+
 	addrPort, err := AddrParser.ReadAddrPort(c)
 	if err != nil {
 		return 0, nil, err
@@ -69,6 +83,9 @@ func (c *ClientConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *ClientConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+
 	err = AddrParser.WriteAddrPort(c, M.SocksaddrFromNet(addr))
 	if err != nil {
 		return
