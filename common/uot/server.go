@@ -68,6 +68,9 @@ func (c *ServerConn) loopInput() {
 			break
 		}
 		buffer.FullReset()
+		if int(length) > buffer.FreeLen() {
+			break
+		}
 		_, err = buffer.ReadFullFrom(c.inputReader, int(length))
 		if err != nil {
 			break
