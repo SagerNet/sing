@@ -36,10 +36,11 @@ func (c *ClientConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
-	if buffer.FreeLen() < int(length) {
-		return M.Socksaddr{}, io.ErrShortBuffer
+	_, err = buffer.ReadFullFrom(c, int(length))
+	if err != nil {
+		return M.Socksaddr{}, err
 	}
-	return destination, common.Error(buffer.ReadFullFrom(c, int(length)))
+	return destination, nil
 }
 
 func (c *ClientConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {

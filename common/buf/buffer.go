@@ -199,7 +199,7 @@ func (b *Buffer) ReadAtLeastFrom(r io.Reader, min int) (int64, error) {
 }
 
 func (b *Buffer) ReadFullFrom(r io.Reader, size int) (n int, err error) {
-	if b.IsFull() {
+	if b.end+size > b.Cap() {
 		return 0, io.ErrShortBuffer
 	}
 	n, err = io.ReadFull(r, b.data[b.end:b.end+size])
