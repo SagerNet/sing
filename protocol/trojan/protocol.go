@@ -288,10 +288,6 @@ func ReadPacket(conn net.Conn, buffer *buf.Buffer) (M.Socksaddr, error) {
 		return M.Socksaddr{}, E.Cause(err, "read chunk length")
 	}
 
-	if buffer.FreeLen() < int(length) {
-		return M.Socksaddr{}, io.ErrShortBuffer
-	}
-
 	err = rw.SkipN(conn, 2)
 	if err != nil {
 		return M.Socksaddr{}, E.Cause(err, "skip crlf")
