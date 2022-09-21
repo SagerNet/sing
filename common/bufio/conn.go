@@ -11,10 +11,10 @@ import (
 )
 
 func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
-	if packetConn, ok := conn.(N.NetPacketConn); ok {
-		return packetConn
-	} else if udpConn, ok := conn.(*net.UDPConn); ok {
+	if udpConn, isUDPConn := conn.(*net.UDPConn); isUDPConn {
 		return &ExtendedUDPConn{udpConn}
+	} else if packetConn, isPacketConn := conn.(N.NetPacketConn); isPacketConn && !forceSTDIO {
+		return packetConn
 	} else {
 		return &ExtendedPacketConn{conn}
 	}
@@ -159,8 +159,14 @@ func (r *ExtendedReaderWrapper) ReaderReplaceable() bool {
 }
 
 func NewExtendedReader(reader io.Reader) N.ExtendedReader {
-	if r, ok := reader.(N.ExtendedReader); ok {
-		return r
+	if forceSTDIO {
+		if r, ok := reader.(*ExtendedReaderWrapper); ok {
+			return r
+		}
+	} else {
+		if r, ok := reader.(N.ExtendedReader); ok {
+			return r
+		}
 	}
 	return &ExtendedReaderWrapper{reader}
 }
@@ -187,8 +193,14 @@ func (w *ExtendedReaderWrapper) WriterReplaceable() bool {
 }
 
 func NewExtendedWriter(writer io.Writer) N.ExtendedWriter {
-	if w, ok := writer.(N.ExtendedWriter); ok {
-		return w
+	if forceSTDIO {
+		if w, ok := writer.(*ExtendedWriterWrapper); ok {
+			return w
+		}
+	} else {
+		if w, ok := writer.(N.ExtendedWriter); ok {
+			return w
+		}
 	}
 	return &ExtendedWriterWrapper{writer}
 }
