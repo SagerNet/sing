@@ -139,11 +139,11 @@ type ExtendedReaderWrapper struct {
 
 func (r *ExtendedReaderWrapper) ReadBuffer(buffer *buf.Buffer) error {
 	n, err := r.Read(buffer.FreeBytes())
-	if err != nil {
-		return err
-	}
 	buffer.Truncate(n)
-	return nil
+	if n > 0 && err == io.EOF {
+		return nil
+	}
+	return err
 }
 
 func (r *ExtendedReaderWrapper) WriteTo(w io.Writer) (n int64, err error) {
