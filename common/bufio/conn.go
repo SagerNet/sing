@@ -30,7 +30,7 @@ func (w *ExtendedUDPConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 		return M.Socksaddr{}, err
 	}
 	buffer.Truncate(n)
-	return M.SocksaddrFromNetIP(addr), nil
+	return M.SocksaddrFromNetIP(addr).Unwrap(), nil
 }
 
 func (w *ExtendedUDPConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
@@ -58,7 +58,7 @@ func (w *ExtendedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
-	return M.SocksaddrFromNet(addr), err
+	return M.SocksaddrFromNet(addr).Unwrap(), err
 }
 
 func (w *ExtendedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {

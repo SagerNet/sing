@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"github.com/sagernet/sing/common/debug"
 )
 
 type Socksaddr struct {
@@ -19,15 +21,15 @@ func (ap Socksaddr) Network() string {
 }
 
 func (ap Socksaddr) IsIP() bool {
-	return ap.Addr.IsValid() && ap.Fqdn == ""
+	return ap.Addr.IsValid()
 }
 
 func (ap Socksaddr) IsIPv4() bool {
-	return ap.Addr.Is4() || ap.Addr.Is4In6()
+	return ap.Addr.Is4()
 }
 
 func (ap Socksaddr) IsIPv6() bool {
-	return ap.Addr.Is6() && !ap.Addr.Is4In6()
+	return ap.Addr.Is6()
 }
 
 func (ap Socksaddr) Unwrap() Socksaddr {
@@ -41,7 +43,7 @@ func (ap Socksaddr) Unwrap() Socksaddr {
 }
 
 func (ap Socksaddr) IsFqdn() bool {
-	return !ap.Addr.IsValid() && IsDomainName(ap.Fqdn)
+	return IsDomainName(ap.Fqdn)
 }
 
 func (ap Socksaddr) IsValid() bool {
@@ -49,6 +51,9 @@ func (ap Socksaddr) IsValid() bool {
 }
 
 func (ap Socksaddr) AddrString() string {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	if ap.Addr.IsValid() {
 		return ap.Addr.String()
 	} else {
@@ -57,12 +62,18 @@ func (ap Socksaddr) AddrString() string {
 }
 
 func (ap Socksaddr) IPAddr() *net.IPAddr {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	return &net.IPAddr{
 		IP: ap.Addr.AsSlice(),
 	}
 }
 
 func (ap Socksaddr) TCPAddr() *net.TCPAddr {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	return &net.TCPAddr{
 		IP:   ap.Addr.AsSlice(),
 		Port: int(ap.Port),
@@ -70,6 +81,9 @@ func (ap Socksaddr) TCPAddr() *net.TCPAddr {
 }
 
 func (ap Socksaddr) UDPAddr() *net.UDPAddr {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	return &net.UDPAddr{
 		IP:   ap.Addr.AsSlice(),
 		Port: int(ap.Port),
@@ -77,24 +91,22 @@ func (ap Socksaddr) UDPAddr() *net.UDPAddr {
 }
 
 func (ap Socksaddr) AddrPort() netip.AddrPort {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	return *(*netip.AddrPort)(unsafe.Pointer(&ap))
 }
 
 func (ap Socksaddr) String() string {
+	if debug.Enabled {
+		ap.CheckBadAddr()
+	}
 	return net.JoinHostPort(ap.AddrString(), strconv.Itoa(int(ap.Port)))
 }
 
-func TCPAddr(ap netip.AddrPort) *net.TCPAddr {
-	return &net.TCPAddr{
-		IP:   ap.Addr().AsSlice(),
-		Port: int(ap.Port()),
-	}
-}
-
-func UDPAddr(ap netip.AddrPort) *net.UDPAddr {
-	return &net.UDPAddr{
-		IP:   ap.Addr().AsSlice(),
-		Port: int(ap.Port()),
+func (ap Socksaddr) CheckBadAddr() {
+	if ap.Addr.Is4In6() || ap.Addr.IsValid() && ap.Fqdn != "" {
+		panic("bad socksaddr")
 	}
 }
 

@@ -62,7 +62,7 @@ func (s *Serializer) WriteAddress(buffer *buf.Buffer, addr Socksaddr) error {
 		return err
 	}
 	if addr.Addr.IsValid() {
-		_, err = buffer.Write(addr.Unwrap().Addr.AsSlice())
+		_, err = buffer.Write(addr.Addr.AsSlice())
 	} else {
 		err = WriteSocksString(buffer, addr.Fqdn)
 	}

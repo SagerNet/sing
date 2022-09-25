@@ -18,5 +18,5 @@ func SourceAddress(request *http.Request) M.Socksaddr {
 			}
 		}
 	}
-	return address
+	return address.Unwrap()
 }

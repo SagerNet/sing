@@ -96,7 +96,7 @@ func WriteRequest(writer io.Writer, request Request) error {
 		binary.Write(buffer, binary.BigEndian, request.Destination.Port),
 	)
 	if request.Destination.IsIPv4() {
-		common.Must1(buffer.Write(request.Destination.Unwrap().Addr.AsSlice()))
+		common.Must1(buffer.Write(request.Destination.Addr.AsSlice()))
 	} else {
 		// 0.0.0.X
 		common.Must(buffer.WriteZeroN(3))
@@ -153,7 +153,7 @@ func WriteResponse(writer io.Writer, response Response) error {
 		buffer.WriteByte(0),
 		buffer.WriteByte(response.ReplyCode),
 		binary.Write(buffer, binary.BigEndian, response.Destination.Port),
-		common.Error(buffer.Write(response.Destination.Unwrap().Addr.AsSlice())),
+		common.Error(buffer.Write(response.Destination.Addr.AsSlice())),
 	)
 	return rw.WriteBytes(writer, buffer.Bytes())
 }
