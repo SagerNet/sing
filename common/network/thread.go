@@ -136,13 +136,13 @@ func calculateWriterMTU(writer any) int {
 	}
 	if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
 		upstreamMTU := calculateWriterMTU(upstream.Upstream())
-		if mtu == 0 && upstreamMTU < mtu {
+		if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
 			mtu = upstreamMTU
 		}
 	}
 	if upstream, hasUpstream := writer.(WithUpstreamWriter); hasUpstream {
 		upstreamMTU := calculateWriterMTU(upstream.UpstreamWriter())
-		if mtu == 0 && upstreamMTU < mtu {
+		if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
 			mtu = upstreamMTU
 		}
 	}

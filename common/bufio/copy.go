@@ -4,8 +4,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"os"
-
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -23,17 +21,34 @@ func (r *readOnlyReader) WriteTo(w io.Writer) (n int64, err error) {
 	return Copy(w, r.Reader)
 }
 
-func needReadFromWrapper(dst io.ReaderFrom, src io.Reader) bool {
-	_, isTCPConn := dst.(*net.TCPConn)
-	if !isTCPConn {
-		return false
-	}
-	switch src.(type) {
-	case *net.TCPConn, *net.UnixConn, *os.File:
-		return false
-	default:
-		return true
-	}
+func (r *readOnlyReader) Upstream() any {
+	return r.Reader
+}
+
+func (r *readOnlyReader) ReaderReplaceable() bool {
+	return true
+}
+
+type writeOnlyWriter struct {
+	io.Writer
+}
+
+func (w *writeOnlyWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	return Copy(w.Writer, r)
+}
+
+func (w *writeOnlyWriter) Upstream() any {
+	return w.Writer
+}
+
+func (w *writeOnlyWriter) WriterReplaceable() bool {
+	return true
+}
+
+func needWrapper(src, dst any) bool {
+	_, srcTCPConn := src.(*net.TCPConn)
+	_, dstTCPConn := dst.(*net.TCPConn)
+	return (srcTCPConn || dstTCPConn) && !(srcTCPConn && dstTCPConn)
 }
 
 func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
@@ -45,10 +60,13 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 	src = N.UnwrapReader(src)
 	dst = N.UnwrapWriter(dst)
 	if wt, ok := src.(io.WriterTo); ok {
+		if needWrapper(dst, src) {
+			dst = &writeOnlyWriter{dst}
+		}
 		return wt.WriteTo(dst)
 	}
 	if rt, ok := dst.(io.ReaderFrom); ok {
-		if needReadFromWrapper(rt, src) {
+		if needWrapper(rt, src) {
 			src = &readOnlyReader{src}
 		}
 		return rt.ReadFrom(src)
@@ -86,7 +104,7 @@ func CopyExtendedBuffer(dst N.ExtendedWriter, src N.ExtendedReader, buffer *buf.
 	frontHeadroom := N.CalculateFrontHeadroom(dst)
 	rearHeadroom := N.CalculateRearHeadroom(dst)
 	readBufferRaw := buffer.Slice()
-	readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-rearHeadroom])
+	readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 	var notFirstTime bool
 	for {
 		readBuffer.Resize(frontHeadroom, 0)
@@ -143,7 +161,7 @@ func CopyExtendedWithPool(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, 
 	for {
 		buffer := buf.NewSize(bufferSize)
 		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-rearHeadroom])
+		readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 		readBuffer.Resize(frontHeadroom, 0)
 		err = src.ReadBuffer(readBuffer)
 		if err != nil {
@@ -235,7 +253,7 @@ func CopyPacket(dst N.PacketWriter, src N.PacketReader) (n int64, err error) {
 	var destination M.Socksaddr
 	var notFirstTime bool
 	readBufferRaw := buffer.Slice()
-	readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-rearHeadroom])
+	readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 	for {
 		readBuffer.Resize(frontHeadroom, 0)
 		destination, err = src.ReadPacket(readBuffer)
@@ -293,7 +311,7 @@ func CopyPacketWithPool(dst N.PacketWriter, src N.PacketReader) (n int64, err er
 	for {
 		buffer := buf.NewSize(bufferSize)
 		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:cap(readBufferRaw)-rearHeadroom])
+		readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 		readBuffer.Resize(frontHeadroom, 0)
 		destination, err = src.ReadPacket(readBuffer)
 		if err != nil {

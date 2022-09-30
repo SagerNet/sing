@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/rw"
 )
 
@@ -25,7 +26,7 @@ const (
 var CRLF = []byte{'\r', '\n'}
 
 type ClientConn struct {
-	net.Conn
+	N.ExtendedConn
 	key           [KeyLength]byte
 	destination   M.Socksaddr
 	headerWritten bool
@@ -33,17 +34,17 @@ type ClientConn struct {
 
 func NewClientConn(conn net.Conn, key [KeyLength]byte, destination M.Socksaddr) *ClientConn {
 	return &ClientConn{
-		Conn:        conn,
-		key:         key,
-		destination: destination,
+		ExtendedConn: bufio.NewExtendedConn(conn),
+		key:          key,
+		destination:  destination,
 	}
 }
 
 func (c *ClientConn) Write(p []byte) (n int, err error) {
 	if c.headerWritten {
-		return c.Conn.Write(p)
+		return c.ExtendedConn.Write(p)
 	}
-	err = ClientHandshake(c.Conn, c.key, c.destination, p)
+	err = ClientHandshake(c.ExtendedConn, c.key, c.destination, p)
 	if err != nil {
 		return
 	}
@@ -54,10 +55,9 @@ func (c *ClientConn) Write(p []byte) (n int, err error) {
 
 func (c *ClientConn) WriteBuffer(buffer *buf.Buffer) error {
 	if c.headerWritten {
-		defer buffer.Release()
-		return common.Error(c.Conn.Write(buffer.Bytes()))
+		return c.ExtendedConn.WriteBuffer(buffer)
 	}
-	err := ClientHandshakeBuffer(c.Conn, c.key, c.destination, buffer)
+	err := ClientHandshakeBuffer(c.ExtendedConn, c.key, c.destination, buffer)
 	if err != nil {
 		return err
 	}
@@ -69,11 +69,11 @@ func (c *ClientConn) ReadFrom(r io.Reader) (n int64, err error) {
 	if !c.headerWritten {
 		return bufio.ReadFrom0(c, r)
 	}
-	return bufio.Copy(c.Conn, r)
+	return bufio.Copy(c.ExtendedConn, r)
 }
 
 func (c *ClientConn) WriteTo(w io.Writer) (n int64, err error) {
-	return bufio.Copy(w, c.Conn)
+	return bufio.Copy(w, c.ExtendedConn)
 }
 
 func (c *ClientConn) FrontHeadroom() int {
@@ -84,7 +84,7 @@ func (c *ClientConn) FrontHeadroom() int {
 }
 
 func (c *ClientConn) Upstream() any {
-	return c.Conn
+	return c.ExtendedConn
 }
 
 type ClientPacketConn struct {
