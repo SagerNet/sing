@@ -68,11 +68,10 @@ func CalculateFrontHeadroom(writer any) int {
 	if headroomWriter, needHeadroom := writer.(FrontHeadroom); needHeadroom {
 		headroom = headroomWriter.FrontHeadroom()
 	}
-	if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+	if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
+		headroom += CalculateFrontHeadroom(upstreamWriter.UpstreamWriter())
+	} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
 		headroom += CalculateFrontHeadroom(upstream.Upstream())
-	}
-	if upstream, hasUpstream := writer.(WithUpstreamWriter); hasUpstream {
-		headroom += CalculateFrontHeadroom(upstream.UpstreamWriter())
 	}
 	return headroom
 }
@@ -82,11 +81,10 @@ func CalculateRearHeadroom(writer any) int {
 	if headroomWriter, needHeadroom := writer.(RearHeadroom); needHeadroom {
 		headroom = headroomWriter.RearHeadroom()
 	}
-	if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+	if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
+		headroom += CalculateRearHeadroom(upstreamWriter.UpstreamWriter())
+	} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
 		headroom += CalculateRearHeadroom(upstream.Upstream())
-	}
-	if upstream, hasUpstream := writer.(WithUpstreamWriter); hasUpstream {
-		headroom += CalculateRearHeadroom(upstream.UpstreamWriter())
 	}
 	return headroom
 }
