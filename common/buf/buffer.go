@@ -321,18 +321,6 @@ func (b *Buffer) Release() {
 	*b = Buffer{closed: true}
 }
 
-func ReleaseMulti(buffers []*Buffer) {
-	for _, buffer := range buffers {
-		buffer.Release()
-	}
-}
-
-func ToSliceMulti(buffers []*Buffer) [][]byte {
-	return common.Map(buffers, func(it *Buffer) []byte {
-		return it.Bytes()
-	})
-}
-
 func (b *Buffer) Cut(start int, end int) *Buffer {
 	b.start += start
 	b.end = len(b.data) - end
