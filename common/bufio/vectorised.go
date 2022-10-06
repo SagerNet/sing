@@ -3,6 +3,7 @@ package bufio
 import (
 	"io"
 	"net"
+	"sync"
 	"syscall"
 
 	"github.com/sagernet/sing/common"
@@ -10,6 +11,13 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
+
+func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
+	if vectorisedWriter, ok := CreateVectorisedWriter(writer); ok {
+		return vectorisedWriter
+	}
+	return &SerialVectorisedWriter{upstream: writer}
+}
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 	switch w := writer.(type) {
@@ -47,6 +55,29 @@ func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {
 		return &SyscallVectorisedPacketWriter{writer, w}, true
 	}
 	return nil, false
+}
+
+var _ N.VectorisedWriter = (*SerialVectorisedWriter)(nil)
+
+type SerialVectorisedWriter struct {
+	upstream io.Writer
+	access   sync.Mutex
+}
+
+func (w *SerialVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
+	w.access.Lock()
+	defer w.access.Unlock()
+	for _, buffer := range buffers {
+		_, err := w.upstream.Write(buffer.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (w *SerialVectorisedWriter) Upstream() any {
+	return w.upstream
 }
 
 var _ N.VectorisedWriter = (*NetVectorisedWriterWrapper)(nil)

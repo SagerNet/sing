@@ -13,6 +13,10 @@ type Dialer interface {
 	ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error)
 }
 
+type PayloadDialer interface {
+	DialPayloadContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error)
+}
+
 type ParallelDialer interface {
 	Dialer
 	DialParallel(ctx context.Context, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error)
