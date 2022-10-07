@@ -55,6 +55,8 @@ func IsSafePacketReader(reader any) ThreadSafePacketReader {
 	return nil
 }
 
+const DefaultHeadroom = 1024
+
 type FrontHeadroom interface {
 	FrontHeadroom() int
 }
@@ -63,28 +65,62 @@ type RearHeadroom interface {
 	RearHeadroom() int
 }
 
+type LazyHeadroom interface {
+	LazyHeadroom() bool
+}
+
 func CalculateFrontHeadroom(writer any) int {
 	var headroom int
-	if headroomWriter, needHeadroom := writer.(FrontHeadroom); needHeadroom {
-		headroom = headroomWriter.FrontHeadroom()
-	}
-	if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
-		headroom += CalculateFrontHeadroom(upstreamWriter.UpstreamWriter())
-	} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
-		headroom += CalculateFrontHeadroom(upstream.Upstream())
+	for {
+		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
+			return DefaultHeadroom
+		}
+		if headroomWriter, needHeadroom := writer.(FrontHeadroom); needHeadroom {
+			headroom += headroomWriter.FrontHeadroom()
+		}
+		if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
+			upstream := upstreamWriter.UpstreamWriter()
+			if upstream != nil {
+				writer = upstream
+				continue
+			}
+		}
+		if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+			upstreamWriter := upstream.Upstream()
+			if upstreamWriter != nil {
+				writer = upstreamWriter
+				continue
+			}
+		}
+		break
 	}
 	return headroom
 }
 
 func CalculateRearHeadroom(writer any) int {
 	var headroom int
-	if headroomWriter, needHeadroom := writer.(RearHeadroom); needHeadroom {
-		headroom = headroomWriter.RearHeadroom()
-	}
-	if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
-		headroom += CalculateRearHeadroom(upstreamWriter.UpstreamWriter())
-	} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
-		headroom += CalculateRearHeadroom(upstream.Upstream())
+	for {
+		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
+			return DefaultHeadroom
+		}
+		if headroomWriter, needHeadroom := writer.(RearHeadroom); needHeadroom {
+			headroom += headroomWriter.RearHeadroom()
+		}
+		if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
+			upstream := upstreamWriter.UpstreamWriter()
+			if upstream != nil {
+				writer = upstream
+				continue
+			}
+		}
+		if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+			upstreamWriter := upstream.Upstream()
+			if upstreamWriter != nil {
+				writer = upstreamWriter
+				continue
+			}
+		}
+		break
 	}
 	return headroom
 }

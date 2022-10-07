@@ -88,10 +88,7 @@ type NetVectorisedWriterWrapper struct {
 
 func (w *NetVectorisedWriterWrapper) WriteVectorised(buffers []*buf.Buffer) error {
 	defer buf.ReleaseMulti(buffers)
-	netBuffers := make(net.Buffers, 0, len(buffers))
-	for _, buffer := range buffers {
-		netBuffers = append(netBuffers, buffer.Bytes())
-	}
+	netBuffers := net.Buffers(buf.ToSliceMulti(buffers))
 	return common.Error(netBuffers.WriteTo(w.upstream))
 }
 
