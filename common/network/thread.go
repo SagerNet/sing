@@ -72,6 +72,9 @@ type LazyHeadroom interface {
 func CalculateFrontHeadroom(writer any) int {
 	var headroom int
 	for {
+		if writer == nil {
+			break
+		}
 		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
 			return DefaultHeadroom
 		}
@@ -79,20 +82,12 @@ func CalculateFrontHeadroom(writer any) int {
 			headroom += headroomWriter.FrontHeadroom()
 		}
 		if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
-			upstream := upstreamWriter.UpstreamWriter()
-			if upstream != nil {
-				writer = upstream
-				continue
-			}
+			writer = upstreamWriter.UpstreamWriter()
+		} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+			writer = upstream.Upstream()
+		} else {
+			break
 		}
-		if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
-			upstreamWriter := upstream.Upstream()
-			if upstreamWriter != nil {
-				writer = upstreamWriter
-				continue
-			}
-		}
-		break
 	}
 	return headroom
 }
@@ -100,6 +95,9 @@ func CalculateFrontHeadroom(writer any) int {
 func CalculateRearHeadroom(writer any) int {
 	var headroom int
 	for {
+		if writer == nil {
+			break
+		}
 		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
 			return DefaultHeadroom
 		}
@@ -107,20 +105,12 @@ func CalculateRearHeadroom(writer any) int {
 			headroom += headroomWriter.RearHeadroom()
 		}
 		if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
-			upstream := upstreamWriter.UpstreamWriter()
-			if upstream != nil {
-				writer = upstream
-				continue
-			}
+			writer = upstreamWriter.UpstreamWriter()
+		} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+			writer = upstream.Upstream()
+		} else {
+			break
 		}
-		if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
-			upstreamWriter := upstream.Upstream()
-			if upstreamWriter != nil {
-				writer = upstreamWriter
-				continue
-			}
-		}
-		break
 	}
 	return headroom
 }
@@ -147,19 +137,25 @@ func CalculateMTU(reader any, writer any) int {
 
 func calculateReaderMTU(reader any) int {
 	var mtu int
-	if withMTU, haveMTU := reader.(ReaderWithMTU); haveMTU {
-		mtu = withMTU.ReaderMTU()
-	}
-	if upstream, hasUpstream := reader.(common.WithUpstream); hasUpstream {
-		upstreamMTU := calculateReaderMTU(upstream.Upstream())
-		if upstreamMTU > mtu {
-			mtu = upstreamMTU
+	for {
+		if reader == nil {
+			break
 		}
-	}
-	if upstream, hasUpstream := reader.(WithUpstreamReader); hasUpstream {
-		upstreamMTU := calculateReaderMTU(upstream.UpstreamReader())
-		if upstreamMTU > mtu {
-			mtu = upstreamMTU
+		if lazyRoom, isLazy := reader.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
+			return 0
+		}
+		if withMTU, haveMTU := reader.(ReaderWithMTU); haveMTU {
+			upstreamMTU := withMTU.ReaderMTU()
+			if upstreamMTU > mtu {
+				mtu = upstreamMTU
+			}
+		}
+		if upstreamReader, hasUpstreamReader := reader.(WithUpstreamReader); hasUpstreamReader {
+			reader = upstreamReader.UpstreamReader()
+		} else if upstream, hasUpstream := reader.(common.WithUpstream); hasUpstream {
+			reader = upstream.Upstream()
+		} else {
+			break
 		}
 	}
 	return mtu
@@ -167,19 +163,25 @@ func calculateReaderMTU(reader any) int {
 
 func calculateWriterMTU(writer any) int {
 	var mtu int
-	if withMTU, haveMTU := writer.(WriterWithMTU); haveMTU {
-		mtu = withMTU.WriterMTU()
-	}
-	if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
-		upstreamMTU := calculateWriterMTU(upstream.Upstream())
-		if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
-			mtu = upstreamMTU
+	for {
+		if writer == nil {
+			break
 		}
-	}
-	if upstream, hasUpstream := writer.(WithUpstreamWriter); hasUpstream {
-		upstreamMTU := calculateWriterMTU(upstream.UpstreamWriter())
-		if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
-			mtu = upstreamMTU
+		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
+			return 0
+		}
+		if withMTU, haveMTU := writer.(WriterWithMTU); haveMTU {
+			upstreamMTU := withMTU.WriterMTU()
+			if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
+				mtu = upstreamMTU
+			}
+		}
+		if upstreamWriter, hasUpstreamWriter := writer.(WithUpstreamWriter); hasUpstreamWriter {
+			writer = upstreamWriter.UpstreamWriter()
+		} else if upstream, hasUpstream := writer.(common.WithUpstream); hasUpstream {
+			writer = upstream.Upstream()
+		} else {
+			break
 		}
 	}
 	return mtu
