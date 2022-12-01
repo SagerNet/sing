@@ -6,10 +6,34 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing/common"
+	"io"
 )
 
 func FileExists(path string) bool {
 	return common.Error(os.Stat(path)) == nil
+}
+
+func CopyFile(srcPath, dstPath string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+	if strings.Contains(dstPath, "/") {
+		parent := dstPath[:strings.LastIndex(dstPath, "/")]
+		if !FileExists(parent) {
+			err = os.MkdirAll(parent, 0o755)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+	return common.Error(io.Copy(dstFile, srcFile))
 }
 
 func WriteFile(path string, content []byte) error {
