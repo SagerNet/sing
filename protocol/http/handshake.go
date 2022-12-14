@@ -31,7 +31,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		if authenticator != nil {
 			var authOk bool
 			authorization := request.Header.Get("Proxy-Authorization")
-			if strings.HasPrefix(authorization, "BASIC ") {
+			if strings.HasPrefix(authorization, "Basic ") {
 				userPassword, _ := base64.URLEncoding.DecodeString(authorization[6:])
 				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
 				authOk = authenticator.Verify(userPswdArr[0], userPswdArr[1])
