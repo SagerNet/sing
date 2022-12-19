@@ -2,11 +2,11 @@ package rw
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/sagernet/sing/common"
-	"io"
 )
 
 func FileExists(path string) bool {
