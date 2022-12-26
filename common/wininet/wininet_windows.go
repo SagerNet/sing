@@ -102,6 +102,9 @@ func SetSystemProxy(proxy string, bypass string) error {
 	var proxyOption internetPerConnOption
 	proxyOption.dwOption = internetPerConnProxyServer
 	*((*uintptr)(unsafe.Pointer(&proxyOption.value))) = uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(proxy)))
+	if bypass == "" {
+		return setOptions(flagsOption, proxyOption)
+	}
 	var bypassOption internetPerConnOption
 	bypassOption.dwOption = internetPerConnProxyBypass
 	*((*uintptr)(unsafe.Pointer(&bypassOption.value))) = uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(bypass)))
