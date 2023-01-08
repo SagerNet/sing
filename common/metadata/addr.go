@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 	"unsafe"
 
 	"github.com/sagernet/sing/common/debug"
@@ -184,12 +183,9 @@ func ParseAddr(s string) netip.Addr {
 }
 
 func ParseSocksaddr(address string) Socksaddr {
-	if !strings.Contains(address, ":") {
-		return ParseSocksaddrHostPort(address, 0)
-	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return Socksaddr{}
+		return ParseSocksaddrHostPort(address, 0)
 	}
 	return ParseSocksaddrHostPortStr(host, port)
 }
