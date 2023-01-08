@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-	"strings"
 	"unsafe"
 
 	"github.com/sagernet/sing/common/debug"
@@ -178,24 +177,21 @@ func AddrFromIP(ip net.IP) netip.Addr {
 	return addr
 }
 
-func ParseAddr(s string) netip.Addr {
-	addr, _ := netip.ParseAddr(s)
+func ParseAddr(address string) netip.Addr {
+	addr, _ := netip.ParseAddr(unwrapIPv6Address(address))
 	return addr
 }
 
 func ParseSocksaddr(address string) Socksaddr {
-	if !strings.Contains(address, ":") {
-		return ParseSocksaddrHostPort(address, 0)
-	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return Socksaddr{}
+		return ParseSocksaddrHostPort(address, 0)
 	}
 	return ParseSocksaddrHostPortStr(host, port)
 }
 
 func ParseSocksaddrHostPort(host string, port uint16) Socksaddr {
-	netAddr, err := netip.ParseAddr(host)
+	netAddr, err := netip.ParseAddr(unwrapIPv6Address(host))
 	if err != nil {
 		return Socksaddr{
 			Fqdn: host,
@@ -211,7 +207,7 @@ func ParseSocksaddrHostPort(host string, port uint16) Socksaddr {
 
 func ParseSocksaddrHostPortStr(host string, portStr string) Socksaddr {
 	port, _ := strconv.Atoi(portStr)
-	netAddr, err := netip.ParseAddr(host)
+	netAddr, err := netip.ParseAddr(unwrapIPv6Address(host))
 	if err != nil {
 		return Socksaddr{
 			Fqdn: host,
@@ -223,4 +219,11 @@ func ParseSocksaddrHostPortStr(host string, portStr string) Socksaddr {
 			Port: uint16(port),
 		}
 	}
+}
+
+func unwrapIPv6Address(address string) string {
+	if address[0] == '[' && address[len(address)-1] == ']' {
+		return address[1 : len(address)-1]
+	}
+	return address
 }
