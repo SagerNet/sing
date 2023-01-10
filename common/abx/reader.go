@@ -25,7 +25,7 @@ func NewReader(content []byte) (xml.TokenReader, bool) {
 	if len(content) < 4 || !bytes.Equal(content[:4], ProtocolMagicVersion0) {
 		return nil, false
 	}
-	return &Reader{reader: bytes.NewReader(content)}, true
+	return &Reader{reader: bytes.NewReader(content[4:])}, true
 }
 
 func (r *Reader) Token() (token xml.Token, err error) {
