@@ -222,7 +222,7 @@ func ParseSocksaddrHostPortStr(host string, portStr string) Socksaddr {
 }
 
 func unwrapIPv6Address(address string) string {
-	if address[0] == '[' && address[len(address)-1] == ']' {
+	if len(address) > 2 && address[0] == '[' && address[len(address)-1] == ']' {
 		return address[1 : len(address)-1]
 	}
 	return address
