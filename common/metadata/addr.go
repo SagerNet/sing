@@ -65,7 +65,8 @@ func (ap Socksaddr) IPAddr() *net.IPAddr {
 		ap.CheckBadAddr()
 	}
 	return &net.IPAddr{
-		IP: ap.Addr.AsSlice(),
+		IP:   ap.Addr.AsSlice(),
+		Zone: ap.Addr.Zone(),
 	}
 }
 
@@ -76,6 +77,7 @@ func (ap Socksaddr) TCPAddr() *net.TCPAddr {
 	return &net.TCPAddr{
 		IP:   ap.Addr.AsSlice(),
 		Port: int(ap.Port),
+		Zone: ap.Addr.Zone(),
 	}
 }
 
@@ -86,6 +88,7 @@ func (ap Socksaddr) UDPAddr() *net.UDPAddr {
 	return &net.UDPAddr{
 		IP:   ap.Addr.AsSlice(),
 		Port: int(ap.Port),
+		Zone: ap.Addr.Zone(),
 	}
 }
 
