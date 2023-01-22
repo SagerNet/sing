@@ -200,5 +200,5 @@ func WriteSocksString(buffer *buf.Buffer, str string) error {
 	if err != nil {
 		return err
 	}
-	return rw.WriteString(buffer, str)
+	return common.Error(buffer.WriteString(str))
 }
