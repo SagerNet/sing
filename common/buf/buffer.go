@@ -229,8 +229,16 @@ func (b *Buffer) WriteRune(s rune) (int, error) {
 	return b.Write([]byte{byte(s)})
 }
 
-func (b *Buffer) WriteString(s string) (int, error) {
-	return b.Write([]byte(s))
+func (b *Buffer) WriteString(s string) (n int, err error) {
+	if len(s) == 0 {
+		return
+	}
+	if b.IsFull() {
+		return 0, io.ErrShortBuffer
+	}
+	n = copy(b.data[b.end:], s)
+	b.end += n
+	return
 }
 
 func (b *Buffer) WriteZero() error {
