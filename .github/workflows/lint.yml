@@ -1,4 +1,4 @@
-name: Debug build
+name: Lint
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
     paths-ignore:
       - '**.md'
       - '.github/**'
-      - '!.github/workflows/debug.yml'
+      - '!.github/workflows/lint.yml'
   pull_request:
     branches:
       - dev
 
 jobs:
   build:
-    name: Debug build
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -29,15 +29,13 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ steps.version.outputs.go_version }}
-      - name: Add cache to Go proxy
-        run: |
-          version=`git rev-parse HEAD`
-          mkdir build
-          pushd build
-          go mod init build
-          go get -v github.com/sagernet/sing@$version
-          popd
-        continue-on-error: true
-      - name: Build
-        run: |
-          make test
+      - name: Cache go module
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: go-${{ hashFiles('**/go.sum') }}
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
