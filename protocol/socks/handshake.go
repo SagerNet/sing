@@ -110,13 +110,9 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		}
 		switch request.Command {
 		case socks4.CommandConnect:
-			responseAddr := request.Destination
-			if !responseAddr.IsIPv4() {
-				responseAddr = M.SocksaddrFrom(netip.IPv4Unspecified(), responseAddr.Port)
-			}
 			err = socks4.WriteResponse(conn, socks4.Response{
 				ReplyCode:   socks4.ReplyCodeGranted,
-				Destination: responseAddr,
+				Destination: M.SocksaddrFromNet(conn.LocalAddr()),
 			})
 			if err != nil {
 				return err
@@ -184,7 +180,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		case socks5.CommandConnect:
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeSuccess,
-				Bind:      request.Destination,
+				Bind:      M.SocksaddrFromNet(conn.LocalAddr()),
 			})
 			if err != nil {
 				return err
