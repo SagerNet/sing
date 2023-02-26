@@ -103,7 +103,7 @@ func (c *ClientConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	if err != nil {
 		return
 	}
-	_, err = c.Write(p)
+	_, err = c.writer.Write(p)
 	if err != nil {
 		return
 	}
