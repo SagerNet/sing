@@ -45,6 +45,7 @@ type WithSessionIDGenerator interface {
 
 type Conn interface {
 	net.Conn
+	NetConn() net.Conn
 	HandshakeContext(ctx context.Context) error
 	ConnectionState() ConnectionState
 }
