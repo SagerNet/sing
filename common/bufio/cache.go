@@ -106,13 +106,16 @@ func (r *CachedReader) ReadCached() *buf.Buffer {
 func (r *CachedReader) Read(p []byte) (n int, err error) {
 	if r.buffer != nil {
 		n, err = r.buffer.Read(p)
-		if err == nil {
+		if err == io.EOF {
+			r.buffer.Release()
+			r.buffer = nil
+		} else if err != nil {
 			return
 		}
-		r.buffer.Release()
-		r.buffer = nil
 	}
-	return r.upstream.Read(p)
+	_n, err := r.upstream.Read(p[n:])
+	n += _n
+	return
 }
 
 func (r *CachedReader) WriteTo(w io.Writer) (n int64, err error) {
