@@ -31,13 +31,16 @@ func (c *CachedConn) ReadCached() *buf.Buffer {
 func (c *CachedConn) Read(p []byte) (n int, err error) {
 	if c.buffer != nil {
 		n, err = c.buffer.Read(p)
-		if err == nil {
+		if err == io.EOF {
+			c.buffer.Release()
+			c.buffer = nil
+		} else if err != nil {
 			return
 		}
-		c.buffer.Release()
-		c.buffer = nil
 	}
-	return c.Conn.Read(p)
+	_n, err := c.Conn.Read(p[n:])
+	n += _n
+	return
 }
 
 func (c *CachedConn) WriteTo(w io.Writer) (n int64, err error) {
