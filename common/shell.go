@@ -3,6 +3,7 @@ package common
 import (
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type Shell struct {
@@ -35,4 +36,9 @@ func (s *Shell) SetEnv(env []string) *Shell {
 func (s *Shell) Read() (string, error) {
 	output, err := s.CombinedOutput()
 	return string(output), err
+}
+
+func (s *Shell) ReadOutput() (string, error) {
+	output, err := s.Output()
+	return strings.TrimSpace(string(output)), err
 }
