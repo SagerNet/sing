@@ -1,9 +1,11 @@
-package common
+package shell
 
 import (
 	"os"
 	"os/exec"
 	"strings"
+
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type Shell struct {
@@ -33,12 +35,27 @@ func (s *Shell) SetEnv(env []string) *Shell {
 	return s
 }
 
+func (s *Shell) Wait() error {
+	return s.buildError(s.Cmd.Wait())
+}
+
+func (s *Shell) Run() error {
+	return s.buildError(s.Cmd.Run())
+}
+
 func (s *Shell) Read() (string, error) {
 	output, err := s.CombinedOutput()
-	return string(output), err
+	return string(output), s.buildError(err)
 }
 
 func (s *Shell) ReadOutput() (string, error) {
 	output, err := s.Output()
-	return strings.TrimSpace(string(output)), err
+	return strings.TrimSpace(string(output)), s.buildError(err)
+}
+
+func (s *Shell) buildError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return E.Cause(err, "execute (", s.Path, ") ", strings.Join(s.Args, " "))
 }
