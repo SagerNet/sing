@@ -12,6 +12,7 @@ import (
 
 const (
 	Version            = 2
+	LegacyVersion      = 1
 	MagicAddress       = "sp.v2.udp-over-tcp.arpa"
 	LegacyMagicAddress = "sp.udp-over-tcp.arpa"
 )
