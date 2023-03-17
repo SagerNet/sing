@@ -20,11 +20,11 @@ type Conn struct {
 	writer      N.VectorisedWriter
 }
 
-func NewConn(conn net.Conn, isConnect bool, destination M.Socksaddr) *Conn {
+func NewConn(conn net.Conn, request Request) *Conn {
 	uConn := &Conn{
 		Conn:        conn,
-		isConnect:   isConnect,
-		destination: destination,
+		isConnect:   request.IsConnect,
+		destination: request.Destination,
 	}
 	uConn.writer, _ = bufio.CreateVectorisedWriter(conn)
 	return uConn

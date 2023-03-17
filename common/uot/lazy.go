@@ -25,7 +25,7 @@ func NewLazyClientConn(conn net.Conn, request Request) *LazyClientConn {
 
 func NewLazyConn(conn net.Conn, request Request) *Conn {
 	clientConn := NewLazyClientConn(conn, request)
-	return NewConn(clientConn, request.IsConnect, request.Destination)
+	return NewConn(clientConn, request)
 }
 
 func (c *LazyClientConn) Write(p []byte) (n int, err error) {

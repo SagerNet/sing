@@ -6,7 +6,6 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
-	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -23,22 +22,25 @@ var AddrParser = M.NewSerializer(
 	M.AddressFamilyByte(0x02, M.AddressFamilyFqdn),
 )
 
+func RequestDestination(version uint8) M.Socksaddr {
+	switch version {
+	case 0, Version:
+		return M.Socksaddr{Fqdn: MagicAddress}
+	default:
+		fallthrough
+	case LegacyVersion:
+		return M.Socksaddr{Fqdn: LegacyMagicAddress}
+	}
+}
+
 type Request struct {
 	IsConnect   bool
 	Destination M.Socksaddr
 }
 
 func ReadRequest(reader io.Reader) (*Request, error) {
-	var version uint8
-	err := binary.Read(reader, binary.BigEndian, &version)
-	if err != nil {
-		return nil, err
-	}
-	if version != Version {
-		return nil, E.New("unsupported version: ", version)
-	}
 	var request Request
-	err = binary.Read(reader, binary.BigEndian, &request.IsConnect)
+	err := binary.Read(reader, binary.BigEndian, &request.IsConnect)
 	if err != nil {
 		return nil, err
 	}
@@ -51,12 +53,10 @@ func ReadRequest(reader io.Reader) (*Request, error) {
 
 func EncodeRequest(request Request) *buf.Buffer {
 	var bufferLen int
-	bufferLen += 1 // version
 	bufferLen += 1 // isConnect
 	bufferLen += M.SocksaddrSerializer.AddrPortLen(request.Destination)
 	buffer := buf.NewSize(bufferLen)
 	common.Must(
-		binary.Write(buffer, binary.BigEndian, uint8(Version)),
 		binary.Write(buffer, binary.BigEndian, request.IsConnect),
 		M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination),
 	)
