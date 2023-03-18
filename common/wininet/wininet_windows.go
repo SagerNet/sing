@@ -13,6 +13,11 @@ var (
 	procInternetSetOptionW = modwininet.NewProc("InternetSetOptionW")
 )
 
+var (
+	modrasapi32         = windows.NewLazySystemDLL("rasapi32.dll")
+	procRasEnumEntriesW = modrasapi32.NewProc("RasEnumEntriesW")
+)
+
 const (
 	internetOptionPerConnectionOption  = 75
 	internetOptionSettingsChanged      = 39
@@ -42,6 +47,11 @@ const (
 	proxyTypeAutoDetect   = 8
 )
 
+const (
+	errorSuccess        = 0
+	errorBufferTooSmall = 603
+)
+
 type internetPerConnOptionList struct {
 	dwSize        uint32
 	pszConnection uintptr
@@ -53,6 +63,13 @@ type internetPerConnOptionList struct {
 type internetPerConnOption struct {
 	dwOption uint32
 	value    uint64
+}
+
+type rasEntryName struct {
+	dwSize          uint32
+	szEntryName     [256 + 1]uint16
+	dwFlags         uint32
+	szPhonebookPath [260 + 1]uint16
 }
 
 func internetSetOption(option uintptr, lpBuffer uintptr, dwBufferSize uintptr) error {
@@ -73,6 +90,32 @@ func setOptions(options ...internetPerConnOption) error {
 	if err != nil {
 		return os.NewSyscallError("InternetSetOption(PerConnectionOption)", err)
 	}
+
+	var dwEntries, dwCb uint32
+	var retErr error
+	r0, _, err := syscall.SyscallN(procRasEnumEntriesW.Addr(), 0, 0, 0, uintptr(unsafe.Pointer(&dwCb)), uintptr(unsafe.Pointer(&dwEntries)))
+	switch r0 {
+	case errorBufferTooSmall:
+		lpRasEntryName := make([]rasEntryName, dwEntries)
+		lpRasEntryName[0].dwSize = uint32(unsafe.Sizeof(lpRasEntryName[0]))
+		r0, _, err = syscall.SyscallN(procRasEnumEntriesW.Addr(), 0, 0, uintptr(unsafe.Pointer(&lpRasEntryName[0])), uintptr(unsafe.Pointer(&dwCb)), uintptr(unsafe.Pointer(&dwEntries)))
+		if r0 != errorSuccess {
+			retErr = os.NewSyscallError("RasEnumEntries(Enum)", err)
+			break
+		}
+		for i := uint32(0); i < dwEntries; i++ {
+			optionList.pszConnection = uintptr(unsafe.Pointer(&lpRasEntryName[i].szEntryName))
+			err = internetSetOption(internetOptionPerConnectionOption, uintptr(unsafe.Pointer(&optionList)), uintptr(optionList.dwSize))
+			if err != nil {
+				retErr = os.NewSyscallError("InternetSetOption(PerConnectionOption)", err)
+				break
+			}
+		}
+	case errorSuccess:
+	default:
+		retErr = os.NewSyscallError("RasEnumEntries(Alloc)", err)
+	}
+
 	err = internetSetOption(internetOptionSettingsChanged, 0, 0)
 	if err != nil {
 		return os.NewSyscallError("InternetSetOption(SettingsChanged)", err)
@@ -85,7 +128,7 @@ func setOptions(options ...internetPerConnOption) error {
 	if err != nil {
 		return os.NewSyscallError("InternetSetOption(Refresh)", err)
 	}
-	return nil
+	return retErr
 }
 
 func ClearSystemProxy() error {
