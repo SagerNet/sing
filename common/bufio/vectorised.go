@@ -65,6 +65,11 @@ type BufferedVectorisedWriter struct {
 func (w *BufferedVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	defer buf.ReleaseMulti(buffers)
 	bufferLen := buf.LenMulti(buffers)
+	if bufferLen == 0 {
+		return common.Error(w.upstream.Write(nil))
+	} else if len(buffers) == 1 {
+		return common.Error(w.upstream.Write(buffers[0].Bytes()))
+	}
 	var bufferBytes []byte
 	if bufferLen > 65535 {
 		bufferBytes = make([]byte, bufferLen)
