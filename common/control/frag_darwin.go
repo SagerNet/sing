@@ -1,5 +1,3 @@
-//go:build (go1.19 && unix && !linux) || (!go1.19 && darwin)
-
 package control
 
 import (
