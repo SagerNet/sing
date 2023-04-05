@@ -23,14 +23,16 @@ type Client struct {
 	serverAddr M.Socksaddr
 	username   string
 	password   string
+	headers    http.Header
 }
 
-func NewClient(dialer N.Dialer, serverAddr M.Socksaddr, username string, password string) *Client {
+func NewClient(dialer N.Dialer, serverAddr M.Socksaddr, username string, password string, headers http.Header) *Client {
 	return &Client{
 		dialer,
 		serverAddr,
 		username,
 		password,
+		headers,
 	}
 }
 
@@ -58,6 +60,12 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 		Header: http.Header{
 			"Proxy-Connection": []string{"Keep-Alive"},
 		},
+	}
+	for key, valueList := range c.headers {
+		request.Header.Set(key, valueList[0])
+		for _, value := range valueList[1:] {
+			request.Header.Add(key, value)
+		}
 	}
 	if c.username != "" {
 		auth := c.username + ":" + c.password
