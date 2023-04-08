@@ -14,6 +14,13 @@ type FallbackPacketConn struct {
 	N.PacketConn
 }
 
+func NewNetPacketConn(conn N.PacketConn) N.NetPacketConn {
+	if packetConn, loaded := conn.(N.NetPacketConn); loaded {
+		return packetConn
+	}
+	return &FallbackPacketConn{PacketConn: conn}
+}
+
 func (c *FallbackPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	buffer := buf.With(p)
 	destination, err := c.ReadPacket(buffer)
