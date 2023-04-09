@@ -32,7 +32,7 @@ type Reader struct {
 }
 
 func NewReader(reader TimeoutReader) *Reader {
-	return &Reader{ExtendedReader: bufio.NewExtendedReader(reader), timeoutReader: reader}
+	return &Reader{ExtendedReader: bufio.NewExtendedReader(reader), timeoutReader: reader, pipeDeadline: makePipeDeadline()}
 }
 
 func (r *Reader) Read(p []byte) (n int, err error) {

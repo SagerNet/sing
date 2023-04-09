@@ -32,7 +32,7 @@ type PacketReader struct {
 }
 
 func NewPacketReader(reader TimeoutPacketReader) *PacketReader {
-	return &PacketReader{TimeoutPacketReader: reader}
+	return &PacketReader{TimeoutPacketReader: reader, pipeDeadline: makePipeDeadline()}
 }
 
 func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
