@@ -42,3 +42,15 @@ func (c *FallbackPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error)
 	}
 	return
 }
+
+func (c *FallbackPacketConn) ReaderReplaceable() bool {
+	return true
+}
+
+func (c *FallbackPacketConn) WriterReplaceable() bool {
+	return true
+}
+
+func (c *FallbackPacketConn) Upstream() any {
+	return c.PacketConn
+}
