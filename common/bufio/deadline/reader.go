@@ -142,8 +142,13 @@ func (r *Reader) SetReadDeadline(t time.Time) error {
 	r.deadline = t
 	r.pipeDeadline.set(t)
 	if r.disablePipe.Load() || !r.inRead.Load() {
-		r.disablePipe.Store(true)
-		return r.timeoutReader.SetReadDeadline(t)
+		err := r.timeoutReader.SetReadDeadline(t)
+		if err == os.ErrInvalid {
+			return nil
+		} else {
+			r.disablePipe.Store(true)
+		}
+		return err
 	}
 	return nil
 }
