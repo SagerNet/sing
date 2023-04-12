@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -14,17 +13,17 @@ import (
 )
 
 type TimeoutPacketReader interface {
-	N.NetPacketConn
+	N.NetPacketReader
 	SetReadDeadline(t time.Time) error
 }
 
 type PacketReader struct {
 	TimeoutPacketReader
 	deadline     time.Time
-	disablePipe  atomic.Bool
 	pipeDeadline pipeDeadline
-	cacheAccess  sync.RWMutex
+	disablePipe  atomic.Bool
 	inRead       atomic.Bool
+	cacheAccess  sync.RWMutex
 	cached       bool
 	cachedBuffer *buf.Buffer
 	cachedAddr   M.Socksaddr
@@ -36,8 +35,13 @@ func NewPacketReader(reader TimeoutPacketReader) *PacketReader {
 }
 
 func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	if r.disablePipe.Load() || r.deadline.IsZero() {
+	if r.disablePipe.Load() {
 		return r.TimeoutPacketReader.ReadFrom(p)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		n, addr, err = r.TimeoutPacketReader.ReadFrom(p)
+		return
 	}
 	r.cacheAccess.Lock()
 	if r.cached {
@@ -51,28 +55,35 @@ func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 	r.cacheAccess.Unlock()
 	done := make(chan struct{})
+	var access sync.Mutex
+	var cancel bool
 	go func() {
-		n, addr, err = r.pipeReadFrom(p, r.pipeDeadline.wait())
-		close(done)
+		n, addr, err = r.pipeReadFrom(p, &access, &cancel, done)
 	}()
 	select {
 	case <-done:
 		return
 	case <-r.pipeDeadline.wait():
-		return 0, nil, os.ErrDeadlineExceeded
 	}
+	access.Lock()
+	defer access.Unlock()
+	select {
+	case <-done:
+		return
+	default:
+	}
+	cancel = true
+	return 0, nil, os.ErrDeadlineExceeded
 }
 
-func (r *PacketReader) pipeReadFrom(p []byte, cancel chan struct{}) (n int, addr net.Addr, err error) {
+func (r *PacketReader) pipeReadFrom(p []byte, access *sync.Mutex, cancel *bool, done chan struct{}) (n int, addr net.Addr, err error) {
 	r.cacheAccess.Lock()
-	r.inRead.Store(true)
-	defer func() {
-		r.inRead.Store(false)
-		r.cacheAccess.Unlock()
-	}()
+	defer r.cacheAccess.Unlock()
 	cacheBuffer := buf.NewSize(len(p))
 	n, addr, err = r.TimeoutPacketReader.ReadFrom(cacheBuffer.Bytes())
-	if isClosedChan(cancel) {
+	access.Lock()
+	defer access.Unlock()
+	if *cancel {
 		r.cached = true
 		r.cachedBuffer = cacheBuffer
 		r.cachedAddr = M.SocksaddrFromNet(addr)
@@ -81,12 +92,18 @@ func (r *PacketReader) pipeReadFrom(p []byte, cancel chan struct{}) (n int, addr
 		copy(p, cacheBuffer.Bytes())
 		cacheBuffer.Release()
 	}
+	close(done)
 	return
 }
 
 func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	if r.disablePipe.Load() || r.deadline.IsZero() {
+	if r.disablePipe.Load() {
 		return r.TimeoutPacketReader.ReadPacket(buffer)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		destination, err = r.TimeoutPacketReader.ReadPacket(buffer)
+		return
 	}
 	r.cacheAccess.Lock()
 	if r.cached {
@@ -100,51 +117,61 @@ func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 	}
 	r.cacheAccess.Unlock()
 	done := make(chan struct{})
+	var access sync.Mutex
+	var cancel bool
 	go func() {
-		destination, err = r.pipeReadPacket(buffer, r.pipeDeadline.wait())
-		close(done)
+		destination, err = r.pipeReadPacket(buffer, &access, &cancel, done)
 	}()
 	select {
 	case <-done:
 		return
 	case <-r.pipeDeadline.wait():
-		return M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
+	access.Lock()
+	defer access.Unlock()
+	select {
+	case <-done:
+		return
+	default:
+	}
+	cancel = true
+	return M.Socksaddr{}, os.ErrDeadlineExceeded
 }
 
-func (r *PacketReader) pipeReadPacket(buffer *buf.Buffer, cancel chan struct{}) (destination M.Socksaddr, err error) {
+func (r *PacketReader) pipeReadPacket(buffer *buf.Buffer, access *sync.Mutex, cancel *bool, done chan struct{}) (destination M.Socksaddr, err error) {
 	r.cacheAccess.Lock()
-	r.inRead.Store(true)
-	defer func() {
-		r.inRead.Store(false)
-		r.cacheAccess.Unlock()
-	}()
+	defer r.cacheAccess.Unlock()
 	cacheBuffer := buf.NewSize(buffer.FreeLen())
 	destination, err = r.TimeoutPacketReader.ReadPacket(cacheBuffer)
-	if isClosedChan(cancel) {
+	access.Lock()
+	defer access.Unlock()
+	if *cancel {
 		r.cached = true
 		r.cachedBuffer = cacheBuffer
 		r.cachedAddr = destination
 		r.cachedErr = err
 	} else {
-		common.Must1(buffer.ReadOnceFrom(cacheBuffer))
+		buffer.ReadOnceFrom(cacheBuffer)
 		cacheBuffer.Release()
 	}
+	close(done)
 	return
 }
 
 func (r *PacketReader) SetReadDeadline(t time.Time) error {
-	r.deadline = t
-	r.pipeDeadline.set(t)
-	if r.disablePipe.Load() || !r.inRead.Load() {
+	if r.disablePipe.Load() {
+		return r.TimeoutPacketReader.SetReadDeadline(t)
+	} else if r.inRead.Load() {
 		r.disablePipe.Store(true)
 		return r.TimeoutPacketReader.SetReadDeadline(t)
 	}
+	r.deadline = t
+	r.pipeDeadline.set(t)
 	return nil
 }
 
 func (r *PacketReader) ReaderReplaceable() bool {
-	return r.deadline.IsZero()
+	return r.disablePipe.Load() || r.deadline.IsZero()
 }
 
 func (r *PacketReader) UpstreamReader() any {

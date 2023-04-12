@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -22,10 +21,10 @@ type Reader struct {
 	N.ExtendedReader
 	timeoutReader TimeoutReader
 	deadline      time.Time
-	disablePipe   atomic.Bool
 	pipeDeadline  pipeDeadline
-	cacheAccess   sync.RWMutex
+	disablePipe   atomic.Bool
 	inRead        atomic.Bool
+	cacheAccess   sync.RWMutex
 	cached        bool
 	cachedBuffer  *buf.Buffer
 	cachedErr     error
@@ -36,8 +35,13 @@ func NewReader(reader TimeoutReader) *Reader {
 }
 
 func (r *Reader) Read(p []byte) (n int, err error) {
-	if r.disablePipe.Load() || r.deadline.IsZero() {
+	if r.disablePipe.Load() {
 		return r.ExtendedReader.Read(p)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		n, err = r.ExtendedReader.Read(p)
+		return
 	}
 	r.cacheAccess.Lock()
 	if r.cached {
@@ -53,29 +57,35 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	}
 	r.cacheAccess.Unlock()
 	done := make(chan struct{})
+	var access sync.Mutex
+	var cancel bool
 	go func() {
-		n, err = r.pipeRead(p, r.pipeDeadline.wait())
-		close(done)
+		n, err = r.pipeRead(p, &access, &cancel, done)
 	}()
 	select {
 	case <-done:
 		return
 	case <-r.pipeDeadline.wait():
-		return 0, os.ErrDeadlineExceeded
 	}
+	access.Lock()
+	defer access.Unlock()
+	select {
+	case <-done:
+		return
+	default:
+	}
+	cancel = true
+	return 0, os.ErrDeadlineExceeded
 }
 
-func (r *Reader) pipeRead(p []byte, cancel chan struct{}) (n int, err error) {
+func (r *Reader) pipeRead(p []byte, access *sync.Mutex, cancel *bool, done chan struct{}) (n int, err error) {
 	r.cacheAccess.Lock()
-	r.inRead.Store(true)
-	defer func() {
-		r.inRead.Store(false)
-		r.cacheAccess.Unlock()
-	}()
-
+	defer r.cacheAccess.Unlock()
 	buffer := buf.NewSize(len(p))
 	n, err = buffer.ReadOnceFrom(r.ExtendedReader)
-	if isClosedChan(cancel) {
+	access.Lock()
+	defer access.Unlock()
+	if *cancel {
 		r.cached = true
 		r.cachedBuffer = buffer
 		r.cachedErr = err
@@ -83,11 +93,16 @@ func (r *Reader) pipeRead(p []byte, cancel chan struct{}) (n int, err error) {
 		n = copy(p, buffer.Bytes())
 		buffer.Release()
 	}
+	close(done)
 	return
 }
 
 func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
-	if r.disablePipe.Load() || r.deadline.IsZero() {
+	if r.disablePipe.Load() {
+		return r.ExtendedReader.ReadBuffer(buffer)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
 		return r.ExtendedReader.ReadBuffer(buffer)
 	}
 	r.cacheAccess.Lock()
@@ -105,51 +120,56 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 	}
 	r.cacheAccess.Unlock()
 	done := make(chan struct{})
+	var access sync.Mutex
+	var cancel bool
 	var err error
 	go func() {
-		err = r.pipeReadBuffer(buffer, r.pipeDeadline.wait())
-		close(done)
+		err = r.pipeReadBuffer(buffer, &access, &cancel, done)
 	}()
 	select {
 	case <-done:
 		return err
 	case <-r.pipeDeadline.wait():
-		return os.ErrDeadlineExceeded
 	}
+	access.Lock()
+	defer access.Unlock()
+	select {
+	case <-done:
+		return err
+	default:
+	}
+	cancel = true
+	return os.ErrDeadlineExceeded
 }
 
-func (r *Reader) pipeReadBuffer(buffer *buf.Buffer, cancel chan struct{}) error {
+func (r *Reader) pipeReadBuffer(buffer *buf.Buffer, access *sync.Mutex, cancel *bool, done chan struct{}) error {
 	r.cacheAccess.Lock()
-	r.inRead.Store(true)
-	defer func() {
-		r.inRead.Store(false)
-		r.cacheAccess.Unlock()
-	}()
+	defer r.cacheAccess.Unlock()
 	cacheBuffer := buf.NewSize(buffer.FreeLen())
 	err := r.ExtendedReader.ReadBuffer(cacheBuffer)
-	if isClosedChan(cancel) {
+	access.Lock()
+	defer access.Unlock()
+	if *cancel {
 		r.cached = true
 		r.cachedBuffer = cacheBuffer
 		r.cachedErr = err
 	} else {
-		common.Must1(buffer.ReadOnceFrom(cacheBuffer))
+		buffer.ReadOnceFrom(cacheBuffer)
 		cacheBuffer.Release()
 	}
+	close(done)
 	return err
 }
 
 func (r *Reader) SetReadDeadline(t time.Time) error {
+	if r.disablePipe.Load() {
+		return r.timeoutReader.SetReadDeadline(t)
+	} else if r.inRead.Load() {
+		r.disablePipe.Store(true)
+		return r.timeoutReader.SetReadDeadline(t)
+	}
 	r.deadline = t
 	r.pipeDeadline.set(t)
-	if r.disablePipe.Load() || !r.inRead.Load() {
-		err := r.timeoutReader.SetReadDeadline(t)
-		if err == os.ErrInvalid {
-			return nil
-		} else {
-			r.disablePipe.Store(true)
-		}
-		return err
-	}
 	return nil
 }
 

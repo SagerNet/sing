@@ -34,10 +34,6 @@ func (c *PacketConn) ReaderReplaceable() bool {
 	return c.reader.ReaderReplaceable()
 }
 
-func (c *PacketConn) UpstreamReader() any {
-	return c.reader.UpstreamReader()
-}
-
 func (c *PacketConn) WriterReplaceable() bool {
 	return true
 }
