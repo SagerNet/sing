@@ -80,7 +80,8 @@ func (r *PacketReader) pipeReadFrom(p []byte, access *sync.Mutex, cancel *bool, 
 	r.cacheAccess.Lock()
 	defer r.cacheAccess.Unlock()
 	cacheBuffer := buf.NewSize(len(p))
-	n, addr, err = r.TimeoutPacketReader.ReadFrom(cacheBuffer.Bytes())
+	n, addr, err = r.TimeoutPacketReader.ReadFrom(cacheBuffer.FreeBytes())
+	cacheBuffer.Truncate(n)
 	access.Lock()
 	defer access.Unlock()
 	if *cancel {
