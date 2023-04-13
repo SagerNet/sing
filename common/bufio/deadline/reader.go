@@ -107,9 +107,10 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 	}
 	r.cacheAccess.Lock()
 	if r.cached {
+		buffer.Resize(r.cachedBuffer.Start(), 0)
 		n := copy(buffer.FreeBytes(), r.cachedBuffer.Bytes())
 		err := r.cachedErr
-		buffer.Resize(buffer.Start(), n)
+		buffer.Truncate(n)
 		r.cachedBuffer.Advance(n)
 		if r.cachedBuffer.IsEmpty() {
 			r.cachedBuffer.Release()
@@ -145,7 +146,8 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 func (r *Reader) pipeReadBuffer(buffer *buf.Buffer, access *sync.Mutex, cancel *bool, done chan struct{}) error {
 	r.cacheAccess.Lock()
 	defer r.cacheAccess.Unlock()
-	cacheBuffer := buf.NewSize(buffer.FreeLen())
+	cacheBuffer := buf.NewSize(buffer.Cap())
+	cacheBuffer.Resize(buffer.Start(), 0)
 	err := r.ExtendedReader.ReadBuffer(cacheBuffer)
 	access.Lock()
 	defer access.Unlock()
@@ -154,6 +156,7 @@ func (r *Reader) pipeReadBuffer(buffer *buf.Buffer, access *sync.Mutex, cancel *
 		r.cachedBuffer = cacheBuffer
 		r.cachedErr = err
 	} else {
+		buffer.Resize(cacheBuffer.Start(), 0)
 		buffer.ReadOnceFrom(cacheBuffer)
 		cacheBuffer.Release()
 	}

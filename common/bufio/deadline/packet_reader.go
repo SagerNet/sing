@@ -109,6 +109,7 @@ func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 	if r.cached {
 		destination = r.cachedAddr
 		err = r.cachedErr
+		buffer.Resize(r.cachedBuffer.Start(), 0)
 		buffer.Write(r.cachedBuffer.Bytes())
 		r.cachedBuffer.Release()
 		r.cached = false
@@ -141,7 +142,8 @@ func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 func (r *PacketReader) pipeReadPacket(buffer *buf.Buffer, access *sync.Mutex, cancel *bool, done chan struct{}) (destination M.Socksaddr, err error) {
 	r.cacheAccess.Lock()
 	defer r.cacheAccess.Unlock()
-	cacheBuffer := buf.NewSize(buffer.FreeLen())
+	cacheBuffer := buf.NewSize(buffer.Cap())
+	cacheBuffer.Resize(buffer.Start(), 0)
 	destination, err = r.TimeoutPacketReader.ReadPacket(cacheBuffer)
 	access.Lock()
 	defer access.Unlock()
@@ -151,6 +153,7 @@ func (r *PacketReader) pipeReadPacket(buffer *buf.Buffer, access *sync.Mutex, ca
 		r.cachedAddr = destination
 		r.cachedErr = err
 	} else {
+		buffer.Resize(cacheBuffer.Start(), 0)
 		buffer.ReadOnceFrom(cacheBuffer)
 		cacheBuffer.Release()
 	}
