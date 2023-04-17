@@ -24,6 +24,7 @@ type Reader struct {
 	pipeDeadline  pipeDeadline
 	disablePipe   atomic.Bool
 	inRead        atomic.Bool
+	readDone      chan struct{}
 	cacheAccess   sync.RWMutex
 	cached        bool
 	cachedBuffer  *buf.Buffer
@@ -35,6 +36,13 @@ func NewReader(reader TimeoutReader) *Reader {
 }
 
 func (r *Reader) Read(p []byte) (n int, err error) {
+	if !isClosedChan(r.readDone) {
+		select {
+		case <-r.readDone:
+		case <-r.pipeDeadline.wait():
+			return 0, os.ErrDeadlineExceeded
+		}
+	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		n = copy(p, r.cachedBuffer.Bytes())
@@ -56,21 +64,21 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		n, err = r.ExtendedReader.Read(p)
 		return
 	}
-	done := make(chan struct{})
+	r.readDone = make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
 	go func() {
-		n, err = r.pipeRead(p, &access, &cancel, done)
+		n, err = r.pipeRead(p, &access, &cancel, r.readDone)
 	}()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	case <-r.pipeDeadline.wait():
 	}
 	access.Lock()
 	defer access.Unlock()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	default:
 	}
@@ -98,6 +106,13 @@ func (r *Reader) pipeRead(p []byte, access *sync.Mutex, cancel *bool, done chan 
 }
 
 func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
+	if !isClosedChan(r.readDone) {
+		select {
+		case <-r.readDone:
+		case <-r.pipeDeadline.wait():
+			return os.ErrDeadlineExceeded
+		}
+	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		buffer.Resize(r.cachedBuffer.Start(), 0)
@@ -120,22 +135,22 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 		defer r.inRead.Store(false)
 		return r.ExtendedReader.ReadBuffer(buffer)
 	}
-	done := make(chan struct{})
+	r.readDone = make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
 	var err error
 	go func() {
-		err = r.pipeReadBuffer(buffer, &access, &cancel, done)
+		err = r.pipeReadBuffer(buffer, &access, &cancel, r.readDone)
 	}()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return err
 	case <-r.pipeDeadline.wait():
 	}
 	access.Lock()
 	defer access.Unlock()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return err
 	default:
 	}

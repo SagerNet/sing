@@ -23,6 +23,7 @@ type PacketReader struct {
 	pipeDeadline pipeDeadline
 	disablePipe  atomic.Bool
 	inRead       atomic.Bool
+	readDone     chan struct{}
 	cacheAccess  sync.RWMutex
 	cached       bool
 	cachedBuffer *buf.Buffer
@@ -35,6 +36,13 @@ func NewPacketReader(reader TimeoutPacketReader) *PacketReader {
 }
 
 func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	if !isClosedChan(r.readDone) {
+		select {
+		case <-r.readDone:
+		case <-r.pipeDeadline.wait():
+			return 0, nil, os.ErrDeadlineExceeded
+		}
+	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		n = copy(p, r.cachedBuffer.Bytes())
@@ -54,21 +62,21 @@ func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		n, addr, err = r.TimeoutPacketReader.ReadFrom(p)
 		return
 	}
-	done := make(chan struct{})
+	r.readDone = make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
 	go func() {
-		n, addr, err = r.pipeReadFrom(p, &access, &cancel, done)
+		n, addr, err = r.pipeReadFrom(p, &access, &cancel, r.readDone)
 	}()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	case <-r.pipeDeadline.wait():
 	}
 	access.Lock()
 	defer access.Unlock()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	default:
 	}
@@ -98,6 +106,13 @@ func (r *PacketReader) pipeReadFrom(p []byte, access *sync.Mutex, cancel *bool, 
 }
 
 func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	if !isClosedChan(r.readDone) {
+		select {
+		case <-r.readDone:
+		case <-r.pipeDeadline.wait():
+			return M.Socksaddr{}, os.ErrDeadlineExceeded
+		}
+	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		destination = r.cachedAddr
@@ -118,21 +133,21 @@ func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 		destination, err = r.TimeoutPacketReader.ReadPacket(buffer)
 		return
 	}
-	done := make(chan struct{})
+	r.readDone = make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
 	go func() {
-		destination, err = r.pipeReadPacket(buffer, &access, &cancel, done)
+		destination, err = r.pipeReadPacket(buffer, &access, &cancel, r.readDone)
 	}()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	case <-r.pipeDeadline.wait():
 	}
 	access.Lock()
 	defer access.Unlock()
 	select {
-	case <-done:
+	case <-r.readDone:
 		return
 	default:
 	}
