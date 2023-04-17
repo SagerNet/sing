@@ -35,14 +35,6 @@ func NewPacketReader(reader TimeoutPacketReader) *PacketReader {
 }
 
 func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	if r.disablePipe.Load() {
-		return r.TimeoutPacketReader.ReadFrom(p)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		n, addr, err = r.TimeoutPacketReader.ReadFrom(p)
-		return
-	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		n = copy(p, r.cachedBuffer.Bytes())
@@ -54,6 +46,14 @@ func (r *PacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		return
 	}
 	r.cacheAccess.Unlock()
+	if r.disablePipe.Load() {
+		return r.TimeoutPacketReader.ReadFrom(p)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		n, addr, err = r.TimeoutPacketReader.ReadFrom(p)
+		return
+	}
 	done := make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
@@ -98,14 +98,6 @@ func (r *PacketReader) pipeReadFrom(p []byte, access *sync.Mutex, cancel *bool, 
 }
 
 func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	if r.disablePipe.Load() {
-		return r.TimeoutPacketReader.ReadPacket(buffer)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		destination, err = r.TimeoutPacketReader.ReadPacket(buffer)
-		return
-	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		destination = r.cachedAddr
@@ -118,6 +110,14 @@ func (r *PacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 		return
 	}
 	r.cacheAccess.Unlock()
+	if r.disablePipe.Load() {
+		return r.TimeoutPacketReader.ReadPacket(buffer)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		destination, err = r.TimeoutPacketReader.ReadPacket(buffer)
+		return
+	}
 	done := make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
@@ -175,6 +175,12 @@ func (r *PacketReader) SetReadDeadline(t time.Time) error {
 }
 
 func (r *PacketReader) ReaderReplaceable() bool {
+	r.cacheAccess.RLock()
+	if r.cached {
+		r.cacheAccess.RUnlock()
+		return false
+	}
+	r.cacheAccess.RUnlock()
 	return r.disablePipe.Load() || r.deadline.IsZero()
 }
 

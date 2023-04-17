@@ -35,14 +35,6 @@ func NewReader(reader TimeoutReader) *Reader {
 }
 
 func (r *Reader) Read(p []byte) (n int, err error) {
-	if r.disablePipe.Load() {
-		return r.ExtendedReader.Read(p)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		n, err = r.ExtendedReader.Read(p)
-		return
-	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		n = copy(p, r.cachedBuffer.Bytes())
@@ -56,6 +48,14 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		return
 	}
 	r.cacheAccess.Unlock()
+	if r.disablePipe.Load() {
+		return r.ExtendedReader.Read(p)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		n, err = r.ExtendedReader.Read(p)
+		return
+	}
 	done := make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
@@ -98,13 +98,6 @@ func (r *Reader) pipeRead(p []byte, access *sync.Mutex, cancel *bool, done chan 
 }
 
 func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
-	if r.disablePipe.Load() {
-		return r.ExtendedReader.ReadBuffer(buffer)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		return r.ExtendedReader.ReadBuffer(buffer)
-	}
 	r.cacheAccess.Lock()
 	if r.cached {
 		buffer.Resize(r.cachedBuffer.Start(), 0)
@@ -120,6 +113,13 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 		return err
 	}
 	r.cacheAccess.Unlock()
+	if r.disablePipe.Load() {
+		return r.ExtendedReader.ReadBuffer(buffer)
+	} else if r.deadline.IsZero() {
+		r.inRead.Store(true)
+		defer r.inRead.Store(false)
+		return r.ExtendedReader.ReadBuffer(buffer)
+	}
 	done := make(chan struct{})
 	var access sync.Mutex
 	var cancel bool
@@ -177,6 +177,12 @@ func (r *Reader) SetReadDeadline(t time.Time) error {
 }
 
 func (r *Reader) ReaderReplaceable() bool {
+	r.cacheAccess.RLock()
+	if r.cached {
+		r.cacheAccess.RUnlock()
+		return false
+	}
+	r.cacheAccess.RUnlock()
 	return r.disablePipe.Load() || r.deadline.IsZero()
 }
 
