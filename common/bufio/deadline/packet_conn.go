@@ -15,10 +15,16 @@ type PacketConn struct {
 }
 
 func NewPacketConn(conn N.NetPacketConn) *PacketConn {
+	if deadlineConn, isDeadline := conn.(*PacketConn); isDeadline {
+		return deadlineConn
+	}
 	return &PacketConn{NetPacketConn: conn, reader: NewPacketReader(conn)}
 }
 
 func NewFallbackPacketConn(conn N.NetPacketConn) *PacketConn {
+	if deadlineConn, isDeadline := conn.(*PacketConn); isDeadline {
+		return deadlineConn
+	}
 	return &PacketConn{NetPacketConn: conn, reader: NewFallbackPacketReader(conn)}
 }
 
@@ -44,4 +50,8 @@ func (c *PacketConn) WriterReplaceable() bool {
 
 func (c *PacketConn) Upstream() any {
 	return c.NetPacketConn
+}
+
+func (c *PacketConn) NeedAdditionalReadDeadline() bool {
+	return false
 }
