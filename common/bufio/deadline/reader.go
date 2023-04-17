@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	N "github.com/sagernet/sing/common/network"
@@ -16,13 +15,18 @@ type TimeoutReader interface {
 	SetReadDeadline(t time.Time) error
 }
 
-type Reader struct {
+type Reader interface {
+	N.ExtendedReader
+	TimeoutReader
+	N.WithUpstreamReader
+	N.ReaderWithUpstream
+}
+
+type reader struct {
 	N.ExtendedReader
 	timeoutReader TimeoutReader
 	deadline      time.Time
 	pipeDeadline  pipeDeadline
-	disablePipe   atomic.Bool
-	inRead        atomic.Bool
 	result        chan *readResult
 	done          chan struct{}
 }
@@ -32,35 +36,31 @@ type readResult struct {
 	err    error
 }
 
-func NewReader(reader TimeoutReader) *Reader {
-	return &Reader{
-		ExtendedReader: bufio.NewExtendedReader(reader),
-		timeoutReader:  reader,
+func NewReader(timeoutReader TimeoutReader) Reader {
+	return &reader{
+		ExtendedReader: bufio.NewExtendedReader(timeoutReader),
+		timeoutReader:  timeoutReader,
 		pipeDeadline:   makePipeDeadline(),
 		result:         make(chan *readResult, 1),
 		done:           makeFilledChan(),
 	}
 }
 
-func (r *Reader) Read(p []byte) (n int, err error) {
+func (r *reader) Read(p []byte) (n int, err error) {
 	select {
 	case result := <-r.result:
 		return r.pipeReturn(result, p)
 	default:
-	}
-	if r.disablePipe.Load() {
-		return r.ExtendedReader.Read(p)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		n, err = r.ExtendedReader.Read(p)
-		return
 	}
 	select {
 	case <-r.done:
 		go r.pipeRead(len(p))
 	default:
 	}
+	return r.read(p)
+}
+
+func (r *reader) read(p []byte) (n int, err error) {
 	select {
 	case result := <-r.result:
 		return r.pipeReturn(result, p)
@@ -69,7 +69,7 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	}
 }
 
-func (r *Reader) pipeReturn(result *readResult, p []byte) (n int, err error) {
+func (r *reader) pipeReturn(result *readResult, p []byte) (n int, err error) {
 	n = copy(p, result.buffer.Bytes())
 	result.buffer.Advance(n)
 	if result.buffer.IsEmpty() {
@@ -81,7 +81,7 @@ func (r *Reader) pipeReturn(result *readResult, p []byte) (n int, err error) {
 	return
 }
 
-func (r *Reader) pipeRead(pLen int) {
+func (r *reader) pipeRead(pLen int) {
 	buffer := buf.NewSize(pLen)
 	_, err := buffer.ReadOnceFrom(r.ExtendedReader)
 	r.result <- &readResult{
@@ -91,24 +91,21 @@ func (r *Reader) pipeRead(pLen int) {
 	r.done <- struct{}{}
 }
 
-func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
+func (r *reader) ReadBuffer(buffer *buf.Buffer) error {
 	select {
 	case result := <-r.result:
 		return r.pipeReturnBuffer(result, buffer)
 	default:
-	}
-	if r.disablePipe.Load() {
-		return r.ExtendedReader.ReadBuffer(buffer)
-	} else if r.deadline.IsZero() {
-		r.inRead.Store(true)
-		defer r.inRead.Store(false)
-		return r.ExtendedReader.ReadBuffer(buffer)
 	}
 	select {
 	case <-r.done:
 		go r.pipeReadBuffer(buffer.Cap(), buffer.Start())
 	default:
 	}
+	return r.readBuffer(buffer)
+}
+
+func (r *reader) readBuffer(buffer *buf.Buffer) error {
 	select {
 	case result := <-r.result:
 		return r.pipeReturnBuffer(result, buffer)
@@ -117,7 +114,7 @@ func (r *Reader) ReadBuffer(buffer *buf.Buffer) error {
 	}
 }
 
-func (r *Reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error {
+func (r *reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error {
 	buffer.Resize(result.buffer.Start(), 0)
 	n := copy(buffer.FreeBytes(), result.buffer.Bytes())
 	buffer.Truncate(n)
@@ -131,7 +128,7 @@ func (r *Reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error 
 	}
 }
 
-func (r *Reader) pipeReadBuffer(bufLen int, bufStart int) {
+func (r *reader) pipeReadBuffer(bufLen int, bufStart int) {
 	cacheBuffer := buf.NewSize(bufLen)
 	cacheBuffer.Advance(bufStart)
 	err := r.ExtendedReader.ReadBuffer(cacheBuffer)
@@ -142,19 +139,13 @@ func (r *Reader) pipeReadBuffer(bufLen int, bufStart int) {
 	r.done <- struct{}{}
 }
 
-func (r *Reader) SetReadDeadline(t time.Time) error {
-	if r.disablePipe.Load() {
-		return r.timeoutReader.SetReadDeadline(t)
-	} else if r.inRead.Load() {
-		r.disablePipe.Store(true)
-		return r.timeoutReader.SetReadDeadline(t)
-	}
+func (r *reader) SetReadDeadline(t time.Time) error {
 	r.deadline = t
 	r.pipeDeadline.set(t)
 	return nil
 }
 
-func (r *Reader) ReaderReplaceable() bool {
+func (r *reader) ReaderReplaceable() bool {
 	select {
 	case <-r.done:
 		r.done <- struct{}{}
@@ -167,9 +158,9 @@ func (r *Reader) ReaderReplaceable() bool {
 		return false
 	default:
 	}
-	return r.disablePipe.Load() || r.deadline.IsZero()
+	return r.deadline.IsZero()
 }
 
-func (r *Reader) UpstreamReader() any {
+func (r *reader) UpstreamReader() any {
 	return r.ExtendedReader
 }

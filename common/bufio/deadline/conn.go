@@ -11,11 +11,15 @@ import (
 
 type Conn struct {
 	N.ExtendedConn
-	reader *Reader
+	reader Reader
 }
 
 func NewConn(conn net.Conn) *Conn {
 	return &Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewReader(conn)}
+}
+
+func NewFallbackConn(conn net.Conn) *Conn {
+	return &Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewFallbackReader(conn)}
 }
 
 func (c *Conn) Read(p []byte) (n int, err error) {
