@@ -30,7 +30,7 @@ func (r *fallbackPacketReader) ReadFrom(p []byte) (n int, addr net.Addr, err err
 	}
 	select {
 	case <-r.done:
-		if r.deadline.IsZero() {
+		if r.deadline.Load().IsZero() {
 			r.done <- struct{}{}
 			r.inRead.Store(true)
 			defer r.inRead.Store(false)
@@ -54,7 +54,7 @@ func (r *fallbackPacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Soc
 	}
 	select {
 	case <-r.done:
-		if r.deadline.IsZero() {
+		if r.deadline.Load().IsZero() {
 			r.done <- struct{}{}
 			r.inRead.Store(true)
 			defer r.inRead.Store(false)

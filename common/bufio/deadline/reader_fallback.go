@@ -28,7 +28,7 @@ func (r *fallbackReader) Read(p []byte) (n int, err error) {
 	}
 	select {
 	case <-r.done:
-		if r.deadline.IsZero() {
+		if r.deadline.Load().IsZero() {
 			r.done <- struct{}{}
 			r.inRead.Store(true)
 			defer r.inRead.Store(false)
@@ -52,7 +52,7 @@ func (r *fallbackReader) ReadBuffer(buffer *buf.Buffer) error {
 	}
 	select {
 	case <-r.done:
-		if r.deadline.IsZero() {
+		if r.deadline.Load().IsZero() {
 			r.done <- struct{}{}
 			r.inRead.Store(true)
 			defer r.inRead.Store(false)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	N "github.com/sagernet/sing/common/network"
@@ -25,7 +26,7 @@ type Reader interface {
 type reader struct {
 	N.ExtendedReader
 	timeoutReader TimeoutReader
-	deadline      time.Time
+	deadline      atomic.TypedValue[time.Time]
 	pipeDeadline  pipeDeadline
 	result        chan *readResult
 	done          chan struct{}
@@ -140,7 +141,7 @@ func (r *reader) pipeReadBuffer(bufLen int, bufStart int) {
 }
 
 func (r *reader) SetReadDeadline(t time.Time) error {
-	r.deadline = t
+	r.deadline.Store(t)
 	r.pipeDeadline.set(t)
 	return nil
 }
@@ -158,7 +159,7 @@ func (r *reader) ReaderReplaceable() bool {
 		return false
 	default:
 	}
-	return r.deadline.IsZero()
+	return r.deadline.Load().IsZero()
 }
 
 func (r *reader) UpstreamReader() any {
