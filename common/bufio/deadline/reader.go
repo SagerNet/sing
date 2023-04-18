@@ -122,10 +122,10 @@ func (r *reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error 
 	result.buffer.Advance(n)
 	if !result.buffer.IsEmpty() {
 		r.result <- result
-		return result.err
+		return nil
 	} else {
 		result.buffer.Release()
-		return nil
+		return result.err
 	}
 }
 

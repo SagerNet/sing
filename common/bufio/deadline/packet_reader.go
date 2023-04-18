@@ -129,10 +129,10 @@ func (r *packetReader) pipeReturnFromBuffer(result *packetReadResult, buffer *bu
 	result.buffer.Advance(n)
 	if !result.buffer.IsEmpty() {
 		r.result <- result
-		return result.destination, result.err
+		return result.destination, nil
 	} else {
 		result.buffer.Release()
-		return result.destination, nil
+		return result.destination, result.err
 	}
 }
 
