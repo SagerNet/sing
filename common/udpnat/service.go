@@ -25,9 +25,10 @@ type Service[K comparable] struct {
 	handler Handler
 }
 
-func New[K comparable](maxAge int64, handler Handler) *Service[K] {
+func New[K comparable](ctx context.Context, maxAge int64, handler Handler) *Service[K] {
 	return &Service[K]{
 		nat: cache.New(
+			cache.WithContext[K, *conn](ctx),
 			cache.WithAge[K, *conn](maxAge),
 			cache.WithUpdateAgeOnGet[K, *conn](),
 			cache.WithEvict[K, *conn](func(key K, conn *conn) {
@@ -102,6 +103,10 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Bu
 	}
 }
 
+func (s *Service[T]) Close() error {
+	return common.Close(common.PtrOrNil(s.nat))
+}
+
 type packet struct {
 	data        *buf.Buffer
 	destination M.Socksaddr
@@ -159,10 +164,9 @@ func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 func (c *conn) Close() error {
 	select {
 	case <-c.ctx.Done():
-		return os.ErrClosed
 	default:
+		c.cancel(net.ErrClosed)
 	}
-	c.cancel(net.ErrClosed)
 	if sourceCloser, sourceIsCloser := c.source.(io.Closer); sourceIsCloser {
 		return sourceCloser.Close()
 	}
