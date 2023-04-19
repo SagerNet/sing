@@ -19,6 +19,9 @@ func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
 }
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
+	if ioWriter, isWriter := writer.(io.Writer); isWriter {
+		writer = N.UnwrapWriter(ioWriter)
+	}
 	switch w := writer.(type) {
 	case N.VectorisedWriter:
 		return w, true
@@ -42,6 +45,9 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 }
 
 func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {
+	if packetWriter, isWriter := writer.(N.PacketWriter); isWriter {
+		writer = N.UnwrapPacketWriter(packetWriter)
+	}
 	switch w := writer.(type) {
 	case N.VectorisedPacketWriter:
 		return w, true

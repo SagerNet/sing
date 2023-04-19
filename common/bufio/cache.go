@@ -83,6 +83,17 @@ func (c *CachedConn) WriterReplaceable() bool {
 	return true
 }
 
+func (c *CachedConn) CreateReadWaiter() (ReadWaiter, bool) {
+	reader, created := CreateReadWaiter(c.Conn)
+	if !created {
+		return nil, false
+	}
+	if c.buffer == nil {
+		return reader, true
+	}
+	return &cachedReadWaiter{reader, c.buffer}, true
+}
+
 func (c *CachedConn) Close() error {
 	if buffer := c.buffer; buffer != nil {
 		buffer.DecRef()
@@ -205,6 +216,17 @@ func (c *CachedPacketConn) ReaderReplaceable() bool {
 
 func (c *CachedPacketConn) WriterReplaceable() bool {
 	return true
+}
+
+func (c *CachedPacketConn) CreatePacketReadWaiter() (PacketReadWaiter, bool) {
+	reader, created := CreatePacketReadWaiter(c.PacketConn)
+	if !created {
+		return nil, false
+	}
+	if c.buffer == nil {
+		return reader, true
+	}
+	return &cachedPacketReadWaiter{reader, c.buffer, c.destination}, true
 }
 
 func (c *CachedPacketConn) Close() error {

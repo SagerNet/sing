@@ -100,6 +100,14 @@ func (r *BufferedReader) ReaderReplaceable() bool {
 	return buffer == nil || buffer.Closed()
 }
 
+func (r *BufferedReader) CreateReadWaiter() (ReadWaiter, bool) {
+	reader, created := CreateReadWaiter(r.upstream)
+	if !created {
+		return nil, false
+	}
+	return &bufferedReadWaiter{r, reader}, true
+}
+
 type BufferedWriter struct {
 	upstream io.Writer
 	buffer   *buf.Buffer

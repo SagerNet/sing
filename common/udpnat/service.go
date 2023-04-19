@@ -71,6 +71,7 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Bu
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
 			data:       make(chan packet, 64),
+			newData:    make(chan struct{}, 1),
 			localAddr:  metadata.Source,
 			remoteAddr: metadata.Destination,
 		}
@@ -97,6 +98,10 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Bu
 		}
 		return
 	}
+	select {
+	case c.newData <- struct{}{}:
+	default:
+	}
 	c.data <- packet{
 		data:        buffer,
 		destination: metadata.Destination,
@@ -116,6 +121,7 @@ type conn struct {
 	ctx        context.Context
 	cancel     common.ContextCancelCauseFunc
 	data       chan packet
+	newData    chan struct{}
 	localAddr  M.Socksaddr
 	remoteAddr M.Socksaddr
 	source     N.PacketWriter
@@ -161,11 +167,23 @@ func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	return len(p), c.source.WritePacket(buf.As(p).ToOwned(), M.SocksaddrFromNet(addr))
 }
 
+func (c *conn) WaitRead() {
+	select {
+	case <-c.newData:
+	case <-c.ctx.Done():
+	}
+}
+
 func (c *conn) Close() error {
 	select {
 	case <-c.ctx.Done():
 	default:
 		c.cancel(net.ErrClosed)
+	}
+	select {
+	case <-c.newData:
+	default:
+		close(c.newData)
 	}
 	if sourceCloser, sourceIsCloser := c.source.(io.Closer); sourceIsCloser {
 		return sourceCloser.Close()
