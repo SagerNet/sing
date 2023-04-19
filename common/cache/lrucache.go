@@ -3,9 +3,6 @@ package cache
 // Modified by https://github.com/die-net/lrucache
 
 import (
-	"context"
-	"log"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -41,14 +38,13 @@ func WithSize[K comparable, V any](maxSize int) Option[K, V] {
 	}
 }
 
-func WithContext[K comparable, V any](ctx context.Context) Option[K, V] {
+func WithStale[K comparable, V any](stale bool) Option[K, V] {
 	return func(l *LruCache[K, V]) {
-		l.ctx = ctx
+		l.staleReturn = stale
 	}
 }
 
 type LruCache[K comparable, V any] struct {
-	ctx            context.Context
 	maxAge         int64
 	maxSize        int
 	mu             sync.Mutex
@@ -68,14 +64,6 @@ func New[K comparable, V any](options ...Option[K, V]) *LruCache[K, V] {
 		option(lc)
 	}
 
-	if lc.maxAge > 0 {
-		if lc.ctx == nil {
-			lc.ctx = context.Background()
-			log.Println("your lru cache is going to leak")
-			debug.PrintStack()
-		}
-		go lc.loopCheckTimeout()
-	}
 	return lc
 }
 
@@ -119,6 +107,8 @@ create:
 		e := &entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge}
 		c.cache[key] = c.lru.PushBack(e)
 	}
+
+	c.maybeDeleteOldest()
 	return value, false
 }
 
@@ -156,6 +146,8 @@ create:
 		e := &entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge}
 		c.cache[key] = c.lru.PushBack(e)
 	}
+
+	c.maybeDeleteOldest()
 	return value, false
 }
 
@@ -203,6 +195,8 @@ func (c *LruCache[K, V]) StoreWithExpire(key K, value V, expires time.Time) {
 			}
 		}
 	}
+
+	c.maybeDeleteOldest()
 }
 
 func (c *LruCache[K, V]) CloneTo(n *LruCache[K, V]) {
@@ -240,6 +234,8 @@ func (c *LruCache[K, V]) get(key K) *entry[K, V] {
 
 	if !c.staleReturn && c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
 		c.deleteElement(le)
+		c.maybeDeleteOldest()
+
 		return nil
 	}
 
@@ -262,31 +258,12 @@ func (c *LruCache[K, V]) Delete(key K) {
 	c.mu.Unlock()
 }
 
-func (c *LruCache[K, V]) loopCheckTimeout() {
-	ticker := time.NewTicker(time.Second * time.Duration(c.maxAge))
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			c.checkTimeout()
-		case <-c.ctx.Done():
-			return
+func (c *LruCache[K, V]) maybeDeleteOldest() {
+	if !c.staleReturn && c.maxAge > 0 {
+		now := time.Now().Unix()
+		for le := c.lru.Front(); le != nil && le.Value.expires <= now; le = c.lru.Front() {
+			c.deleteElement(le)
 		}
-	}
-}
-
-func (c *LruCache[K, V]) checkTimeout() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	now := time.Now().Unix()
-	var toDelete []*list.Element[*entry[K, V]]
-	for it := c.lru.Front(); it != nil; it = it.Next() {
-		if it.Value.expires <= now {
-			toDelete = append(toDelete, it)
-		}
-	}
-	for _, it := range toDelete {
-		c.deleteElement(it)
 	}
 }
 

@@ -25,10 +25,9 @@ type Service[K comparable] struct {
 	handler Handler
 }
 
-func New[K comparable](ctx context.Context, maxAge int64, handler Handler) *Service[K] {
+func New[K comparable](maxAge int64, handler Handler) *Service[K] {
 	return &Service[K]{
 		nat: cache.New(
-			cache.WithContext[K, *conn](ctx),
 			cache.WithAge[K, *conn](maxAge),
 			cache.WithUpdateAgeOnGet[K, *conn](),
 			cache.WithEvict[K, *conn](func(key K, conn *conn) {
@@ -101,10 +100,6 @@ func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Bu
 		data:        buffer,
 		destination: metadata.Destination,
 	}
-}
-
-func (s *Service[T]) Close() error {
-	return common.Close(common.PtrOrNil(s.nat))
 }
 
 type packet struct {
