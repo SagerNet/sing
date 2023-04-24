@@ -118,7 +118,7 @@ func UnwrapReader(reader io.Reader) io.Reader {
 	if u, ok := reader.(common.WithUpstream); ok {
 		return UnwrapReader(u.Upstream().(io.Reader))
 	}
-	panic("bad reader")
+	return reader
 }
 
 func UnwrapPacketReader(reader PacketReader) PacketReader {
@@ -131,7 +131,7 @@ func UnwrapPacketReader(reader PacketReader) PacketReader {
 	if u, ok := reader.(common.WithUpstream); ok {
 		return UnwrapPacketReader(u.Upstream().(PacketReader))
 	}
-	panic("bad reader")
+	return reader
 }
 
 func UnwrapWriter(writer io.Writer) io.Writer {
@@ -144,7 +144,7 @@ func UnwrapWriter(writer io.Writer) io.Writer {
 	if u, ok := writer.(common.WithUpstream); ok {
 		return UnwrapWriter(u.Upstream().(io.Writer))
 	}
-	panic("bad writer")
+	return writer
 }
 
 func UnwrapPacketWriter(writer PacketWriter) PacketWriter {
@@ -157,5 +157,5 @@ func UnwrapPacketWriter(writer PacketWriter) PacketWriter {
 	if u, ok := writer.(common.WithUpstream); ok {
 		return UnwrapPacketWriter(u.Upstream().(PacketWriter))
 	}
-	panic("bad writer")
+	return writer
 }

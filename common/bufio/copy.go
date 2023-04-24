@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"syscall"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -59,8 +60,35 @@ func Copy(dst io.Writer, src io.Reader) (n int64, err error) {
 		return 0, E.New("nil writer")
 	}
 	origDst := dst
-	src = N.UnwrapReader(src)
-	dst = N.UnwrapWriter(dst)
+	for {
+		var srcCounters, dstCounters []CountFunc
+		src, srcCounters = UnwrapCountReader(src)
+		dst, dstCounters = UnwrapCountWriter(dst)
+		if cachedSrc, isCached := src.(N.CachedReader); isCached {
+			cachedBuffer := cachedSrc.ReadCached()
+			if cachedBuffer != nil {
+				if !cachedBuffer.IsEmpty() {
+					_, err = dst.Write(cachedBuffer.Bytes())
+					if err != nil {
+						cachedBuffer.Release()
+						return
+					}
+				}
+				cachedBuffer.Release()
+				continue
+			}
+		}
+		srcSyscallConn, srcIsSyscall := src.(syscall.Conn)
+		dstSyscallConn, dstIsSyscall := dst.(syscall.Conn)
+		if srcIsSyscall && dstIsSyscall {
+			var handled bool
+			handled, n, err = CopyDirect(srcSyscallConn, dstSyscallConn, srcCounters, dstCounters)
+			if handled {
+				return
+			}
+		}
+		break
+	}
 	if wt, ok := src.(io.WriterTo); ok {
 		if needWrapper(dst, src) {
 			dst = &writeOnlyWriter{dst}
