@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build windows
 
 package bufio
 
@@ -36,7 +36,7 @@ func copySyscallWithPool(conn syscall.RawConn, remoteConn syscall.RawConn, readC
 	readFunc := func(fd uintptr) (done bool) {
 		buffer = buf.New()
 		buffer.FullReset()
-		readN, readErr = syscall.Read(int(fd), buffer.FreeBytes())
+		readN, readErr = syscall.Read(syscall.Handle(fd), buffer.FreeBytes())
 		if readN > 0 {
 			buffer.Truncate(readN)
 		} else {
@@ -54,7 +54,7 @@ func copySyscallWithPool(conn syscall.RawConn, remoteConn syscall.RawConn, readC
 	writeFunc := func(fd uintptr) (done bool) {
 		for !buffer.IsEmpty() {
 			var writeN int
-			writeN, writeErr = syscall.Write(int(fd), buffer.Bytes())
+			writeN, writeErr = syscall.Write(syscall.Handle(fd), buffer.Bytes())
 			if writeErr != nil {
 				return writeErr != syscall.EAGAIN
 			}
