@@ -24,6 +24,7 @@ func splice(source syscall.RawConn, destination syscall.RawConn, readCounters []
 	_, _ = unix.FcntlInt(uintptr(pipeFDs[0]), unix.F_SETPIPE_SZ, maxSpliceSize)
 	var readN int
 	var readErr error
+	var writeSize int
 	var writeErr error
 	readFunc := func(fd uintptr) (done bool) {
 		p0, p1 := unix.Splice(int(fd), nil, pipeFDs[1], nil, maxSpliceSize, unix.SPLICE_F_NONBLOCK)
@@ -32,16 +33,14 @@ func splice(source syscall.RawConn, destination syscall.RawConn, readCounters []
 		return readErr != unix.EAGAIN
 	}
 	writeFunc := func(fd uintptr) (done bool) {
-		var writeN int
-		size := readN
-		for size > 0 {
-			p0, p1 := unix.Splice(pipeFDs[0], nil, int(fd), nil, size, unix.SPLICE_F_NONBLOCK|unix.SPLICE_F_MOVE)
-			writeN = int(p0)
+		for writeSize > 0 {
+			p0, p1 := unix.Splice(pipeFDs[0], nil, int(fd), nil, writeSize, unix.SPLICE_F_NONBLOCK|unix.SPLICE_F_MOVE)
+			writeN := int(p0)
 			writeErr = p1
 			if writeErr != nil {
 				return writeErr != unix.EAGAIN
 			}
-			size -= int(writeN)
+			writeSize -= writeN
 		}
 		return true
 	}
@@ -61,6 +60,7 @@ func splice(source syscall.RawConn, destination syscall.RawConn, readCounters []
 		if readN == 0 {
 			return
 		}
+		writeSize = readN
 		err = destination.Write(writeFunc)
 		if err != nil {
 			writeErr = err
