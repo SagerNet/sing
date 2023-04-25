@@ -255,7 +255,7 @@ func CopyPacket(destinationConn N.PacketWriter, source N.PacketReader) (n int64,
 		if cachedReader, isCached := source.(N.CachedPacketReader); isCached {
 			packet := cachedReader.ReadCachedPacket()
 			if packet != nil {
-				cachedPackets = append([]*N.PacketBuffer{packet}, cachedPackets...)
+				cachedPackets = append(cachedPackets, packet)
 				continue
 			}
 		}
