@@ -71,7 +71,7 @@ func CopyExtended(originDestination io.Writer, destination N.ExtendedWriter, sou
 			return
 		}
 	}
-	if N.IsUnsafeWriter(destination) {
+	if !common.UnsafeBuffer || N.IsUnsafeWriter(destination) {
 		return CopyExtendedWithPool(originDestination, destination, source, readCounters, writeCounters)
 	}
 	bufferSize := N.CalculateMTU(source, destination)

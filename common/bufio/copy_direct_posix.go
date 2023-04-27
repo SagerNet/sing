@@ -113,6 +113,8 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		if err != nil {
 			buffer.Release()
 			return
+		} else {
+			buffer = nil
 		}
 		n += int64(dataLen)
 		for _, counter := range readCounters {
