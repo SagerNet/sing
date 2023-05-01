@@ -413,7 +413,6 @@ func CopyPacketWithPool(destinationConn N.PacketWriter, source N.PacketReader, r
 func WritePacketWithPool(destinationConn N.PacketWriter, packetBuffers []*N.PacketBuffer) (n int64, err error) {
 	frontHeadroom := N.CalculateFrontHeadroom(destinationConn)
 	rearHeadroom := N.CalculateRearHeadroom(destinationConn)
-	var destination M.Socksaddr
 	for _, packetBuffer := range packetBuffers {
 		buffer := buf.NewPacket()
 		readBufferRaw := buffer.Slice()
@@ -426,7 +425,7 @@ func WritePacketWithPool(destinationConn N.PacketWriter, packetBuffers []*N.Pack
 		}
 		dataLen := readBuffer.Len()
 		buffer.Resize(readBuffer.Start(), dataLen)
-		err = destinationConn.WritePacket(buffer, destination)
+		err = destinationConn.WritePacket(buffer, packetBuffer.Destination)
 		if err != nil {
 			buffer.Release()
 			return
