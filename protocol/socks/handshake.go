@@ -206,12 +206,13 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Destination = request.Destination
 			var innerError error
 			done := make(chan struct{})
+			associatePacketConn := NewAssociatePacketConn(udpConn, request.Destination, conn)
 			go func() {
-				defer conn.Close()
-				innerError = handler.NewPacketConnection(ctx, NewAssociatePacketConn(udpConn, request.Destination, conn), metadata)
+				innerError = handler.NewPacketConnection(ctx, associatePacketConn, metadata)
 				close(done)
 			}()
 			err = common.Error(io.Copy(io.Discard, conn))
+			associatePacketConn.Close()
 			<-done
 			return E.Errors(innerError, err)
 		default:
