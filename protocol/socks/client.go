@@ -142,9 +142,6 @@ func (c *Client) DialContext(ctx context.Context, network string, address M.Sock
 		if command == socks5.CommandConnect {
 			return tcpConn, nil
 		}
-		if response.Bind.Addr.IsUnspecified() {
-			response.Bind = c.serverAddr
-		}
 		udpConn, err := c.dialer.DialContext(ctx, N.NetworkUDP, response.Bind)
 		if err != nil {
 			tcpConn.Close()
