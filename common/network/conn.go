@@ -11,6 +11,15 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
+type AbstractConn interface {
+	Close() error
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+	SetDeadline(t time.Time) error
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
+}
+
 type PacketReader interface {
 	ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error)
 }
