@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/netip"
+	"os"
 	"syscall"
 
 	"github.com/sagernet/sing/common/buf"
@@ -25,24 +26,21 @@ func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter,
 		bufferSize = buf.BufferSize
 	}
 	var (
-		buffer     *buf.Buffer
-		readBuffer *buf.Buffer
+		buffer       *buf.Buffer
+		readBuffer   *buf.Buffer
+		notFirstTime bool
 	)
-	newBuffer := func() *buf.Buffer {
-		if buffer != nil {
-			buffer.Release()
-		}
+	source.InitializeReadWaiter(func() *buf.Buffer {
 		buffer = buf.NewSize(bufferSize)
 		readBufferRaw := buffer.Slice()
 		readBuffer = buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 		readBuffer.Resize(frontHeadroom, 0)
 		return readBuffer
-	}
-	var notFirstTime bool
+	})
+	defer source.InitializeReadWaiter(nil)
 	for {
-		err = source.WaitReadBuffer(newBuffer)
+		err = source.WaitReadBuffer()
 		if err != nil {
-			buffer.Release()
 			if errors.Is(err, io.EOF) {
 				err = nil
 				return
@@ -56,9 +54,7 @@ func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter,
 		buffer.Resize(readBuffer.Start(), dataLen)
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
-			if buffer != nil {
-				buffer.Release()
-			}
+			buffer.Release()
 			return
 		}
 		n += int64(dataLen)
@@ -83,25 +79,22 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		bufferSize = buf.UDPBufferSize
 	}
 	var (
-		buffer     *buf.Buffer
-		readBuffer *buf.Buffer
+		buffer       *buf.Buffer
+		readBuffer   *buf.Buffer
+		destination  M.Socksaddr
+		notFirstTime bool
 	)
-	newBuffer := func() *buf.Buffer {
-		if buffer != nil {
-			buffer.Release()
-		}
+	source.InitializeReadWaiter(func() *buf.Buffer {
 		buffer = buf.NewSize(bufferSize)
 		readBufferRaw := buffer.Slice()
 		readBuffer = buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
 		readBuffer.Resize(frontHeadroom, 0)
 		return readBuffer
-	}
-	var destination M.Socksaddr
-	var notFirstTime bool
+	})
+	defer source.InitializeReadWaiter(nil)
 	for {
-		destination, err = source.WaitReadPacket(newBuffer)
+		destination, err = source.WaitReadPacket()
 		if err != nil {
-			buffer.Release()
 			if !notFirstTime {
 				err = N.HandshakeFailure(destinationConn, err)
 			}
@@ -113,8 +106,6 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		if err != nil {
 			buffer.Release()
 			return
-		} else {
-			buffer = nil
 		}
 		n += int64(dataLen)
 		for _, counter := range readCounters {
@@ -126,6 +117,8 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		notFirstTime = true
 	}
 }
+
+var _ N.ReadWaiter = (*syscallReadWaiter)(nil)
 
 type syscallReadWaiter struct {
 	rawConn  syscall.RawConn
@@ -143,8 +136,11 @@ func createSyscallReadWaiter(reader any) (*syscallReadWaiter, bool) {
 	return nil, false
 }
 
-func (w *syscallReadWaiter) WaitReadBuffer(newBuffer func() *buf.Buffer) error {
-	if w.readFunc == nil {
+func (w *syscallReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
+	w.readErr = nil
+	if newBuffer == nil {
+		w.readFunc = nil
+	} else {
 		w.readFunc = func(fd uintptr) (done bool) {
 			buffer := newBuffer()
 			var readN int
@@ -164,15 +160,26 @@ func (w *syscallReadWaiter) WaitReadBuffer(newBuffer func() *buf.Buffer) error {
 			return true
 		}
 	}
+}
+
+func (w *syscallReadWaiter) WaitReadBuffer() error {
+	if w.readFunc == nil {
+		return os.ErrInvalid
+	}
 	err := w.rawConn.Read(w.readFunc)
 	if err != nil {
 		return err
 	}
 	if w.readErr != nil {
+		if w.readErr == io.EOF {
+			return io.EOF
+		}
 		return E.Cause(w.readErr, "raw read")
 	}
 	return nil
 }
+
+var _ N.PacketReadWaiter = (*syscallPacketReadWaiter)(nil)
 
 type syscallPacketReadWaiter struct {
 	rawConn  syscall.RawConn
@@ -191,8 +198,12 @@ func createSyscallPacketReadWaiter(reader any) (*syscallPacketReadWaiter, bool) 
 	return nil, false
 }
 
-func (w *syscallPacketReadWaiter) WaitReadPacket(newBuffer func() *buf.Buffer) (destination M.Socksaddr, err error) {
-	if w.readFunc == nil {
+func (w *syscallPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
+	w.readErr = nil
+	w.readFrom = M.Socksaddr{}
+	if newBuffer == nil {
+		w.readFunc = nil
+	} else {
 		w.readFunc = func(fd uintptr) (done bool) {
 			buffer := newBuffer()
 			var readN int
@@ -220,6 +231,12 @@ func (w *syscallPacketReadWaiter) WaitReadPacket(newBuffer func() *buf.Buffer) (
 			}
 			return true
 		}
+	}
+}
+
+func (w *syscallPacketReadWaiter) WaitReadPacket() (destination M.Socksaddr, err error) {
+	if w.readFunc == nil {
+		return M.Socksaddr{}, os.ErrInvalid
 	}
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {

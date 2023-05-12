@@ -6,7 +6,8 @@ import (
 )
 
 type ReadWaiter interface {
-	WaitReadBuffer(newBuffer func() *buf.Buffer) error
+	InitializeReadWaiter(newBuffer func() *buf.Buffer)
+	WaitReadBuffer() error
 }
 
 type ReadWaitCreator interface {
@@ -14,7 +15,8 @@ type ReadWaitCreator interface {
 }
 
 type PacketReadWaiter interface {
-	WaitReadPacket(newBuffer func() *buf.Buffer) (destination M.Socksaddr, err error)
+	InitializeReadWaiter(newBuffer func() *buf.Buffer)
+	WaitReadPacket() (destination M.Socksaddr, err error)
 }
 
 type PacketReadWaitCreator interface {
