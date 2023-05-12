@@ -37,7 +37,7 @@ func (c *PacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, er
 }
 
 func (c *PacketConn) SetReadDeadline(t time.Time) error {
-	return c.NetPacketConn.SetReadDeadline(t)
+	return c.reader.SetReadDeadline(t)
 }
 
 func (c *PacketConn) ReaderReplaceable() bool {
