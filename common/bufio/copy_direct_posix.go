@@ -226,9 +226,6 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buf
 					w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port))
 				}
 			}
-			if readN == 0 {
-				w.readErr = io.EOF
-			}
 			return true
 		}
 	}
