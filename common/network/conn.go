@@ -135,6 +135,22 @@ func UnwrapReader(reader io.Reader) io.Reader {
 	return reader
 }
 
+func CastReader[T io.Reader](reader io.Reader) (T, bool) {
+	if c, ok := reader.(T); ok {
+		return c, true
+	}
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return common.DefaultValue[T](), false
+	}
+	if u, ok := reader.(WithUpstreamReader); ok {
+		return CastReader[T](u.UpstreamReader().(io.Reader))
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		return CastReader[T](u.Upstream().(io.Reader))
+	}
+	return common.DefaultValue[T](), false
+}
+
 func UnwrapPacketReader(reader PacketReader) PacketReader {
 	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
 		return reader
@@ -146,6 +162,22 @@ func UnwrapPacketReader(reader PacketReader) PacketReader {
 		return UnwrapPacketReader(u.Upstream().(PacketReader))
 	}
 	return reader
+}
+
+func CastPacketReader[T PacketReader](reader PacketReader) (T, bool) {
+	if c, ok := reader.(T); ok {
+		return c, true
+	}
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return common.DefaultValue[T](), false
+	}
+	if u, ok := reader.(WithUpstreamReader); ok {
+		return CastPacketReader[T](u.UpstreamReader().(PacketReader))
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		return CastPacketReader[T](u.Upstream().(PacketReader))
+	}
+	return common.DefaultValue[T](), false
 }
 
 func UnwrapWriter(writer io.Writer) io.Writer {
@@ -161,6 +193,22 @@ func UnwrapWriter(writer io.Writer) io.Writer {
 	return writer
 }
 
+func CastWriter[T io.Writer](writer io.Writer) (T, bool) {
+	if c, ok := writer.(T); ok {
+		return c, true
+	}
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return common.DefaultValue[T](), false
+	}
+	if u, ok := writer.(WithUpstreamWriter); ok {
+		return CastWriter[T](u.UpstreamWriter().(io.Writer))
+	}
+	if u, ok := writer.(common.WithUpstream); ok {
+		return CastWriter[T](u.Upstream().(io.Writer))
+	}
+	return common.DefaultValue[T](), false
+}
+
 func UnwrapPacketWriter(writer PacketWriter) PacketWriter {
 	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
 		return writer
@@ -172,4 +220,20 @@ func UnwrapPacketWriter(writer PacketWriter) PacketWriter {
 		return UnwrapPacketWriter(u.Upstream().(PacketWriter))
 	}
 	return writer
+}
+
+func CastPacketWriter[T PacketWriter](writer PacketWriter) (T, bool) {
+	if c, ok := writer.(T); ok {
+		return c, true
+	}
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return common.DefaultValue[T](), false
+	}
+	if u, ok := writer.(WithUpstreamWriter); ok {
+		return CastPacketWriter[T](u.UpstreamWriter().(PacketWriter))
+	}
+	if u, ok := writer.(common.WithUpstream); ok {
+		return CastPacketWriter[T](u.Upstream().(PacketWriter))
+	}
+	return common.DefaultValue[T](), false
 }
