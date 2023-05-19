@@ -212,7 +212,6 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buf
 				buffer.Truncate(readN)
 			} else {
 				buffer.Release()
-				buffer = nil
 			}
 			if w.readErr == syscall.EAGAIN {
 				return false
