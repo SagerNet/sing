@@ -122,6 +122,16 @@ type WriterWithUpstream interface {
 	WriterReplaceable() bool
 }
 
+type ReaderPossiblyReplaceable interface {
+	ReaderWithUpstream
+	ReaderPossiblyReplaceable() bool
+}
+
+type WriterPossiblyReplaceable interface {
+	WriterWithUpstream
+	WriterPossiblyReplaceable() bool
+}
+
 func UnwrapReader(reader io.Reader) io.Reader {
 	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
 		return reader

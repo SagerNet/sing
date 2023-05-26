@@ -23,6 +23,7 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 	}
 	originSource := source
 	var readCounters, writeCounters []N.CountFunc
+	var _n int64
 	for {
 		source, readCounters = N.UnwrapCountReader(source, readCounters)
 		destination, writeCounters = N.UnwrapCountWriter(destination, writeCounters)
@@ -40,18 +41,39 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 				continue
 			}
 		}
+		replaceableReader, isReaderPossiblyReplaceable := source.(N.ReaderPossiblyReplaceable)
+		replaceableWriter, isWriterPossiblyReplaceable := destination.(N.WriterPossiblyReplaceable)
+		if (isReaderPossiblyReplaceable && replaceableReader.ReaderPossiblyReplaceable()) ||
+			(isWriterPossiblyReplaceable && replaceableWriter.WriterPossiblyReplaceable()) {
+			_n, err = CopyExtendedOnce(NewExtendedWriter(destination), NewExtendedReader(source))
+			N.Count(_n, readCounters, writeCounters)
+			n += _n
+			if err != nil {
+				if n == _n { // first time
+					err = N.ReportHandshakeFailure(originSource, err)
+				}
+				if errors.Is(err, io.EOF) {
+					err = nil
+				}
+				return
+			}
+			continue
+		}
 		srcSyscallConn, srcIsSyscall := source.(syscall.Conn)
 		dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
 		if srcIsSyscall && dstIsSyscall {
 			var handled bool
-			handled, n, err = copyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
+			handled, _n, err = copyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
 			if handled {
+				n += _n
 				return
 			}
 		}
 		break
 	}
-	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters)
+	_n, err = CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters)
+	n += _n
+	return
 }
 
 func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
