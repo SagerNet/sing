@@ -107,7 +107,7 @@ func (r *packetReader) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 	}
 	select {
 	case <-r.done:
-		go r.pipeReadFromBuffer(buffer.Cap(), buffer.Start())
+		go r.pipeReadFromBuffer(buffer.FreeLen())
 	default:
 	}
 	return r.readPacket(buffer)
@@ -123,9 +123,7 @@ func (r *packetReader) readPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 }
 
 func (r *packetReader) pipeReturnFromBuffer(result *packetReadResult, buffer *buf.Buffer) (M.Socksaddr, error) {
-	buffer.Resize(result.buffer.Start(), 0)
-	n := copy(buffer.FreeBytes(), result.buffer.Bytes())
-	buffer.Truncate(n)
+	n, _ := buffer.Write(result.buffer.Bytes())
 	result.buffer.Advance(n)
 	if !result.buffer.IsEmpty() {
 		r.result <- result
@@ -136,9 +134,8 @@ func (r *packetReader) pipeReturnFromBuffer(result *packetReadResult, buffer *bu
 	}
 }
 
-func (r *packetReader) pipeReadFromBuffer(bufLen int, bufStart int) {
-	buffer := buf.NewSize(bufLen)
-	buffer.Advance(bufStart)
+func (r *packetReader) pipeReadFromBuffer(pLen int) {
+	buffer := buf.NewSize(pLen)
 	destination, err := r.TimeoutPacketReader.ReadPacket(buffer)
 	r.result <- &packetReadResult{
 		buffer:      buffer,

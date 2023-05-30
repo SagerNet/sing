@@ -61,7 +61,7 @@ func (r *fallbackPacketReader) ReadPacket(buffer *buf.Buffer) (destination M.Soc
 			destination, err = r.TimeoutPacketReader.ReadPacket(buffer)
 			return
 		}
-		go r.pipeReadFromBuffer(buffer.Cap(), buffer.Start())
+		go r.pipeReadFromBuffer(buffer.FreeLen())
 	default:
 	}
 	return r.readPacket(buffer)

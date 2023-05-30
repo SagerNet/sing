@@ -58,7 +58,7 @@ func (r *fallbackReader) ReadBuffer(buffer *buf.Buffer) error {
 			defer r.inRead.Store(false)
 			return r.ExtendedReader.ReadBuffer(buffer)
 		}
-		go r.pipeReadBuffer(buffer.Cap(), buffer.Start())
+		go r.pipeReadBuffer(buffer.FreeLen())
 	default:
 	}
 	return r.readBuffer(buffer)

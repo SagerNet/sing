@@ -100,7 +100,7 @@ func (r *reader) ReadBuffer(buffer *buf.Buffer) error {
 	}
 	select {
 	case <-r.done:
-		go r.pipeReadBuffer(buffer.Cap(), buffer.Start())
+		go r.pipeReadBuffer(buffer.FreeLen())
 	default:
 	}
 	return r.readBuffer(buffer)
@@ -116,9 +116,7 @@ func (r *reader) readBuffer(buffer *buf.Buffer) error {
 }
 
 func (r *reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error {
-	buffer.Resize(result.buffer.Start(), 0)
-	n := copy(buffer.FreeBytes(), result.buffer.Bytes())
-	buffer.Truncate(n)
+	n, _ := buffer.Write(result.buffer.Bytes())
 	result.buffer.Advance(n)
 	if !result.buffer.IsEmpty() {
 		r.result <- result
@@ -129,9 +127,8 @@ func (r *reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error 
 	}
 }
 
-func (r *reader) pipeReadBuffer(bufLen int, bufStart int) {
-	cacheBuffer := buf.NewSize(bufLen)
-	cacheBuffer.Advance(bufStart)
+func (r *reader) pipeReadBuffer(pLen int) {
+	cacheBuffer := buf.NewSize(pLen)
 	err := r.ExtendedReader.ReadBuffer(cacheBuffer)
 	r.result <- &readResult{
 		buffer: cacheBuffer,
