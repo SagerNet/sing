@@ -401,10 +401,10 @@ func CopyPacketWithPool(destinationConn N.PacketWriter, source N.PacketReader, r
 		}
 		n += int64(dataLen)
 		for _, counter := range readCounters {
-			counter(n)
+			counter(int64(dataLen))
 		}
 		for _, counter := range writeCounters {
-			counter(n)
+			counter(int64(dataLen))
 		}
 		notFirstTime = true
 	}
