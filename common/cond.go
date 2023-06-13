@@ -20,8 +20,8 @@ func Any[T any](array []T, block func(it T) bool) bool {
 }
 
 func AnyIndexed[T any](array []T, block func(index int, it T) bool) bool {
-	for i, it := range array {
-		if block(i, it) {
+	for index, it := range array {
+		if block(index, it) {
 			return true
 		}
 	}
@@ -38,8 +38,8 @@ func All[T any](array []T, block func(it T) bool) bool {
 }
 
 func AllIndexed[T any](array []T, block func(index int, it T) bool) bool {
-	for i, it := range array {
-		if !block(i, it) {
+	for index, it := range array {
+		if !block(index, it) {
 			return false
 		}
 	}
@@ -47,8 +47,8 @@ func AllIndexed[T any](array []T, block func(index int, it T) bool) bool {
 }
 
 func Contains[T comparable](arr []T, target T) bool {
-	for i := range arr {
-		if target == arr[i] {
+	for index := range arr {
+		if target == arr[index] {
 			return true
 		}
 	}
@@ -81,8 +81,8 @@ func FlatMap[T any, N any](arr []T, block func(it T) []N) []N {
 
 func FlatMapIndexed[T any, N any](arr []T, block func(index int, it T) []N) []N {
 	var retAddr []N
-	for i, item := range arr {
-		retAddr = append(retAddr, block(i, item)...)
+	for index, item := range arr {
+		retAddr = append(retAddr, block(index, item)...)
 	}
 	return retAddr
 }
@@ -113,8 +113,8 @@ func FilterNotDefault[T comparable](arr []T) []T {
 
 func FilterIndexed[T any](arr []T, block func(index int, it T) bool) []T {
 	var retArr []T
-	for i, it := range arr {
-		if block(i, it) {
+	for index, it := range arr {
+		if block(index, it) {
 			retArr = append(retArr, it)
 		}
 	}
@@ -131,12 +131,30 @@ func Find[T any](arr []T, block func(it T) bool) T {
 }
 
 func FindIndexed[T any](arr []T, block func(index int, it T) bool) T {
-	for i, it := range arr {
-		if block(i, it) {
+	for index, it := range arr {
+		if block(index, it) {
 			return it
 		}
 	}
 	return DefaultValue[T]()
+}
+
+func Index[T any](arr []T, block func(it T) bool) int {
+	for index, it := range arr {
+		if block(it) {
+			return index
+		}
+	}
+	return -1
+}
+
+func IndexIndexed[T any](arr []T, block func(index int, it T) bool) int {
+	for index, it := range arr {
+		if block(index, it) {
+			return index
+		}
+	}
+	return -1
 }
 
 //go:norace
