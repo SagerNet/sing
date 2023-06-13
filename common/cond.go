@@ -130,6 +130,15 @@ func Find[T any](arr []T, block func(it T) bool) T {
 	return DefaultValue[T]()
 }
 
+func FindIndexed[T any](arr []T, block func(index int, it T) bool) T {
+	for i, it := range arr {
+		if block(i, it) {
+			return it
+		}
+	}
+	return DefaultValue[T]()
+}
+
 //go:norace
 func Dup[T any](obj T) T {
 	if UnsafeBuffer {
