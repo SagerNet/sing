@@ -60,7 +60,7 @@ func (c *ServerConn) loopInput() {
 	for {
 		var destination M.Socksaddr
 		var err error
-		if !c.isConnect {
+		if c.isConnect {
 			destination = c.destination
 		} else {
 			destination, err = AddrParser.ReadAddrPort(c.inputReader)
