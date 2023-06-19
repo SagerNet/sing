@@ -89,15 +89,18 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 	return c.WriteTo(b, c.remoteAddr)
 }
 
-func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
-	destination, err := c.NetPacketConn.ReadPacket(buffer)
+func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	destination, err = c.NetPacketConn.ReadPacket(buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
 	c.remoteAddr = destination
 	buffer.Advance(3)
-	dest, err := M.SocksaddrSerializer.ReadAddrPort(buffer)
-	return dest, err
+	destination, err = M.SocksaddrSerializer.ReadAddrPort(buffer)
+	if err != nil {
+		return
+	}
+	return destination.Unwrap(), nil
 }
 
 func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
