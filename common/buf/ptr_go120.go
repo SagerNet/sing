@@ -1,4 +1,4 @@
-//go:build !disable_unsafe && go1.21
+//go:build !disable_unsafe && !go1.21
 
 package buf
 
@@ -23,7 +23,7 @@ func init() {
 	if !common.UnsafeBuffer {
 		return
 	}
-	debugVars := *(*[]*dbgVar)(unsafe.Pointer(&dbgvars))
+	debugVars := *(*[]dbgVar)(unsafe.Pointer(&dbgvars))
 	for _, v := range debugVars {
 		if v.name == "invalidptr" {
 			*v.value = 0
