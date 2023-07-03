@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 )
@@ -53,9 +52,7 @@ func (c *ServerConn) loopInput() {
 		c.isConnect = request.IsConnect
 		c.destination = request.Destination
 	}
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewPacket()
 	defer buffer.Release()
 	for {
 		var destination M.Socksaddr
@@ -95,9 +92,7 @@ func (c *ServerConn) loopInput() {
 
 //warn:unsafe
 func (c *ServerConn) loopOutput() {
-	_buffer := buf.StackNew()
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewPacket()
 	defer buffer.Release()
 	for {
 		buffer.FullReset()

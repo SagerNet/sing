@@ -71,20 +71,7 @@ func CopyExtended(originDestination io.Writer, destination N.ExtendedWriter, sou
 			return
 		}
 	}
-	if !common.UnsafeBuffer || N.IsUnsafeWriter(destination) {
-		return CopyExtendedWithPool(originDestination, destination, source, readCounters, writeCounters)
-	}
-	bufferSize := N.CalculateMTU(source, destination)
-	if bufferSize > 0 {
-		bufferSize += headroom
-	} else {
-		bufferSize = buf.BufferSize
-	}
-	_buffer := buf.StackNewSize(bufferSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	return CopyExtendedBuffer(originDestination, destination, source, buffer, readCounters, writeCounters)
+	return CopyExtendedWithPool(originDestination, destination, source, readCounters, writeCounters)
 }
 
 func CopyExtendedBuffer(originDestination io.Writer, destination N.ExtendedWriter, source N.ExtendedReader, buffer *buf.Buffer, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
@@ -291,49 +278,7 @@ func CopyPacket(destinationConn N.PacketWriter, source N.PacketReader) (n int64,
 			return
 		}
 	}
-	if N.IsUnsafeWriter(destinationConn) {
-		return CopyPacketWithPool(destinationConn, source, readCounters, writeCounters)
-	}
-	bufferSize := N.CalculateMTU(source, destinationConn)
-	if bufferSize > 0 {
-		bufferSize += headroom
-	} else {
-		bufferSize = buf.UDPBufferSize
-	}
-	_buffer := buf.StackNewSize(bufferSize)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
-	defer buffer.Release()
-	buffer.IncRef()
-	defer buffer.DecRef()
-	var destination M.Socksaddr
-	var notFirstTime bool
-	readBufferRaw := buffer.Slice()
-	readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-	for {
-		readBuffer.Resize(frontHeadroom, 0)
-		destination, err = source.ReadPacket(readBuffer)
-		if err != nil {
-			if !notFirstTime {
-				err = N.HandshakeFailure(destinationConn, err)
-			}
-			return
-		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
-		err = destinationConn.WritePacket(buffer, destination)
-		if err != nil {
-			return
-		}
-		n += int64(dataLen)
-		for _, counter := range readCounters {
-			counter(int64(dataLen))
-		}
-		for _, counter := range writeCounters {
-			counter(int64(dataLen))
-		}
-		notFirstTime = true
-	}
+	return CopyPacketWithPool(destinationConn, source, readCounters, writeCounters)
 }
 
 func CopyPacketWithSrcBuffer(destinationConn N.PacketWriter, source N.ThreadSafePacketReader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {

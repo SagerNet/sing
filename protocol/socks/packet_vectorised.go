@@ -40,9 +40,7 @@ func NewVectorisedAssociateConn(conn net.Conn, writer N.VectorisedWriter, remote
 }
 
 func (v *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
-	_header := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
-	defer common.KeepAlive(_header)
-	header := common.Dup(_header)
+	header := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
 	defer header.Release()
 	common.Must(header.WriteZeroN(3))
 	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))

@@ -54,41 +54,19 @@ func NewSize(size int) *Buffer {
 	}
 }
 
+// Deprecated: use New instead.
 func StackNew() *Buffer {
-	if common.UnsafeBuffer {
-		return &Buffer{
-			data:  make([]byte, BufferSize),
-			start: ReversedHeader,
-			end:   ReversedHeader,
-		}
-	} else {
-		return New()
-	}
+	return New()
 }
 
+// Deprecated: use NewPacket instead.
 func StackNewPacket() *Buffer {
-	if common.UnsafeBuffer {
-		return &Buffer{
-			data:  make([]byte, UDPBufferSize),
-			start: ReversedHeader,
-			end:   ReversedHeader,
-		}
-	} else {
-		return NewPacket()
-	}
+	return NewPacket()
 }
 
+// Deprecated: use NewSize instead.
 func StackNewSize(size int) *Buffer {
-	if size == 0 {
-		return &Buffer{}
-	}
-	if common.UnsafeBuffer {
-		return &Buffer{
-			data: Make(size),
-		}
-	} else {
-		return NewSize(size)
-	}
+	return NewSize(size)
 }
 
 func As(data []byte) *Buffer {

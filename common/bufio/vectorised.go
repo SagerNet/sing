@@ -74,9 +74,7 @@ func (w *BufferedVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error 
 	if bufferLen > 65535 {
 		bufferBytes = make([]byte, bufferLen)
 	} else {
-		_buffer := buf.StackNewSize(bufferLen)
-		defer common.KeepAlive(_buffer)
-		buffer := common.Dup(_buffer)
+		buffer := buf.NewSize(bufferLen)
 		defer buffer.Release()
 		bufferBytes = buffer.FreeBytes()
 	}

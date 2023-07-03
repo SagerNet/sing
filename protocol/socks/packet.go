@@ -64,9 +64,7 @@ func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err erro
 //warn:unsafe
 func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	destination := M.SocksaddrFromNet(addr)
-	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination) + len(p))
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination) + len(p))
 	defer buffer.Release()
 	common.Must(buffer.WriteZeroN(3))
 	err = M.SocksaddrSerializer.WriteAddrPort(buffer, destination)

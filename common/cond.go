@@ -159,20 +159,14 @@ func IndexIndexed[T any](arr []T, block func(index int, it T) bool) int {
 
 //go:norace
 func Dup[T any](obj T) T {
-	if UnsafeBuffer {
-		pointer := uintptr(unsafe.Pointer(&obj))
-		//nolint:staticcheck
-		//goland:noinspection GoVetUnsafePointer
-		return *(*T)(unsafe.Pointer(pointer))
-	} else {
-		return obj
-	}
+	pointer := uintptr(unsafe.Pointer(&obj))
+	//nolint:staticcheck
+	//goland:noinspection GoVetUnsafePointer
+	return *(*T)(unsafe.Pointer(pointer))
 }
 
 func KeepAlive(obj any) {
-	if UnsafeBuffer {
-		runtime.KeepAlive(obj)
-	}
+	runtime.KeepAlive(obj)
 }
 
 func Uniq[T comparable](arr []T) []T {

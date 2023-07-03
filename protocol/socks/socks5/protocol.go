@@ -48,9 +48,7 @@ type AuthRequest struct {
 }
 
 func WriteAuthRequest(writer io.Writer, request AuthRequest) error {
-	_buffer := buf.StackNewSize(len(request.Methods) + 2)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(len(request.Methods) + 2)
 	defer buffer.Release()
 	common.Must(
 		buffer.WriteByte(Version),
@@ -120,9 +118,7 @@ type UsernamePasswordAuthRequest struct {
 }
 
 func WriteUsernamePasswordAuthRequest(writer io.Writer, request UsernamePasswordAuthRequest) error {
-	_buffer := buf.StackNewSize(3 + len(request.Username) + len(request.Password))
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(3 + len(request.Username) + len(request.Password))
 	defer buffer.Release()
 	common.Must(
 		buffer.WriteByte(1),
@@ -191,9 +187,7 @@ type Request struct {
 }
 
 func WriteRequest(writer io.Writer, request Request) error {
-	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(request.Destination))
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(request.Destination))
 	defer buffer.Release()
 	common.Must(
 		buffer.WriteByte(Version),
@@ -244,9 +238,7 @@ func WriteResponse(writer io.Writer, response Response) error {
 		bind.Addr = netip.IPv4Unspecified()
 	}
 
-	_buffer := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(bind))
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(bind))
 	defer buffer.Release()
 	common.Must(
 		buffer.WriteByte(Version),
