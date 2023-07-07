@@ -23,6 +23,7 @@ func (e *multiError) Unwrap() []error {
 func Errors(errors ...error) error {
 	errors = common.FilterNotNil(errors)
 	errors = ExpandAll(errors)
+	errors = common.FilterNotNil(errors)
 	errors = common.UniqBy(errors, error.Error)
 	switch len(errors) {
 	case 0:
