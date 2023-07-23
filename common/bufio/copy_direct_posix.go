@@ -15,7 +15,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter, source N.ReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handled bool, n int64, err error) {
+func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handled bool, n int64, err error) {
 	handled = true
 	frontHeadroom := N.CalculateFrontHeadroom(destination)
 	rearHeadroom := N.CalculateRearHeadroom(destination)
@@ -45,9 +45,6 @@ func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter,
 				err = nil
 				return
 			}
-			if !notFirstTime {
-				err = N.HandshakeFailure(originDestination, err)
-			}
 			return
 		}
 		dataLen := readBuffer.Len()
@@ -55,6 +52,9 @@ func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter,
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
 			buffer.Release()
+			if !notFirstTime {
+				err = N.HandshakeFailure(originSource, err)
+			}
 			return
 		}
 		n += int64(dataLen)
@@ -68,7 +68,7 @@ func copyWaitWithPool(originDestination io.Writer, destination N.ExtendedWriter,
 	}
 }
 
-func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handled bool, n int64, err error) {
+func copyPacketWaitWithPool(originSource N.PacketReader, destinationConn N.PacketWriter, source N.PacketReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc, notFirstTime bool) (handled bool, n int64, err error) {
 	handled = true
 	frontHeadroom := N.CalculateFrontHeadroom(destinationConn)
 	rearHeadroom := N.CalculateRearHeadroom(destinationConn)
@@ -79,10 +79,9 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		bufferSize = buf.UDPBufferSize
 	}
 	var (
-		buffer       *buf.Buffer
-		readBuffer   *buf.Buffer
-		destination  M.Socksaddr
-		notFirstTime bool
+		buffer      *buf.Buffer
+		readBuffer  *buf.Buffer
+		destination M.Socksaddr
 	)
 	source.InitializeReadWaiter(func() *buf.Buffer {
 		buffer = buf.NewSize(bufferSize)
@@ -95,9 +94,6 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 	for {
 		destination, err = source.WaitReadPacket()
 		if err != nil {
-			if !notFirstTime {
-				err = N.HandshakeFailure(destinationConn, err)
-			}
 			return
 		}
 		dataLen := readBuffer.Len()
@@ -105,6 +101,9 @@ func copyPacketWaitWithPool(destinationConn N.PacketWriter, source N.PacketReadW
 		err = destinationConn.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Release()
+			if !notFirstTime {
+				err = N.HandshakeFailure(originSource, err)
+			}
 			return
 		}
 		n += int64(dataLen)
