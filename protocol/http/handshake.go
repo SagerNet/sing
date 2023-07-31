@@ -28,6 +28,11 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			return E.Cause(err, "read http request")
 		}
 
+		if hostStr := request.Header.Get("Host"); hostStr != "" {
+			request.Host = hostStr
+			request.URL.Host = hostStr
+		}
+
 		if authenticator != nil {
 			var authOk bool
 			authorization := request.Header.Get("Proxy-Authorization")
