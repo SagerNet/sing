@@ -252,7 +252,6 @@ func CopyPacket(destinationConn N.PacketWriter, source N.PacketReader) (n int64,
 	if cachedPackets != nil {
 		n, err = WritePacketWithPool(originSource, destinationConn, cachedPackets)
 		if err != nil {
-			println("err in write cached packets")
 			return
 		}
 	}
