@@ -28,11 +28,6 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			return E.Cause(err, "read http request")
 		}
 
-		if hostStr := request.Header.Get("Host"); hostStr != "" {
-			request.Host = hostStr
-			request.URL.Host = hostStr
-		}
-
 		if authenticator != nil {
 			var authOk bool
 			authorization := request.Header.Get("Proxy-Authorization")
@@ -88,6 +83,12 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 
 		removeHopByHopHeaders(request.Header)
 		removeExtraHTTPHostPort(request)
+
+		if hostStr := request.Header.Get("Host"); hostStr != "" {
+			if hostStr != request.URL.Host {
+				request.Host = hostStr
+			}
+		}
 
 		if request.URL.Scheme == "" || request.URL.Host == "" {
 			return responseWith(request, http.StatusBadRequest).Write(conn)
