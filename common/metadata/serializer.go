@@ -51,7 +51,7 @@ func NewSerializer(options ...SerializerOption) *Serializer {
 func (s *Serializer) WriteAddress(buffer *buf.Buffer, addr Socksaddr) error {
 	var af Family
 	if !addr.IsValid() {
-		af = AddressFamilyFqdn
+		af = AddressFamilyEmpty
 	} else if addr.IsIPv4() {
 		af = AddressFamilyIPv4
 	} else if addr.IsIPv6() {
@@ -67,9 +67,10 @@ func (s *Serializer) WriteAddress(buffer *buf.Buffer, addr Socksaddr) error {
 	if err != nil {
 		return err
 	}
-	if addr.Addr.IsValid() {
+	switch af {
+	case AddressFamilyIPv4, AddressFamilyIPv6:
 		_, err = buffer.Write(addr.Addr.AsSlice())
-	} else {
+	case AddressFamilyFqdn:
 		err = WriteSocksString(buffer, addr.Fqdn)
 	}
 	return err
@@ -77,12 +78,7 @@ func (s *Serializer) WriteAddress(buffer *buf.Buffer, addr Socksaddr) error {
 
 func (s *Serializer) AddressLen(addr Socksaddr) int {
 	if !addr.IsValid() {
-		_, supportEmpty := s.familyByteMap[AddressFamilyEmpty]
-		if supportEmpty {
-			return 1
-		} else {
-			return 2
-		}
+		return 1
 	} else if addr.IsIPv4() {
 		return 5
 	} else if addr.IsIPv6() {
@@ -113,7 +109,7 @@ func (s *Serializer) WriteAddrPort(writer io.Writer, destination Socksaddr) erro
 	}
 	if s.portFirst {
 		err = s.WriteAddress(buffer, destination)
-	} else {
+	} else if destination.IsValid() {
 		err = s.WritePort(buffer, destination.Port)
 	}
 	if err != nil {
@@ -126,7 +122,11 @@ func (s *Serializer) WriteAddrPort(writer io.Writer, destination Socksaddr) erro
 }
 
 func (s *Serializer) AddrPortLen(destination Socksaddr) int {
-	return s.AddressLen(destination) + 2
+	if destination.IsValid() {
+		return s.AddressLen(destination) + 2
+	} else {
+		return s.AddressLen(destination)
+	}
 }
 
 func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
@@ -184,7 +184,7 @@ func (s *Serializer) ReadAddrPort(reader io.Reader) (destination Socksaddr, err 
 	}
 	if s.portFirst {
 		addr, err = s.ReadAddress(reader)
-	} else {
+	} else if addr.IsValid() {
 		port, err = s.ReadPort(reader)
 	}
 	if err != nil {
