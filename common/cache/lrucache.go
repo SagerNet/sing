@@ -258,6 +258,14 @@ func (c *LruCache[K, V]) Delete(key K) {
 	c.mu.Unlock()
 }
 
+func (c *LruCache[K, V]) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for element := c.lru.Front(); element != nil; element = element.Next() {
+		c.deleteElement(element)
+	}
+}
+
 func (c *LruCache[K, V]) maybeDeleteOldest() {
 	if !c.staleReturn && c.maxAge > 0 {
 		now := time.Now().Unix()
