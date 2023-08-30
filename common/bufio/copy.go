@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"reflect"
 	"syscall"
 
 	"github.com/sagernet/sing/common"
@@ -291,6 +292,9 @@ func CopyPacketWithSrcBuffer(originSource N.PacketReader, destinationConn N.Pack
 		buffer, destination, err = source.ReadPacketThreadSafe()
 		if err != nil {
 			return
+		}
+		if buffer == nil {
+			panic("nil buffer returned from " + reflect.TypeOf(source).String())
 		}
 		dataLen := buffer.Len()
 		if dataLen == 0 {
