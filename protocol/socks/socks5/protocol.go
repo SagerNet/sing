@@ -193,8 +193,11 @@ func WriteRequest(writer io.Writer, request Request) error {
 		buffer.WriteByte(Version),
 		buffer.WriteByte(request.Command),
 		buffer.WriteZero(),
-		M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination),
 	)
+	err := M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination)
+	if err != nil {
+		return err
+	}
 	return rw.WriteBytes(writer, buffer.Bytes())
 }
 
@@ -244,8 +247,11 @@ func WriteResponse(writer io.Writer, response Response) error {
 		buffer.WriteByte(Version),
 		buffer.WriteByte(response.ReplyCode),
 		buffer.WriteZero(),
-		M.SocksaddrSerializer.WriteAddrPort(buffer, bind),
 	)
+	err := M.SocksaddrSerializer.WriteAddrPort(buffer, bind)
+	if err != nil {
+		return err
+	}
 	return rw.WriteBytes(writer, buffer.Bytes())
 }
 

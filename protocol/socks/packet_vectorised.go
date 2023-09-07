@@ -43,7 +43,10 @@ func (v *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buf
 	header := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
 	defer header.Release()
 	common.Must(header.WriteZeroN(3))
-	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
+	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
+	if err != nil {
+		return err
+	}
 	return v.VectorisedPacketWriter.WriteVectorisedPacket(append([]*buf.Buffer{header}, buffers...), destination)
 }
 

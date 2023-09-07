@@ -30,7 +30,11 @@ func NewLazyConn(conn net.Conn, request Request) *Conn {
 
 func (c *LazyClientConn) Write(p []byte) (n int, err error) {
 	if !c.requestWritten {
-		request := EncodeRequest(c.request)
+		var request *buf.Buffer
+		request, err = EncodeRequest(c.request)
+		if err != nil {
+			return
+		}
 		err = c.writer.WriteVectorised([]*buf.Buffer{request, buf.As(p)})
 		if err != nil {
 			return
@@ -43,8 +47,12 @@ func (c *LazyClientConn) Write(p []byte) (n int, err error) {
 
 func (c *LazyClientConn) WriteVectorised(buffers []*buf.Buffer) error {
 	if !c.requestWritten {
-		request := EncodeRequest(c.request)
-		err := c.writer.WriteVectorised(append([]*buf.Buffer{request}, buffers...))
+		request, err := EncodeRequest(c.request)
+		if err != nil {
+			return err
+		}
+
+		err = c.writer.WriteVectorised(append([]*buf.Buffer{request}, buffers...))
 		c.requestWritten = true
 		return err
 	}

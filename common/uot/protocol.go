@@ -51,20 +51,25 @@ func ReadRequest(reader io.Reader) (*Request, error) {
 	return &request, nil
 }
 
-func EncodeRequest(request Request) *buf.Buffer {
+func EncodeRequest(request Request) (*buf.Buffer, error) {
 	var bufferLen int
 	bufferLen += 1 // isConnect
 	bufferLen += M.SocksaddrSerializer.AddrPortLen(request.Destination)
 	buffer := buf.NewSize(bufferLen)
-	common.Must(
-		binary.Write(buffer, binary.BigEndian, request.IsConnect),
-		M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination),
-	)
-	return buffer
+	common.Must(binary.Write(buffer, binary.BigEndian, request.IsConnect))
+	err := M.SocksaddrSerializer.WriteAddrPort(buffer, request.Destination)
+	if err != nil {
+		buffer.Release()
+		return nil, err
+	}
+	return buffer, nil
 }
 
 func WriteRequest(writer io.Writer, request Request) error {
-	buffer := EncodeRequest(request)
+	buffer, err := EncodeRequest(request)
+	if err != nil {
+		return err
+	}
 	defer buffer.Release()
 	return common.Error(writer.Write(buffer.Bytes()))
 }
