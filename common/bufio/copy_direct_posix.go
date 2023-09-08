@@ -53,7 +53,7 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -102,7 +102,7 @@ func copyPacketWaitWithPool(originSource N.PacketReader, destinationConn N.Packe
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}

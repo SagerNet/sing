@@ -98,7 +98,7 @@ func CopyExtendedBuffer(originSource io.Writer, destination N.ExtendedWriter, so
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -130,7 +130,7 @@ func CopyExtendedWithSrcBuffer(originSource io.Reader, destination N.ExtendedWri
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -175,7 +175,7 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -304,7 +304,7 @@ func CopyPacketWithSrcBuffer(originSource N.PacketReader, destinationConn N.Pack
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -345,7 +345,7 @@ func CopyPacketWithPool(originSource N.PacketReader, destinationConn N.PacketWri
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
@@ -381,7 +381,7 @@ func WritePacketWithPool(originSource N.PacketReader, destinationConn N.PacketWr
 		if err != nil {
 			buffer.Release()
 			if !notFirstTime {
-				err = N.HandshakeFailure(originSource, err)
+				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
 		}
