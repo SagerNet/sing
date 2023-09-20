@@ -15,9 +15,12 @@ func BindToInterface(finder InterfaceFinder, interfaceName string, interfaceInde
 	}
 }
 
-func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, address string) (interfaceName string, interfaceIndex int)) Func {
+func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, address string) (interfaceName string, interfaceIndex int, err error)) Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		interfaceName, interfaceIndex := block(network, address)
+		interfaceName, interfaceIndex, err := block(network, address)
+		if err != nil {
+			return err
+		}
 		return BindToInterface0(finder, conn, network, address, interfaceName, interfaceIndex)
 	}
 }
@@ -25,10 +28,10 @@ func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, addr
 const useInterfaceName = runtime.GOOS == "linux" || runtime.GOOS == "android"
 
 func BindToInterface0(finder InterfaceFinder, conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
-	if addr := M.ParseSocksaddr(address).Addr; addr.IsValid() && N.IsVirtual(addr) {
+	if interfaceName == "" && interfaceIndex == -1 {
 		return nil
 	}
-	if interfaceName == "" && interfaceIndex == -1 {
+	if addr := M.ParseSocksaddr(address).Addr; addr.IsValid() && N.IsVirtual(addr) {
 		return nil
 	}
 	if interfaceName != "" && useInterfaceName || interfaceIndex != -1 && !useInterfaceName {
