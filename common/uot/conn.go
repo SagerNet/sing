@@ -58,7 +58,7 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		err = E.Cause(io.ErrShortBuffer, "UoT read")
 		return
 	}
-	n, err = c.Conn.Read(p[:length])
+	n, err = io.ReadFull(c.Conn, p[:length])
 	if err == nil {
 		addr = destination.UDPAddr()
 	}
