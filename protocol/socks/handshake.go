@@ -110,6 +110,16 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		}
 		switch request.Command {
 		case socks4.CommandConnect:
+			if authenticator != nil && !authenticator.Verify(request.Username, "") {
+				err = socks4.WriteResponse(conn, socks4.Response{
+					ReplyCode:   socks4.ReplyCodeRejectedOrFailed,
+					Destination: request.Destination,
+				})
+				if err != nil {
+					return err
+				}
+				return E.New("socks4: authentication failed, username=", request.Username)
+			}
 			err = socks4.WriteResponse(conn, socks4.Response{
 				ReplyCode:   socks4.ReplyCodeGranted,
 				Destination: M.SocksaddrFromNet(conn.LocalAddr()),
