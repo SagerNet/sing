@@ -171,6 +171,9 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			if err != nil {
 				return err
 			}
+			if response.Status != socks5.UsernamePasswordStatusSuccess {
+				return E.New("socks5: authentication failed, username=", usernamePasswordAuthRequest.Username, ", password=", usernamePasswordAuthRequest.Password)
+			}
 		}
 		request, err := socks5.ReadRequest(conn)
 		if err != nil {
