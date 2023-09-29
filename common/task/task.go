@@ -88,9 +88,11 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 
 	selectedContext, upstreamErr := common.SelectContext(append([]context.Context{taskCancelContext}, contextList...))
 	if selectedContext != 0 {
+		errorAccess.Lock()
 		returnError = E.Append(returnError, upstreamErr, func(err error) error {
 			return E.Cause(err, "upstream")
 		})
+		errorAccess.Unlock()
 	}
 
 	if g.cleanup != nil {
