@@ -21,7 +21,6 @@ import (
 type Handler = N.TCPConnectionHandler
 
 func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
-	var httpClient *http.Client
 	for {
 		request, err := ReadRequest(reader)
 		if err != nil {
@@ -95,28 +94,26 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		}
 
 		var innerErr error
-		if httpClient == nil {
-			httpClient = &http.Client{
-				Transport: &http.Transport{
-					DisableCompression: true,
-					DialContext: func(context context.Context, network, address string) (net.Conn, error) {
-						metadata.Destination = M.ParseSocksaddr(address)
-						metadata.Protocol = "http"
-						input, output := net.Pipe()
-						go func() {
-							hErr := handler.NewConnection(ctx, output, metadata)
-							if hErr != nil {
-								innerErr = hErr
-								common.Close(input, output)
-							}
-						}()
-						return input, nil
-					},
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				DisableCompression: true,
+				DialContext: func(context context.Context, network, address string) (net.Conn, error) {
+					metadata.Destination = M.ParseSocksaddr(address)
+					metadata.Protocol = "http"
+					input, output := net.Pipe()
+					go func() {
+						hErr := handler.NewConnection(ctx, output, metadata)
+						if hErr != nil {
+							innerErr = hErr
+							common.Close(input, output)
+						}
+					}()
+					return input, nil
 				},
-				CheckRedirect: func(req *http.Request, via []*http.Request) error {
-					return http.ErrUseLastResponse
-				},
-			}
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		}
 
 		response, err := httpClient.Do(request)
@@ -138,6 +135,8 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		if err != nil {
 			return E.Errors(innerErr, err)
 		}
+
+		httpClient.CloseIdleConnections()
 
 		if !keepAlive {
 			return conn.Close()
