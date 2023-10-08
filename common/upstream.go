@@ -1,7 +1,13 @@
 package common
 
+import "net"
+
 type WithUpstream interface {
 	Upstream() any
+}
+
+type stdWithUpstreamNetConn interface {
+	NetConn() net.Conn
 }
 
 func Cast[T any](obj any) (T, bool) {
@@ -10,6 +16,9 @@ func Cast[T any](obj any) (T, bool) {
 	}
 	if u, ok := obj.(WithUpstream); ok {
 		return Cast[T](u.Upstream())
+	}
+	if u, ok := obj.(stdWithUpstreamNetConn); ok {
+		return Cast[T](u.NetConn())
 	}
 	return DefaultValue[T](), false
 }
