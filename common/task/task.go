@@ -56,7 +56,7 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 	}
 
 	taskContext, taskFinish := common.ContextWithCancelCause(context.Background())
-	taskCancelContext, taskCancel := common.ContextWithCancelCause(context.Background())
+	taskCancelContext, taskCancel := common.ContextWithCancelCause(contextList[0])
 
 	var errorAccess sync.Mutex
 	var returnError error
@@ -87,10 +87,6 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 	}
 
 	selectedContext, upstreamErr := common.SelectContext(append([]context.Context{taskCancelContext}, contextList...))
-
-	if selectedContext == 0 {
-		taskCancel(upstreamErr)
-	}
 
 	if g.cleanup != nil {
 		g.cleanup()
