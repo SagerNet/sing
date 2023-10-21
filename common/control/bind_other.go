@@ -4,6 +4,6 @@ package control
 
 import "syscall"
 
-func bindToInterface(conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
+func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int) error {
 	return nil
 }

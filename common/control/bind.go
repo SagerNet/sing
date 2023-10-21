@@ -1,10 +1,9 @@
 package control
 
 import (
-	"os"
-	"runtime"
 	"syscall"
 
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -25,38 +24,12 @@ func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, addr
 	}
 }
 
-const useInterfaceName = runtime.GOOS == "linux" || runtime.GOOS == "android"
-
 func BindToInterface0(finder InterfaceFinder, conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
 	if interfaceName == "" && interfaceIndex == -1 {
-		return nil
+		return E.New("interface not found: ", interfaceName)
 	}
 	if addr := M.ParseSocksaddr(address).Addr; addr.IsValid() && N.IsVirtual(addr) {
 		return nil
 	}
-	if interfaceName != "" && useInterfaceName || interfaceIndex != -1 && !useInterfaceName {
-		return bindToInterface(conn, network, address, interfaceName, interfaceIndex)
-	}
-	if finder == nil {
-		return os.ErrInvalid
-	}
-	var err error
-	if useInterfaceName {
-		interfaceName, err = finder.InterfaceNameByIndex(interfaceIndex)
-	} else {
-		interfaceIndex, err = finder.InterfaceIndexByName(interfaceName)
-	}
-	if err != nil {
-		return err
-	}
-	if useInterfaceName {
-		if interfaceName == "" {
-			return nil
-		}
-	} else {
-		if interfaceIndex == -1 {
-			return nil
-		}
-	}
-	return bindToInterface(conn, network, address, interfaceName, interfaceIndex)
+	return bindToInterface(conn, network, address, finder, interfaceName, interfaceIndex)
 }
