@@ -78,7 +78,10 @@ func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	buffer := buf.NewSize(bufferLen)
 	defer buffer.Release()
 	if !c.isConnect {
-		common.Must(AddrParser.WriteAddrPort(buffer, destination))
+		err = AddrParser.WriteAddrPort(buffer, destination)
+		if err != nil {
+			return
+		}
 	}
 	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(p))))
 	if c.writer == nil {
@@ -125,7 +128,10 @@ func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	header := buf.NewSize(headerLen)
 	defer header.Release()
 	if !c.isConnect {
-		common.Must(AddrParser.WriteAddrPort(header, destination))
+		err := AddrParser.WriteAddrPort(header, destination)
+		if err != nil {
+			return err
+		}
 	}
 	common.Must(binary.Write(header, binary.BigEndian, uint16(buffer.Len())))
 	if c.writer == nil {
