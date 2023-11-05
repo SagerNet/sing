@@ -154,6 +154,16 @@ func (m *defaultManager) MkdirAll(path string, perm os.FileMode) error {
 	return nil
 }
 
+func (m *defaultManager) Remove(path string) error {
+	path = m.BasePath(path)
+	return os.Remove(path)
+}
+
+func (m *defaultManager) RemoveAll(path string) error {
+	path = m.BasePath(path)
+	return os.RemoveAll(path)
+}
+
 func fixRootDirectory(p string) string {
 	if len(p) == len(`\\?\c:`) {
 		if os.IsPathSeparator(p[0]) && os.IsPathSeparator(p[1]) && p[2] == '?' && os.IsPathSeparator(p[3]) && p[5] == ':' {
