@@ -22,3 +22,10 @@ func MustCast[T any](obj any) T {
 	}
 	return value
 }
+
+func Top(obj any) any {
+	if u, ok := obj.(WithUpstream); ok {
+		return Top(u.Upstream())
+	}
+	return obj
+}
