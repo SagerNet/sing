@@ -12,6 +12,7 @@ type Manager interface {
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	Create(name string) (*os.File, error)
 	CreateTemp(pattern string) (*os.File, error)
+	Chown(name string) error
 	Mkdir(path string, perm os.FileMode) error
 	MkdirAll(path string, perm os.FileMode) error
 	Remove(path string) error
@@ -48,6 +49,14 @@ func CreateTemp(ctx context.Context, pattern string) (*os.File, error) {
 		return os.CreateTemp("", pattern)
 	}
 	return manager.CreateTemp(pattern)
+}
+
+func Chown(ctx context.Context, name string) error {
+	manager := service.FromContext[Manager](ctx)
+	if manager == nil {
+		return nil
+	}
+	return manager.Chown(name)
 }
 
 func Mkdir(ctx context.Context, path string, perm os.FileMode) error {
