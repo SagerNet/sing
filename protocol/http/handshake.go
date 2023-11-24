@@ -21,6 +21,7 @@ import (
 type Handler = N.TCPConnectionHandler
 
 func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+	var httpClient *http.Client
 	for {
 		request, err := ReadRequest(reader)
 		if err != nil {
@@ -94,30 +95,33 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		}
 
 		var innerErr error
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				DisableCompression: true,
-				DialContext: func(context context.Context, network, address string) (net.Conn, error) {
-					metadata.Destination = M.ParseSocksaddr(address)
-					metadata.Protocol = "http"
-					input, output := net.Pipe()
-					go func() {
-						hErr := handler.NewConnection(ctx, output, metadata)
-						if hErr != nil {
-							innerErr = hErr
-							common.Close(input, output)
-						}
-					}()
-					return input, nil
+		if httpClient == nil {
+			httpClient = &http.Client{
+				Transport: &http.Transport{
+					DisableCompression: true,
+					DialContext: func(context context.Context, network, address string) (net.Conn, error) {
+						metadata.Destination = M.ParseSocksaddr(address)
+						metadata.Protocol = "http"
+						input, output := net.Pipe()
+						go func() {
+							hErr := handler.NewConnection(ctx, output, metadata)
+							if hErr != nil {
+								innerErr = hErr
+								common.Close(input, output)
+							}
+						}()
+						return input, nil
+					},
 				},
-			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}
 		}
-
-		response, err := httpClient.Do(request)
+		requestCtx, cancel := context.WithCancel(ctx)
+		response, err := httpClient.Do(request.WithContext(requestCtx))
 		if err != nil {
+			cancel()
 			return E.Errors(innerErr, err, responseWith(request, http.StatusBadGateway).Write(conn))
 		}
 
@@ -133,10 +137,11 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 
 		err = response.Write(conn)
 		if err != nil {
+			cancel()
 			return E.Errors(innerErr, err)
 		}
 
-		httpClient.CloseIdleConnections()
+		cancel()
 
 		if !keepAlive {
 			return conn.Close()
