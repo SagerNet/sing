@@ -30,7 +30,7 @@ func (c *ChunkReader) ReadBuffer(buffer *buf.Buffer) error {
 	} else if !c.cache.IsEmpty() {
 		return common.Error(buffer.ReadFrom(c.cache))
 	}
-	c.cache.FullReset()
+	c.cache.Reset()
 	err := c.upstream.ReadBuffer(c.cache)
 	if err != nil {
 		c.cache.Release()
@@ -46,7 +46,7 @@ func (c *ChunkReader) Read(p []byte) (n int, err error) {
 	} else if !c.cache.IsEmpty() {
 		return c.cache.Read(p)
 	}
-	c.cache.FullReset()
+	c.cache.Reset()
 	err = c.upstream.ReadBuffer(c.cache)
 	if err != nil {
 		c.cache.Release()
@@ -70,7 +70,7 @@ func (c *ChunkReader) ReadChunk() (*buf.Buffer, error) {
 	} else if !c.cache.IsEmpty() {
 		return c.cache, nil
 	}
-	c.cache.FullReset()
+	c.cache.Reset()
 	err := c.upstream.ReadBuffer(c.cache)
 	if err != nil {
 		c.cache.Release()
