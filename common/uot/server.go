@@ -77,7 +77,7 @@ func (c *ServerConn) loopInput() {
 		if err != nil {
 			break
 		}
-		buffer.FullReset()
+		buffer.Reset()
 		_, err = buffer.ReadFullFrom(c.inputReader, int(length))
 		if err != nil {
 			break
@@ -95,7 +95,7 @@ func (c *ServerConn) loopOutput() {
 	buffer := buf.NewPacket()
 	defer buffer.Release()
 	for {
-		buffer.FullReset()
+		buffer.Reset()
 		n, addr, err := buffer.ReadPacketFrom(c)
 		if err != nil {
 			break
