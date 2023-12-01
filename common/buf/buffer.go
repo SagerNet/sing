@@ -11,8 +11,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
-const ReversedHeader = 1024
-
 type Buffer struct {
 	data    []byte
 	start   int
@@ -25,8 +23,6 @@ type Buffer struct {
 func New() *Buffer {
 	return &Buffer{
 		data:    Get(BufferSize),
-		start:   ReversedHeader,
-		end:     ReversedHeader,
 		managed: true,
 	}
 }
@@ -34,8 +30,6 @@ func New() *Buffer {
 func NewPacket() *Buffer {
 	return &Buffer{
 		data:    Get(UDPBufferSize),
-		start:   ReversedHeader,
-		end:     ReversedHeader,
 		managed: true,
 	}
 }
@@ -277,13 +271,13 @@ func (b *Buffer) Resize(start, end int) {
 }
 
 func (b *Buffer) Reset() {
-	b.start = ReversedHeader
-	b.end = ReversedHeader
-}
-
-func (b *Buffer) FullReset() {
 	b.start = 0
 	b.end = 0
+}
+
+// Deprecated: use Reset instead.
+func (b *Buffer) FullReset() {
+	b.Reset()
 }
 
 func (b *Buffer) IncRef() {
