@@ -14,18 +14,18 @@ type Conn struct {
 	reader Reader
 }
 
-func NewConn(conn net.Conn) *Conn {
+func NewConn(conn net.Conn) N.ExtendedConn {
 	if deadlineConn, isDeadline := conn.(*Conn); isDeadline {
 		return deadlineConn
 	}
-	return &Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewReader(conn)}
+	return NewSerialConn(&Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewReader(conn)})
 }
 
-func NewFallbackConn(conn net.Conn) *Conn {
+func NewFallbackConn(conn net.Conn) N.ExtendedConn {
 	if deadlineConn, isDeadline := conn.(*Conn); isDeadline {
 		return deadlineConn
 	}
-	return &Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewFallbackReader(conn)}
+	return NewSerialConn(&Conn{ExtendedConn: bufio.NewExtendedConn(conn), reader: NewFallbackReader(conn)})
 }
 
 func (c *Conn) Read(p []byte) (n int, err error) {
