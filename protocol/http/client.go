@@ -81,6 +81,10 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 		}
 	}
 	for key, valueList := range c.headers {
+		if key == "Host" {
+			request.Host = valueList[0]
+			continue
+		}
 		request.Header.Set(key, valueList[0])
 		for _, value := range valueList[1:] {
 			request.Header.Add(key, value)
