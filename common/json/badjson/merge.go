@@ -8,7 +8,7 @@ import (
 	"github.com/sagernet/sing/common/json"
 )
 
-func MergeOptions[T any](source T, destination T) (T, error) {
+func Merge[T any](source T, destination T) (T, error) {
 	rawSource, err := json.Marshal(source)
 	if err != nil {
 		return common.DefaultValue[T](), E.Cause(err, "marshal source")
@@ -27,6 +27,27 @@ func MergeOptions[T any](source T, destination T) (T, error) {
 		return common.DefaultValue[T](), E.Cause(err, "unmarshal merged options")
 	}
 	return merged, nil
+}
+
+func Omitempty[T any](value T) (T, error) {
+	objectContent, err := json.Marshal(value)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal object")
+	}
+	rawNewObject, err := Decode(objectContent)
+	if err != nil {
+		return common.DefaultValue[T](), err
+	}
+	newObjectContent, err := json.Marshal(rawNewObject)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal new object")
+	}
+	var newObject T
+	err = json.Unmarshal(newObjectContent, &newObject)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "unmarshal new object")
+	}
+	return newObject, nil
 }
 
 func MergeJSON(rawSource json.RawMessage, rawDestination json.RawMessage) (json.RawMessage, error) {
