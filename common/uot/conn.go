@@ -13,11 +13,17 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
+var (
+	_ N.NetPacketConn    = (*Conn)(nil)
+	_ N.PacketReadWaiter = (*Conn)(nil)
+)
+
 type Conn struct {
 	net.Conn
 	isConnect   bool
 	destination M.Socksaddr
 	writer      N.VectorisedWriter
+	newBuffer   func() *buf.Buffer
 }
 
 func NewConn(conn net.Conn, request Request) *Conn {
@@ -139,6 +145,33 @@ func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 		return common.Error(c.Conn.Write(header.Bytes()))
 	}
 	return c.writer.WriteVectorised([]*buf.Buffer{header, buffer})
+}
+
+func (c *Conn) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
+	c.newBuffer = newBuffer
+}
+
+func (c *Conn) WaitReadPacket() (destination M.Socksaddr, err error) {
+	if c.isConnect {
+		destination = c.destination
+	} else {
+		destination, err = AddrParser.ReadAddrPort(c.Conn)
+		if err != nil {
+			return
+		}
+	}
+	var length uint16
+	err = binary.Read(c.Conn, binary.BigEndian, &length)
+	if err != nil {
+		return
+	}
+	buffer := c.newBuffer()
+	_, err = buffer.ReadFullFrom(c.Conn, int(length))
+	if err != nil {
+		buffer.Release()
+		return M.Socksaddr{}, E.Cause(err, "UoT read")
+	}
+	return
 }
 
 func (c *Conn) NeedAdditionalReadDeadline() bool {
