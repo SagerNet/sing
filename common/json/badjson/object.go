@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"strings"
 
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
+	"github.com/sagernet/sing/common/x/collections"
 	"github.com/sagernet/sing/common/x/linkedhashmap"
 )
 
@@ -16,7 +18,12 @@ type JSONObject struct {
 func (m JSONObject) MarshalJSON() ([]byte, error) {
 	buffer := new(bytes.Buffer)
 	buffer.WriteString("{")
-	items := m.Entries()
+	items := common.Filter(m.Entries(), func(it collections.MapEntry[string, any]) bool {
+		if valueObject, valueIsJSONObject := it.Value.(*JSONObject); valueIsJSONObject && valueObject.IsEmpty() {
+			return false
+		}
+		return true
+	})
 	iLen := len(items)
 	for i, entry := range items {
 		keyContent, err := json.Marshal(entry.Key)
