@@ -1,8 +1,10 @@
-//go:build !go1.20 || without_contextjson
+//go:build !go1.21 && go1.20 && !without_contextjson
 
 package json
 
-import "encoding/json"
+import (
+	"github.com/sagernet/sing/common/json/internal/contextjson_120"
+)
 
 var (
 	Marshal    = json.Marshal
