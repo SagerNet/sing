@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"os"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -21,10 +20,10 @@ var (
 
 type Conn struct {
 	net.Conn
-	isConnect   bool
-	destination M.Socksaddr
-	writer      N.VectorisedWriter
-	newBuffer   func() *buf.Buffer
+	isConnect       bool
+	destination     M.Socksaddr
+	writer          N.VectorisedWriter
+	readWaitOptions N.ReadWaitOptions
 }
 
 func NewConn(conn net.Conn, request Request) *Conn {
@@ -146,36 +145,6 @@ func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 		return common.Error(c.Conn.Write(header.Bytes()))
 	}
 	return c.writer.WriteVectorised([]*buf.Buffer{header, buffer})
-}
-
-func (c *Conn) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	c.newBuffer = newBuffer
-}
-
-func (c *Conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
-	if c.newBuffer == nil {
-		return nil, M.Socksaddr{}, os.ErrInvalid
-	}
-	if c.isConnect {
-		destination = c.destination
-	} else {
-		destination, err = AddrParser.ReadAddrPort(c.Conn)
-		if err != nil {
-			return
-		}
-	}
-	var length uint16
-	err = binary.Read(c.Conn, binary.BigEndian, &length)
-	if err != nil {
-		return
-	}
-	buffer = c.newBuffer()
-	_, err = buffer.ReadFullFrom(c.Conn, int(length))
-	if err != nil {
-		buffer.Release()
-		return nil, M.Socksaddr{}, E.Cause(err, "UoT read")
-	}
-	return
 }
 
 func (c *Conn) NeedAdditionalReadDeadline() bool {

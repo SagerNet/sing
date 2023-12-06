@@ -24,8 +24,8 @@ type AssociatePacketReadWaiter struct {
 	readWaiter N.PacketReadWaiter
 }
 
-func (w *AssociatePacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	w.readWaiter.InitializeReadWaiter(newBuffer)
+func (w *AssociatePacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
 }
 
 func (w *AssociatePacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
