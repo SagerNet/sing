@@ -8,14 +8,16 @@ import (
 	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
+	F "github.com/sagernet/sing/common/format"
 )
 
 type Buffer struct {
 	data    []byte
 	start   int
 	end     int
-	refs    int32
+	refs    atomic.Int32
 	managed bool
 	closed  bool
 }
@@ -281,22 +283,38 @@ func (b *Buffer) FullReset() {
 }
 
 func (b *Buffer) IncRef() {
-	atomic.AddInt32(&b.refs, 1)
+	b.refs.Add(1)
 }
 
 func (b *Buffer) DecRef() {
-	atomic.AddInt32(&b.refs, -1)
+	b.refs.Add(-1)
 }
 
 func (b *Buffer) Release() {
 	if b == nil || b.closed || !b.managed {
 		return
 	}
-	if atomic.LoadInt32(&b.refs) > 0 {
+	if b.refs.Load() > 0 {
 		return
 	}
 	common.Must(Put(b.data))
 	*b = Buffer{closed: true}
+}
+
+func (b *Buffer) Leak() {
+	if debug.Enabled {
+		if b == nil || b.closed || !b.managed {
+			return
+		}
+		refs := b.refs.Load()
+		if refs == 0 {
+			panic("leaking buffer")
+		} else {
+			panic(F.ToString("leaking buffer with ", refs, " references"))
+		}
+	} else {
+		b.Release()
+	}
 }
 
 func (b *Buffer) Cut(start int, end int) *Buffer {

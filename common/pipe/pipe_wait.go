@@ -11,8 +11,9 @@ import (
 
 var _ N.ReadWaiter = (*pipe)(nil)
 
-func (p *pipe) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	p.newBuffer = newBuffer
+func (p *pipe) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	p.readWaitOptions = options
+	return false
 }
 
 func (p *pipe) WaitReadBuffer() (buffer *buf.Buffer, err error) {
@@ -32,15 +33,17 @@ func (p *pipe) waitReadBuffer() (buffer *buf.Buffer, err error) {
 	case isClosedChan(p.readDeadline.wait()):
 		return nil, os.ErrDeadlineExceeded
 	}
+	var readBuffer *buf.Buffer
 	select {
 	case bw := <-p.rdRx:
-		buffer = p.newBuffer()
+		buffer, readBuffer = p.readWaitOptions.NewBuffer()
 		var nr int
-		nr, err = buffer.Write(bw)
+		nr, err = readBuffer.Write(bw)
 		if err != nil {
 			buffer.Release()
 			return
 		}
+		buffer.Resize(readBuffer.Start(), readBuffer.Len())
 		p.rdTx <- nr
 		return
 	case <-p.localDone:

@@ -12,8 +12,8 @@ type BindPacketReadWaiter struct {
 	readWaiter N.PacketReadWaiter
 }
 
-func (w *BindPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	w.readWaiter.InitializeReadWaiter(newBuffer)
+func (w *BindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
 }
 
 func (w *BindPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
@@ -28,8 +28,8 @@ type UnbindPacketReadWaiter struct {
 	addr       M.Socksaddr
 }
 
-func (w *UnbindPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	w.readWaiter.InitializeReadWaiter(newBuffer)
+func (w *UnbindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
 }
 
 func (w *UnbindPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {

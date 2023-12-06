@@ -107,22 +107,16 @@ type packet struct {
 	destination M.Socksaddr
 }
 
-type conn struct {
-	ctx        context.Context
-	cancel     common.ContextCancelCauseFunc
-	data       chan packet
-	localAddr  M.Socksaddr
-	remoteAddr M.Socksaddr
-	source     N.PacketWriter
-}
+var _ N.PacketConn = (*conn)(nil)
 
-func (c *conn) ReadPacketThreadSafe() (buffer *buf.Buffer, addr M.Socksaddr, err error) {
-	select {
-	case p := <-c.data:
-		return p.data, p.destination, nil
-	case <-c.ctx.Done():
-		return nil, M.Socksaddr{}, io.ErrClosedPipe
-	}
+type conn struct {
+	ctx             context.Context
+	cancel          common.ContextCancelCauseFunc
+	data            chan packet
+	localAddr       M.Socksaddr
+	remoteAddr      M.Socksaddr
+	source          N.PacketWriter
+	readWaitOptions N.ReadWaitOptions
 }
 
 func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
@@ -136,35 +130,8 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	}
 }
 
-func (c *conn) WaitReadPacket(newBuffer func() *buf.Buffer) (destination M.Socksaddr, err error) {
-	select {
-	case p := <-c.data:
-		_, err = newBuffer().ReadOnceFrom(p.data)
-		p.data.Release()
-		return p.destination, err
-	case <-c.ctx.Done():
-		return M.Socksaddr{}, io.ErrClosedPipe
-	}
-}
-
 func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return c.source.WritePacket(buffer, destination)
-}
-
-func (c *conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	select {
-	case pkt := <-c.data:
-		n = copy(p, pkt.data.Bytes())
-		pkt.data.Release()
-		addr = pkt.destination.UDPAddr()
-		return n, addr, nil
-	case <-c.ctx.Done():
-		return 0, nil, io.ErrClosedPipe
-	}
-}
-
-func (c *conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	return len(p), c.source.WritePacket(buf.As(p).ToOwned(), M.SocksaddrFromNet(addr))
 }
 
 func (c *conn) Close() error {
