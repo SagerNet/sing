@@ -39,7 +39,7 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 	})
 	defer source.InitializeReadWaiter(nil)
 	for {
-		err = source.WaitReadBuffer()
+		_, err = source.WaitReadBuffer()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				err = nil
@@ -92,7 +92,7 @@ func copyPacketWaitWithPool(originSource N.PacketReader, destinationConn N.Packe
 	})
 	defer source.InitializeReadWaiter(nil)
 	for {
-		destination, err = source.WaitReadPacket()
+		_, destination, err = source.WaitReadPacket()
 		if err != nil {
 			return
 		}
@@ -123,6 +123,7 @@ type syscallReadWaiter struct {
 	rawConn  syscall.RawConn
 	readErr  error
 	readFunc func(fd uintptr) (done bool)
+	buffer   *buf.Buffer
 }
 
 func createSyscallReadWaiter(reader any) (*syscallReadWaiter, bool) {
@@ -156,26 +157,29 @@ func (w *syscallReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
 			if readN == 0 {
 				w.readErr = io.EOF
 			}
+			w.buffer = buffer
 			return true
 		}
 	}
 }
 
-func (w *syscallReadWaiter) WaitReadBuffer() error {
+func (w *syscallReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
 	if w.readFunc == nil {
-		return os.ErrInvalid
+		return nil, os.ErrInvalid
 	}
-	err := w.rawConn.Read(w.readFunc)
+	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
-		return err
+		return
 	}
 	if w.readErr != nil {
 		if w.readErr == io.EOF {
-			return io.EOF
+			return nil, io.EOF
 		}
-		return E.Cause(w.readErr, "raw read")
+		return nil, E.Cause(w.readErr, "raw read")
 	}
-	return nil
+	buffer = w.buffer
+	w.buffer = nil
+	return
 }
 
 var _ N.PacketReadWaiter = (*syscallPacketReadWaiter)(nil)
@@ -185,6 +189,7 @@ type syscallPacketReadWaiter struct {
 	readErr  error
 	readFrom M.Socksaddr
 	readFunc func(fd uintptr) (done bool)
+	buffer   *buf.Buffer
 }
 
 func createSyscallPacketReadWaiter(reader any) (*syscallPacketReadWaiter, bool) {
@@ -225,14 +230,15 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buf
 					w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
 				}
 			}
+			w.buffer = buffer
 			return true
 		}
 	}
 }
 
-func (w *syscallPacketReadWaiter) WaitReadPacket() (destination M.Socksaddr, err error) {
+func (w *syscallPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
 	if w.readFunc == nil {
-		return M.Socksaddr{}, os.ErrInvalid
+		return nil, M.Socksaddr{}, os.ErrInvalid
 	}
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
@@ -242,6 +248,8 @@ func (w *syscallPacketReadWaiter) WaitReadPacket() (destination M.Socksaddr, err
 		err = E.Cause(w.readErr, "raw read")
 		return
 	}
+	buffer = w.buffer
+	w.buffer = nil
 	destination = w.readFrom
 	return
 }
