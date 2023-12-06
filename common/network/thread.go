@@ -10,11 +10,15 @@ type ThreadUnsafeWriter interface {
 	WriteIsThreadUnsafe()
 }
 
+// Deprecated: Use ReadWaiter interface instead.
 type ThreadSafeReader interface {
+	// Deprecated: Use ReadWaiter interface instead.
 	ReadBufferThreadSafe() (buffer *buf.Buffer, err error)
 }
 
+// Deprecated: Use ReadWaiter interface instead.
 type ThreadSafePacketReader interface {
+	// Deprecated: Use ReadWaiter interface instead.
 	ReadPacketThreadSafe() (buffer *buf.Buffer, addr M.Socksaddr, err error)
 }
 
@@ -23,6 +27,7 @@ func IsUnsafeWriter(writer any) bool {
 	return isUnsafe
 }
 
+// Deprecated: Use ReadWaiter interface instead.
 func IsSafeReader(reader any) ThreadSafeReader {
 	if safeReader, isSafe := reader.(ThreadSafeReader); isSafe {
 		return safeReader
@@ -39,6 +44,7 @@ func IsSafeReader(reader any) ThreadSafeReader {
 	return nil
 }
 
+// Deprecated: Use ReadWaiter interface instead.
 func IsSafePacketReader(reader any) ThreadSafePacketReader {
 	if safeReader, isSafe := reader.(ThreadSafePacketReader); isSafe {
 		return safeReader

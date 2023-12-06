@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sagernet/sing/common/buf"
+	N "github.com/sagernet/sing/common/network"
 )
 
 // pipeDeadline is an abstraction for handling timeouts.
@@ -107,7 +107,7 @@ type pipe struct {
 	readDeadline  pipeDeadline
 	writeDeadline pipeDeadline
 
-	newBuffer func() *buf.Buffer
+	readWaitOptions N.ReadWaitOptions
 }
 
 // Pipe creates a synchronous, in-memory, full duplex

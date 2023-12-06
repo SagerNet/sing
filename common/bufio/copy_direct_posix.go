@@ -17,29 +17,12 @@ import (
 
 func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handled bool, n int64, err error) {
 	handled = true
-	frontHeadroom := N.CalculateFrontHeadroom(destination)
-	rearHeadroom := N.CalculateRearHeadroom(destination)
-	bufferSize := N.CalculateMTU(source, destination)
-	if bufferSize > 0 {
-		bufferSize += frontHeadroom + rearHeadroom
-	} else {
-		bufferSize = buf.BufferSize
-	}
 	var (
 		buffer       *buf.Buffer
-		readBuffer   *buf.Buffer
 		notFirstTime bool
 	)
-	source.InitializeReadWaiter(func() *buf.Buffer {
-		buffer = buf.NewSize(bufferSize)
-		readBufferRaw := buffer.Slice()
-		readBuffer = buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-		readBuffer.Resize(frontHeadroom, 0)
-		return readBuffer
-	})
-	defer source.InitializeReadWaiter(nil)
 	for {
-		_, err = source.WaitReadBuffer()
+		buffer, err = source.WaitReadBuffer()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				err = nil
@@ -47,11 +30,10 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 			}
 			return
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
-			buffer.Release()
+			buffer.Leak()
 			if !notFirstTime {
 				err = N.ReportHandshakeFailure(originSource, err)
 			}
@@ -70,37 +52,19 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 
 func copyPacketWaitWithPool(originSource N.PacketReader, destinationConn N.PacketWriter, source N.PacketReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc, notFirstTime bool) (handled bool, n int64, err error) {
 	handled = true
-	frontHeadroom := N.CalculateFrontHeadroom(destinationConn)
-	rearHeadroom := N.CalculateRearHeadroom(destinationConn)
-	bufferSize := N.CalculateMTU(source, destinationConn)
-	if bufferSize > 0 {
-		bufferSize += frontHeadroom + rearHeadroom
-	} else {
-		bufferSize = buf.UDPBufferSize
-	}
 	var (
 		buffer      *buf.Buffer
-		readBuffer  *buf.Buffer
 		destination M.Socksaddr
 	)
-	source.InitializeReadWaiter(func() *buf.Buffer {
-		buffer = buf.NewSize(bufferSize)
-		readBufferRaw := buffer.Slice()
-		readBuffer = buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-		readBuffer.Resize(frontHeadroom, 0)
-		return readBuffer
-	})
-	defer source.InitializeReadWaiter(nil)
 	for {
-		_, destination, err = source.WaitReadPacket()
+		buffer, destination, err = source.WaitReadPacket()
 		if err != nil {
 			return
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
 		err = destinationConn.WritePacket(buffer, destination)
 		if err != nil {
-			buffer.Release()
+			buffer.Leak()
 			if !notFirstTime {
 				err = N.ReportHandshakeFailure(originSource, err)
 			}
@@ -124,6 +88,7 @@ type syscallReadWaiter struct {
 	readErr  error
 	readFunc func(fd uintptr) (done bool)
 	buffer   *buf.Buffer
+	options  N.ReadWaitOptions
 }
 
 func createSyscallReadWaiter(reader any) (*syscallReadWaiter, bool) {
@@ -136,31 +101,28 @@ func createSyscallReadWaiter(reader any) (*syscallReadWaiter, bool) {
 	return nil, false
 }
 
-func (w *syscallReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	w.readErr = nil
-	if newBuffer == nil {
-		w.readFunc = nil
-	} else {
-		w.readFunc = func(fd uintptr) (done bool) {
-			buffer := newBuffer()
-			var readN int
-			readN, w.readErr = syscall.Read(int(fd), buffer.FreeBytes())
-			if readN > 0 {
-				buffer.Truncate(readN)
-			} else {
-				buffer.Release()
-				buffer = nil
-			}
-			if w.readErr == syscall.EAGAIN {
-				return false
-			}
-			if readN == 0 {
-				w.readErr = io.EOF
-			}
-			w.buffer = buffer
-			return true
+func (w *syscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	w.options = options
+	w.readFunc = func(fd uintptr) (done bool) {
+		buffer, readBuffer := w.options.NewBuffer()
+		var readN int
+		readN, w.readErr = syscall.Read(int(fd), readBuffer.FreeBytes())
+		if readN > 0 {
+			buffer.Resize(readBuffer.Start(), readN)
+		} else {
+			buffer.Release()
+			buffer = nil
 		}
+		if w.readErr == syscall.EAGAIN {
+			return false
+		}
+		if readN == 0 {
+			w.readErr = io.EOF
+		}
+		w.buffer = buffer
+		return true
 	}
+	return false
 }
 
 func (w *syscallReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
@@ -190,6 +152,7 @@ type syscallPacketReadWaiter struct {
 	readFrom M.Socksaddr
 	readFunc func(fd uintptr) (done bool)
 	buffer   *buf.Buffer
+	options  N.ReadWaitOptions
 }
 
 func createSyscallPacketReadWaiter(reader any) (*syscallPacketReadWaiter, bool) {
@@ -202,38 +165,34 @@ func createSyscallPacketReadWaiter(reader any) (*syscallPacketReadWaiter, bool) 
 	return nil, false
 }
 
-func (w *syscallPacketReadWaiter) InitializeReadWaiter(newBuffer func() *buf.Buffer) {
-	w.readErr = nil
-	w.readFrom = M.Socksaddr{}
-	if newBuffer == nil {
-		w.readFunc = nil
-	} else {
-		w.readFunc = func(fd uintptr) (done bool) {
-			buffer := newBuffer()
-			var readN int
-			var from syscall.Sockaddr
-			readN, _, _, from, w.readErr = syscall.Recvmsg(int(fd), buffer.FreeBytes(), nil, 0)
-			if readN > 0 {
-				buffer.Truncate(readN)
-			} else {
-				buffer.Release()
-				buffer = nil
-			}
-			if w.readErr == syscall.EAGAIN {
-				return false
-			}
-			if from != nil {
-				switch fromAddr := from.(type) {
-				case *syscall.SockaddrInet4:
-					w.readFrom = M.SocksaddrFrom(netip.AddrFrom4(fromAddr.Addr), uint16(fromAddr.Port))
-				case *syscall.SockaddrInet6:
-					w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
-				}
-			}
-			w.buffer = buffer
-			return true
+func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	w.options = options
+	w.readFunc = func(fd uintptr) (done bool) {
+		buffer, readBuffer := w.options.NewPacketBuffer()
+		var readN int
+		var from syscall.Sockaddr
+		readN, _, _, from, w.readErr = syscall.Recvmsg(int(fd), readBuffer.FreeBytes(), nil, 0)
+		if readN > 0 {
+			buffer.Resize(readBuffer.Start(), readN)
+		} else {
+			buffer.Release()
+			buffer = nil
 		}
+		if w.readErr == syscall.EAGAIN {
+			return false
+		}
+		if from != nil {
+			switch fromAddr := from.(type) {
+			case *syscall.SockaddrInet4:
+				w.readFrom = M.SocksaddrFrom(netip.AddrFrom4(fromAddr.Addr), uint16(fromAddr.Port))
+			case *syscall.SockaddrInet6:
+				w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
+			}
+		}
+		w.buffer = buffer
+		return true
 	}
+	return false
 }
 
 func (w *syscallPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
