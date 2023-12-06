@@ -7,6 +7,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -16,6 +17,8 @@ import (
 // +----+------+------+----------+----------+----------+
 // | 2  |  1   |  1   | Variable |    2     | Variable |
 // +----+------+------+----------+----------+----------+
+
+var ErrInvalidPacket = E.New("socks5: invalid packet")
 
 type AssociatePacketConn struct {
 	N.NetPacketConn
@@ -31,6 +34,7 @@ func NewAssociatePacketConn(conn net.PacketConn, remoteAddr M.Socksaddr, underly
 	}
 }
 
+// Deprecated: NewAssociatePacketConn(bufio.NewUnbindPacketConn(conn), remoteAddr, underlying) instead.
 func NewAssociateConn(conn net.Conn, remoteAddr M.Socksaddr, underlying net.Conn) *AssociatePacketConn {
 	return &AssociatePacketConn{
 		NetPacketConn: bufio.NewUnbindPacketConn(conn),
@@ -48,6 +52,9 @@ func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err erro
 	n, addr, err = c.NetPacketConn.ReadFrom(p)
 	if err != nil {
 		return
+	}
+	if n < 3 {
+		return 0, nil, ErrInvalidPacket
 	}
 	c.remoteAddr = M.SocksaddrFromNet(addr)
 	reader := bytes.NewReader(p[3:n])
@@ -91,6 +98,9 @@ func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Sock
 	destination, err = c.NetPacketConn.ReadPacket(buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
+	}
+	if buffer.Len() < 3 {
+		return M.Socksaddr{}, ErrInvalidPacket
 	}
 	c.remoteAddr = destination
 	buffer.Advance(3)
