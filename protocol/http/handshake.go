@@ -16,6 +16,7 @@ import (
 	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/pipe"
 )
 
 type Handler = N.TCPConnectionHandler
@@ -102,7 +103,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 					DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 						metadata.Destination = M.ParseSocksaddr(address)
 						metadata.Protocol = "http"
-						input, output := net.Pipe()
+						input, output := pipe.Pipe()
 						go func() {
 							hErr := handler.NewConnection(ctx, output, metadata)
 							if hErr != nil {
