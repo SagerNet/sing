@@ -81,12 +81,11 @@ func CopyExtendedBuffer(originSource io.Writer, destination N.ExtendedWriter, so
 	defer buffer.DecRef()
 	frontHeadroom := N.CalculateFrontHeadroom(destination)
 	rearHeadroom := N.CalculateRearHeadroom(destination)
-	readBufferRaw := buffer.Slice()
-	readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
+	buffer.Resize(frontHeadroom, 0)
+	buffer.Reserve(rearHeadroom)
 	var notFirstTime bool
 	for {
-		readBuffer.Resize(frontHeadroom, 0)
-		err = source.ReadBuffer(readBuffer)
+		err = source.ReadBuffer(buffer)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				err = nil
@@ -94,8 +93,8 @@ func CopyExtendedBuffer(originSource io.Writer, destination N.ExtendedWriter, so
 			}
 			return
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
+		buffer.OverCap(rearHeadroom)
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
 			if !notFirstTime {
@@ -126,10 +125,9 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 	var notFirstTime bool
 	for {
 		buffer := buf.NewSize(bufferSize)
-		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-		readBuffer.Resize(frontHeadroom, 0)
-		err = source.ReadBuffer(readBuffer)
+		buffer.Resize(frontHeadroom, 0)
+		buffer.Reserve(rearHeadroom)
+		err = source.ReadBuffer(buffer)
 		if err != nil {
 			buffer.Release()
 			if errors.Is(err, io.EOF) {
@@ -138,8 +136,8 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			}
 			return
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
+		buffer.OverCap(rearHeadroom)
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
 			buffer.Leak()
@@ -263,16 +261,15 @@ func CopyPacketWithPool(originSource N.PacketReader, destinationConn N.PacketWri
 	var destination M.Socksaddr
 	for {
 		buffer := buf.NewSize(bufferSize)
-		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-		readBuffer.Resize(frontHeadroom, 0)
-		destination, err = source.ReadPacket(readBuffer)
+		buffer.Resize(frontHeadroom, 0)
+		buffer.Reserve(rearHeadroom)
+		destination, err = source.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
 			return
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
+		buffer.OverCap(rearHeadroom)
 		err = destinationConn.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Leak()
