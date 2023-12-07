@@ -45,7 +45,7 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 		dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
 		if srcIsSyscall && dstIsSyscall {
 			var handled bool
-			handled, n, err = CopyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
+			handled, n, err = copyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
 			if handled {
 				return
 			}
