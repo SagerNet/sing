@@ -104,22 +104,22 @@ func createSyscallReadWaiter(reader any) (*syscallReadWaiter, bool) {
 func (w *syscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	w.options = options
 	w.readFunc = func(fd uintptr) (done bool) {
-		buffer, readBuffer := w.options.NewBuffer()
+		buffer := w.options.NewBuffer()
 		var readN int
-		readN, w.readErr = syscall.Read(int(fd), readBuffer.FreeBytes())
+		readN, w.readErr = syscall.Read(int(fd), buffer.FreeBytes())
 		if readN > 0 {
-			buffer.Resize(readBuffer.Start(), readN)
+			buffer.Truncate(readN)
+			w.options.PostReturn(buffer)
+			w.buffer = buffer
 		} else {
 			buffer.Release()
-			buffer = nil
 		}
 		if w.readErr == syscall.EAGAIN {
 			return false
 		}
-		if readN == 0 {
+		if readN == 0 && w.readErr == nil {
 			w.readErr = io.EOF
 		}
-		w.buffer = buffer
 		return true
 	}
 	return false
@@ -168,15 +168,16 @@ func createSyscallPacketReadWaiter(reader any) (*syscallPacketReadWaiter, bool) 
 func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	w.options = options
 	w.readFunc = func(fd uintptr) (done bool) {
-		buffer, readBuffer := w.options.NewPacketBuffer()
+		buffer := w.options.NewPacketBuffer()
 		var readN int
 		var from syscall.Sockaddr
-		readN, _, _, from, w.readErr = syscall.Recvmsg(int(fd), readBuffer.FreeBytes(), nil, 0)
+		readN, _, _, from, w.readErr = syscall.Recvmsg(int(fd), buffer.FreeBytes(), nil, 0)
 		if readN > 0 {
-			buffer.Resize(readBuffer.Start(), readN)
+			buffer.Truncate(readN)
+			w.options.PostReturn(buffer)
+			w.buffer = buffer
 		} else {
 			buffer.Release()
-			buffer = nil
 		}
 		if w.readErr == syscall.EAGAIN {
 			return false
@@ -189,7 +190,6 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions
 				w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
 			}
 		}
-		w.buffer = buffer
 		return true
 	}
 	return false

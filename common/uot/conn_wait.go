@@ -28,13 +28,12 @@ func (c *Conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, er
 	if err != nil {
 		return
 	}
-	var readBuffer *buf.Buffer
-	buffer, readBuffer = c.readWaitOptions.NewPacketBuffer()
-	_, err = readBuffer.ReadFullFrom(c.Conn, int(length))
+	buffer = c.readWaitOptions.NewPacketBuffer()
+	_, err = buffer.ReadFullFrom(c.Conn, int(length))
 	if err != nil {
 		buffer.Release()
 		return nil, M.Socksaddr{}, E.Cause(err, "UoT read")
 	}
-	buffer.Resize(readBuffer.Start(), readBuffer.Len())
+	c.readWaitOptions.PostReturn(buffer)
 	return
 }

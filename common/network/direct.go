@@ -19,30 +19,35 @@ func (o ReadWaitOptions) NeedHeadroom() bool {
 	return o.FrontHeadroom > 0 || o.RearHeadroom > 0
 }
 
-func (o ReadWaitOptions) NewBuffer() (buffer *buf.Buffer, readBuffer *buf.Buffer) {
+func (o ReadWaitOptions) NewBuffer() *buf.Buffer {
 	return o.newBuffer(buf.BufferSize)
 }
 
-func (o ReadWaitOptions) NewPacketBuffer() (buffer *buf.Buffer, readBuffer *buf.Buffer) {
+func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
 	return o.newBuffer(buf.UDPBufferSize)
 }
 
-func (o ReadWaitOptions) newBuffer(defaultBufferSize int) (buffer *buf.Buffer, readBuffer *buf.Buffer) {
+func (o ReadWaitOptions) newBuffer(defaultBufferSize int) *buf.Buffer {
 	var bufferSize int
 	if o.MTU > 0 {
 		bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
 	} else {
 		bufferSize = defaultBufferSize
 	}
-	buffer = buf.NewSize(bufferSize)
-	if o.RearHeadroom > 0 {
-		readBufferRaw := buffer.Slice()
-		readBuffer = buf.With(readBufferRaw[:len(readBufferRaw)-o.RearHeadroom])
-	} else {
-		readBuffer = buffer
+	buffer := buf.NewSize(bufferSize)
+	if o.FrontHeadroom > 0 {
+		buffer.Resize(o.FrontHeadroom, 0)
 	}
-	readBuffer.Resize(o.FrontHeadroom, 0)
-	return
+	if o.RearHeadroom > 0 {
+		buffer.Reserve(o.RearHeadroom)
+	}
+	return buffer
+}
+
+func (o ReadWaitOptions) PostReturn(buffer *buf.Buffer) {
+	if o.RearHeadroom > 0 {
+		buffer.OverCap(o.RearHeadroom)
+	}
 }
 
 type ReadWaiter interface {
