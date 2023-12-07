@@ -33,17 +33,16 @@ func (p *pipe) waitReadBuffer() (buffer *buf.Buffer, err error) {
 	case isClosedChan(p.readDeadline.wait()):
 		return nil, os.ErrDeadlineExceeded
 	}
-	var readBuffer *buf.Buffer
 	select {
 	case bw := <-p.rdRx:
-		buffer, readBuffer = p.readWaitOptions.NewBuffer()
+		buffer = p.readWaitOptions.NewBuffer()
 		var nr int
-		nr, err = readBuffer.Write(bw)
+		nr, err = buffer.Write(bw)
 		if err != nil {
 			buffer.Release()
 			return
 		}
-		buffer.Resize(readBuffer.Start(), readBuffer.Len())
+		p.readWaitOptions.PostReturn(buffer)
 		p.rdTx <- nr
 		return
 	case <-p.localDone:

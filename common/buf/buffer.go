@@ -4,35 +4,36 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
-	"strconv"
-	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
 )
 
 type Buffer struct {
-	data    []byte
-	start   int
-	end     int
-	refs    atomic.Int32
-	managed bool
-	closed  bool
+	data     []byte
+	start    int
+	end      int
+	capacity int
+	refs     atomic.Int32
+	managed  bool
 }
 
 func New() *Buffer {
 	return &Buffer{
-		data:    Get(BufferSize),
-		managed: true,
+		data:     Get(BufferSize),
+		capacity: BufferSize,
+		managed:  true,
 	}
 }
 
 func NewPacket() *Buffer {
 	return &Buffer{
-		data:    Get(UDPBufferSize),
-		managed: true,
+		data:     Get(UDPBufferSize),
+		capacity: UDPBufferSize,
+		managed:  true,
 	}
 }
 
@@ -41,40 +42,29 @@ func NewSize(size int) *Buffer {
 		return &Buffer{}
 	} else if size > 65535 {
 		return &Buffer{
-			data: make([]byte, size),
+			data:     make([]byte, size),
+			capacity: size,
 		}
 	}
 	return &Buffer{
-		data:    Get(size),
-		managed: true,
+		data:     Get(size),
+		capacity: size,
+		managed:  true,
 	}
-}
-
-// Deprecated: use New instead.
-func StackNew() *Buffer {
-	return New()
-}
-
-// Deprecated: use NewPacket instead.
-func StackNewPacket() *Buffer {
-	return NewPacket()
-}
-
-// Deprecated: use NewSize instead.
-func StackNewSize(size int) *Buffer {
-	return NewSize(size)
 }
 
 func As(data []byte) *Buffer {
 	return &Buffer{
-		data: data,
-		end:  len(data),
+		data:     data,
+		end:      len(data),
+		capacity: len(data),
 	}
 }
 
 func With(data []byte) *Buffer {
 	return &Buffer{
-		data: data,
+		data:     data,
+		capacity: len(data),
 	}
 }
 
@@ -88,8 +78,8 @@ func (b *Buffer) SetByte(index int, value byte) {
 
 func (b *Buffer) Extend(n int) []byte {
 	end := b.end + n
-	if end > cap(b.data) {
-		panic("buffer overflow: cap " + strconv.Itoa(cap(b.data)) + ",end " + strconv.Itoa(b.end) + ", need " + strconv.Itoa(n))
+	if end > b.capacity {
+		panic(F.ToString("buffer overflow: capacity ", b.capacity, ",end ", b.end, ", need ", n))
 	}
 	ext := b.data[b.end:end]
 	b.end = end
@@ -111,14 +101,14 @@ func (b *Buffer) Write(data []byte) (n int, err error) {
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
-	n = copy(b.data[b.end:], data)
+	n = copy(b.data[b.end:b.capacity], data)
 	b.end += n
 	return
 }
 
 func (b *Buffer) ExtendHeader(n int) []byte {
 	if b.start < n {
-		panic("buffer overflow: cap " + strconv.Itoa(cap(b.data)) + ",start " + strconv.Itoa(b.start) + ", need " + strconv.Itoa(n))
+		panic(F.ToString("buffer overflow: capacity ", b.capacity, ",start ", b.start, ", need ", n))
 	}
 	b.start -= n
 	return b.data[b.start : b.start+n]
@@ -171,7 +161,7 @@ func (b *Buffer) ReadAtLeastFrom(r io.Reader, min int) (int64, error) {
 }
 
 func (b *Buffer) ReadFullFrom(r io.Reader, size int) (n int, err error) {
-	if b.end+size > b.Cap() {
+	if b.end+size > b.capacity {
 		return 0, io.ErrShortBuffer
 	}
 	n, err = io.ReadFull(r, b.data[b.end:b.end+size])
@@ -208,7 +198,7 @@ func (b *Buffer) WriteString(s string) (n int, err error) {
 	if b.IsFull() {
 		return 0, io.ErrShortBuffer
 	}
-	n = copy(b.data[b.end:], s)
+	n = copy(b.data[b.end:b.capacity], s)
 	b.end += n
 	return
 }
@@ -223,7 +213,7 @@ func (b *Buffer) WriteZero() error {
 }
 
 func (b *Buffer) WriteZeroN(n int) error {
-	if b.end+n > b.Cap() {
+	if b.end+n > b.capacity {
 		return io.ErrShortBuffer
 	}
 	for i := b.end; i < b.end+n; i++ {
@@ -272,9 +262,24 @@ func (b *Buffer) Resize(start, end int) {
 	b.end = b.start + end
 }
 
+func (b *Buffer) Reserve(n int) {
+	if n > b.capacity {
+		panic(F.ToString("buffer overflow: capacity ", b.capacity, ", need ", n))
+	}
+	b.capacity -= n
+}
+
+func (b *Buffer) OverCap(n int) {
+	if b.capacity+n > len(b.data) {
+		panic(F.ToString("buffer overflow: capacity ", len(b.data), ", need ", b.capacity+n))
+	}
+	b.capacity += n
+}
+
 func (b *Buffer) Reset() {
 	b.start = 0
 	b.end = 0
+	b.capacity = len(b.data)
 }
 
 // Deprecated: use Reset instead.
@@ -291,19 +296,19 @@ func (b *Buffer) DecRef() {
 }
 
 func (b *Buffer) Release() {
-	if b == nil || b.closed || !b.managed {
+	if b == nil || !b.managed {
 		return
 	}
 	if b.refs.Load() > 0 {
 		return
 	}
 	common.Must(Put(b.data))
-	*b = Buffer{closed: true}
+	*b = Buffer{}
 }
 
 func (b *Buffer) Leak() {
 	if debug.Enabled {
-		if b == nil || b.closed || !b.managed {
+		if b == nil || !b.managed {
 			return
 		}
 		refs := b.refs.Load()
@@ -314,14 +319,6 @@ func (b *Buffer) Leak() {
 		}
 	} else {
 		b.Release()
-	}
-}
-
-func (b *Buffer) Cut(start int, end int) *Buffer {
-	b.start += start
-	b.end = len(b.data) - end
-	return &Buffer{
-		data: b.data[b.start:b.end],
 	}
 }
 
@@ -342,7 +339,7 @@ func (b *Buffer) Bytes() []byte {
 }
 
 func (b *Buffer) Slice() []byte {
-	return b.data
+	return b.data[:b.capacity]
 }
 
 func (b *Buffer) From(n int) []byte {
@@ -362,11 +359,11 @@ func (b *Buffer) Index(start int) []byte {
 }
 
 func (b *Buffer) FreeLen() int {
-	return b.Cap() - b.end
+	return b.capacity - b.end
 }
 
 func (b *Buffer) FreeBytes() []byte {
-	return b.data[b.end:b.Cap()]
+	return b.data[b.end:b.capacity]
 }
 
 func (b *Buffer) IsEmpty() bool {
@@ -374,7 +371,7 @@ func (b *Buffer) IsEmpty() bool {
 }
 
 func (b *Buffer) IsFull() bool {
-	return b.end == b.Cap()
+	return b.end == b.capacity
 }
 
 func (b *Buffer) ToOwned() *Buffer {
@@ -382,5 +379,6 @@ func (b *Buffer) ToOwned() *Buffer {
 	copy(n.data[b.start:b.end], b.data[b.start:b.end])
 	n.start = b.start
 	n.end = b.end
+	n.capacity = b.capacity
 	return n
 }
