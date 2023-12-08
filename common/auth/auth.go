@@ -1,38 +1,30 @@
 package auth
 
-type Authenticator interface {
-	Verify(user string, pass string) bool
-	Users() []string
-}
+import "github.com/sagernet/sing/common"
 
 type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string
+	Password string
 }
 
-type inMemoryAuthenticator struct {
-	storage   map[string]string
-	usernames []string
+type Authenticator struct {
+	userMap map[string][]string
 }
 
-func (au *inMemoryAuthenticator) Verify(username string, password string) bool {
-	realPass, ok := au.storage[username]
-	return ok && realPass == password
-}
-
-func (au *inMemoryAuthenticator) Users() []string { return au.usernames }
-
-func NewAuthenticator(users []User) Authenticator {
+func NewAuthenticator(users []User) *Authenticator {
 	if len(users) == 0 {
 		return nil
 	}
-	au := &inMemoryAuthenticator{
-		storage:   make(map[string]string),
-		usernames: make([]string, 0, len(users)),
+	au := &Authenticator{
+		userMap: make(map[string][]string),
 	}
 	for _, user := range users {
-		au.storage[user.Username] = user.Password
-		au.usernames = append(au.usernames, user.Username)
+		au.userMap[user.Username] = append(au.userMap[user.Username], user.Password)
 	}
 	return au
+}
+
+func (au *Authenticator) Verify(username string, password string) bool {
+	passwordList, ok := au.userMap[username]
+	return ok && common.Contains(passwordList, password)
 }
