@@ -67,12 +67,23 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	}
 	request := &http.Request{
 		Method: http.MethodConnect,
-		URL: &url.URL{
-			Host: destination.String(),
-		},
 		Header: http.Header{
 			"Proxy-Connection": []string{"Keep-Alive"},
 		},
+	}
+	var host string
+	if c.headers != nil {
+		host = c.headers.Get("Host")
+		c.headers.Del("Host")
+	}
+	if host != "" && host != destination.Fqdn {
+		if c.path != "" {
+			return nil, E.New("Host header and path are not allowed at the same time")
+		}
+		request.Host = host
+		request.URL = &url.URL{Opaque: destination.String()}
+	} else {
+		request.URL = &url.URL{Host: destination.String()}
 	}
 	if c.path != "" {
 		err = URLSetPath(request.URL, c.path)
@@ -81,10 +92,6 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 		}
 	}
 	for key, valueList := range c.headers {
-		if key == "Host" {
-			request.Host = valueList[0]
-			continue
-		}
 		request.Header.Set(key, valueList[0])
 		for _, value := range valueList[1:] {
 			request.Header.Add(key, value)
