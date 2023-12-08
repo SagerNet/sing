@@ -21,7 +21,7 @@ import (
 
 type Handler = N.TCPConnectionHandler
 
-func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	var httpClient *http.Client
 	for {
 		request, err := ReadRequest(reader)
