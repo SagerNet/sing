@@ -295,17 +295,16 @@ func WritePacketWithPool(originSource N.PacketReader, destinationConn N.PacketWr
 	var notFirstTime bool
 	for _, packetBuffer := range packetBuffers {
 		buffer := buf.NewPacket()
-		readBufferRaw := buffer.Slice()
-		readBuffer := buf.With(readBufferRaw[:len(readBufferRaw)-rearHeadroom])
-		readBuffer.Resize(frontHeadroom, 0)
-		_, err = readBuffer.Write(packetBuffer.Buffer.Bytes())
+		buffer.Resize(frontHeadroom, 0)
+		buffer.Reserve(rearHeadroom)
+		_, err = buffer.Write(packetBuffer.Buffer.Bytes())
 		packetBuffer.Buffer.Release()
 		if err != nil {
 			buffer.Release()
 			continue
 		}
-		dataLen := readBuffer.Len()
-		buffer.Resize(readBuffer.Start(), dataLen)
+		dataLen := buffer.Len()
+		buffer.OverCap(rearHeadroom)
 		err = destinationConn.WritePacket(buffer, packetBuffer.Destination)
 		if err != nil {
 			buffer.Leak()

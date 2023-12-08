@@ -331,15 +331,15 @@ func (b *Buffer) Len() int {
 }
 
 func (b *Buffer) Cap() int {
+	return b.capacity
+}
+
+func (b *Buffer) RawCap() int {
 	return len(b.data)
 }
 
 func (b *Buffer) Bytes() []byte {
 	return b.data[b.start:b.end]
-}
-
-func (b *Buffer) Slice() []byte {
-	return b.data[:b.capacity]
 }
 
 func (b *Buffer) From(n int) []byte {
