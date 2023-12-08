@@ -93,7 +93,7 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	return response, err
 }
 
-func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnection(ctx context.Context, conn net.Conn, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	version, err := rw.ReadByte(conn)
 	if err != nil {
 		return err
@@ -101,7 +101,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 	return HandleConnection0(ctx, conn, version, authenticator, handler, metadata)
 }
 
-func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	switch version {
 	case socks4.Version:
 		request, err := socks4.ReadRequest0(conn)
