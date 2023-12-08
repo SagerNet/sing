@@ -15,6 +15,8 @@ import (
 	"github.com/sagernet/sing/common/task"
 )
 
+const MaxCopyExtendedOnceTimes = 10 // max CopyExtendedOnce execute times
+
 func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 	if source == nil {
 		return 0, E.New("nil reader")
@@ -24,6 +26,7 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 	originSource := source
 	var readCounters, writeCounters []N.CountFunc
 	var _n int64
+	possibly := MaxCopyExtendedOnceTimes
 	for {
 		source, readCounters = N.UnwrapCountReader(source, readCounters)
 		destination, writeCounters = N.UnwrapCountWriter(destination, writeCounters)
@@ -43,8 +46,10 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 		}
 		replaceableReader, isReaderPossiblyReplaceable := source.(N.ReaderPossiblyReplaceable)
 		replaceableWriter, isWriterPossiblyReplaceable := destination.(N.WriterPossiblyReplaceable)
-		if (isReaderPossiblyReplaceable && replaceableReader.ReaderPossiblyReplaceable()) ||
+		if possibly != 0 &&
+			(isReaderPossiblyReplaceable && replaceableReader.ReaderPossiblyReplaceable()) ||
 			(isWriterPossiblyReplaceable && replaceableWriter.WriterPossiblyReplaceable()) {
+			possibly--
 			_n, err = CopyExtendedOnce(NewExtendedWriter(destination), NewExtendedReader(source))
 			N.Count(_n, readCounters, writeCounters)
 			n += _n
