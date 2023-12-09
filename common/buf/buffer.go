@@ -216,10 +216,7 @@ func (b *Buffer) WriteZeroN(n int) error {
 	if b.end+n > b.capacity {
 		return io.ErrShortBuffer
 	}
-	for i := b.end; i < b.end+n; i++ {
-		b.data[i] = 0
-	}
-	b.end += n
+	common.ClearArray(b.Extend(n))
 	return nil
 }
 
