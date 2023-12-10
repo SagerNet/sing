@@ -8,27 +8,6 @@ import (
 	"github.com/sagernet/sing/common/json"
 )
 
-func Merge[T any](source T, destination T) (T, error) {
-	rawSource, err := json.Marshal(source)
-	if err != nil {
-		return common.DefaultValue[T](), E.Cause(err, "marshal source")
-	}
-	rawDestination, err := json.Marshal(destination)
-	if err != nil {
-		return common.DefaultValue[T](), E.Cause(err, "marshal destination")
-	}
-	rawMerged, err := MergeJSON(rawSource, rawDestination)
-	if err != nil {
-		return common.DefaultValue[T](), E.Cause(err, "merge options")
-	}
-	var merged T
-	err = json.Unmarshal(rawMerged, &merged)
-	if err != nil {
-		return common.DefaultValue[T](), E.Cause(err, "unmarshal merged options")
-	}
-	return merged, nil
-}
-
 func Omitempty[T any](value T) (T, error) {
 	objectContent, err := json.Marshal(value)
 	if err != nil {
@@ -48,6 +27,47 @@ func Omitempty[T any](value T) (T, error) {
 		return common.DefaultValue[T](), E.Cause(err, "unmarshal new object")
 	}
 	return newObject, nil
+}
+
+func Merge[T any](source T, destination T) (T, error) {
+	rawSource, err := json.Marshal(source)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal source")
+	}
+	rawDestination, err := json.Marshal(destination)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal destination")
+	}
+	return MergeFrom[T](rawSource, rawDestination)
+}
+
+func MergeFromSource[T any](rawSource json.RawMessage, destination T) (T, error) {
+	rawDestination, err := json.Marshal(destination)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal destination")
+	}
+	return MergeFrom[T](rawSource, rawDestination)
+}
+
+func MergeFromDestination[T any](source T, rawDestination json.RawMessage) (T, error) {
+	rawSource, err := json.Marshal(source)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "marshal source")
+	}
+	return MergeFrom[T](rawSource, rawDestination)
+}
+
+func MergeFrom[T any](rawSource json.RawMessage, rawDestination json.RawMessage) (T, error) {
+	rawMerged, err := MergeJSON(rawSource, rawDestination)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "merge options")
+	}
+	var merged T
+	err = json.Unmarshal(rawMerged, &merged)
+	if err != nil {
+		return common.DefaultValue[T](), E.Cause(err, "unmarshal merged options")
+	}
+	return merged, nil
 }
 
 func MergeJSON(rawSource json.RawMessage, rawDestination json.RawMessage) (json.RawMessage, error) {
