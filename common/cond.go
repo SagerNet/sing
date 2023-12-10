@@ -336,6 +336,10 @@ func DefaultValue[T any]() T {
 	return defaultValue
 }
 
+func Ptr[T any](obj T) *T {
+	return &obj
+}
+
 func Close(closers ...any) error {
 	var retErr error
 	for _, closer := range closers {
