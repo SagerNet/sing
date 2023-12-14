@@ -13,59 +13,65 @@ import (
 )
 
 type Buffer struct {
-	data     []byte
-	start    int
-	end      int
-	capacity int
-	refs     atomic.Int32
-	managed  bool
+	data        []byte
+	start       int
+	end         int
+	capacity    int
+	refs        atomic.Int32
+	managed     bool
+	dataManaged bool
 }
 
 func New() *Buffer {
-	return &Buffer{
-		data:     Get(BufferSize),
-		capacity: BufferSize,
-		managed:  true,
-	}
+	return NewSize(BufferSize)
 }
 
 func NewPacket() *Buffer {
-	return &Buffer{
-		data:     Get(UDPBufferSize),
-		capacity: UDPBufferSize,
-		managed:  true,
-	}
+	return NewSize(UDPBufferSize)
 }
 
 func NewSize(size int) *Buffer {
+	buffer := getBuffer()
 	if size == 0 {
-		return &Buffer{}
+		*buffer = Buffer{
+			managed: true,
+		}
 	} else if size > 65535 {
-		return &Buffer{
+		*buffer = Buffer{
 			data:     make([]byte, size),
 			capacity: size,
+			managed:  true,
+		}
+	} else {
+		*buffer = Buffer{
+			data:        Get(size),
+			capacity:    size,
+			managed:     true,
+			dataManaged: true,
 		}
 	}
-	return &Buffer{
-		data:     Get(size),
-		capacity: size,
-		managed:  true,
-	}
+	return buffer
 }
 
 func As(data []byte) *Buffer {
-	return &Buffer{
+	buffer := getBuffer()
+	*buffer = Buffer{
 		data:     data,
 		end:      len(data),
 		capacity: len(data),
+		managed:  true,
 	}
+	return buffer
 }
 
 func With(data []byte) *Buffer {
-	return &Buffer{
+	buffer := getBuffer()
+	*buffer = Buffer{
 		data:     data,
 		capacity: len(data),
+		managed:  true,
 	}
+	return buffer
 }
 
 func (b *Buffer) Byte(index int) byte {
@@ -293,19 +299,28 @@ func (b *Buffer) DecRef() {
 }
 
 func (b *Buffer) Release() {
-	if b == nil || !b.managed {
+	if b == nil {
+		return
+	}
+	managed, dataManaged := b.managed, b.dataManaged
+	if !(managed || dataManaged) {
 		return
 	}
 	if b.refs.Load() > 0 {
 		return
 	}
-	common.Must(Put(b.data))
+	if dataManaged {
+		common.Must(Put(b.data))
+	}
 	*b = Buffer{}
+	if managed {
+		putBuffer(b)
+	}
 }
 
 func (b *Buffer) Leak() {
 	if debug.Enabled {
-		if b == nil || !b.managed {
+		if b == nil || !(b.managed || b.dataManaged) {
 			return
 		}
 		refs := b.refs.Load()
