@@ -23,14 +23,12 @@ func TCPPipe(t *testing.T) (net.Conn, net.Conn) {
 	group.Append0(func(ctx context.Context) error {
 		var serverErr error
 		serverConn, serverErr = listener.Accept()
-		require.NoError(t, serverErr)
-		return nil
+		return serverErr
 	})
 	group.Append0(func(ctx context.Context) error {
 		var clientErr error
 		clientConn, clientErr = net.Dial("tcp", listener.Addr().String())
-		require.NoError(t, clientErr)
-		return nil
+		return clientErr
 	})
 	err = group.Run()
 	require.NoError(t, err)
@@ -53,7 +51,7 @@ func Timeout(t *testing.T) context.CancelFunc {
 		case <-ctx.Done():
 			return
 		case <-time.After(5 * time.Second):
-			t.Fatal("timeout")
+			t.Error("timeout")
 		}
 	}()
 	return cancel
