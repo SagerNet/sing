@@ -1,62 +1,93 @@
 package bufio
 
 import (
+	"sync"
+
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"golang.org/x/sys/windows"
 )
 
+type syscallVectorisedWriterFields struct {
+	access    sync.Mutex
+	iovecList *[]windows.WSABuf
+}
+
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
+	w.access.Lock()
+	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	iovecList := make([]*windows.WSABuf, len(buffers))
-	for i, buffer := range buffers {
-		iovecList[i] = &windows.WSABuf{
-			Len: uint32(buffer.Len()),
-			Buf: &buffer.Bytes()[0],
-		}
+	var iovecList []windows.WSABuf
+	if w.iovecList != nil {
+		iovecList = *w.iovecList
 	}
+	iovecList = iovecList[:0]
+	for _, buffer := range buffers {
+		iovecList = append(iovecList, windows.WSABuf{
+			Buf: &buffer.Bytes()[0],
+			Len: uint32(buffer.Len()),
+		})
+	}
+	if w.iovecList == nil {
+		w.iovecList = new([]windows.WSABuf)
+	}
+	*w.iovecList = iovecList // cache
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		innerErr = windows.WSASend(windows.Handle(fd), iovecList[0], uint32(len(iovecList)), &n, 0, nil, nil)
+		innerErr = windows.WSASend(windows.Handle(fd), &iovecList[0], uint32(len(iovecList)), &n, 0, nil, nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
 	if innerErr != nil {
 		err = innerErr
+	}
+	for index := range iovecList {
+		iovecList[index] = windows.WSABuf{}
 	}
 	return err
 }
 
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
+	w.access.Lock()
+	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	iovecList := make([]*windows.WSABuf, len(buffers))
-	for i, buffer := range buffers {
-		iovecList[i] = &windows.WSABuf{
-			Len: uint32(buffer.Len()),
+	var iovecList []windows.WSABuf
+	if w.iovecList != nil {
+		iovecList = *w.iovecList
+	}
+	iovecList = iovecList[:0]
+	for _, buffer := range buffers {
+		iovecList = append(iovecList, windows.WSABuf{
 			Buf: &buffer.Bytes()[0],
-		}
+			Len: uint32(buffer.Len()),
+		})
 	}
-	var sockaddr windows.Sockaddr
-	if destination.IsIPv4() {
-		sockaddr = &windows.SockaddrInet4{
-			Port: int(destination.Port),
-			Addr: destination.Addr.As4(),
-		}
-	} else {
-		sockaddr = &windows.SockaddrInet6{
-			Port: int(destination.Port),
-			Addr: destination.Addr.As16(),
-		}
+	if w.iovecList == nil {
+		w.iovecList = new([]windows.WSABuf)
 	}
+	*w.iovecList = iovecList // cache
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		innerErr = windows.WSASendto(windows.Handle(fd), iovecList[0], uint32(len(iovecList)), &n, 0, sockaddr, nil, nil)
+		name, nameLen := ToSockaddr(destination.AddrPort())
+		innerErr = windows.WSASendTo(
+			windows.Handle(fd),
+			&iovecList[0],
+			uint32(len(iovecList)),
+			&n,
+			0,
+			(*windows.RawSockaddrAny)(name),
+			nameLen,
+			nil,
+			nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
 	if innerErr != nil {
 		err = innerErr
+	}
+	for index := range iovecList {
+		iovecList[index] = windows.WSABuf{}
 	}
 	return err
 }
