@@ -14,21 +14,17 @@ on:
 
 jobs:
   build:
-    name: Debug build
+    name: Linux Debug build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Get latest go version
-        id: version
-        run: |
-          echo ::set-output name=go_version::$(curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g')
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: ${{ steps.version.outputs.go_version }}
+          go-version: ">=1.21.0 <1.22.0"
       - name: Add cache to Go proxy
         run: |
           version=`git rev-parse HEAD`
@@ -37,6 +33,86 @@ jobs:
           go mod init build
           go get -v github.com/sagernet/sing@$version
           popd
+        continue-on-error: true
+      - name: Build
+        run: |
+          make test
+  build_go118:
+    name: Linux Debug build (Go 1.18)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.18.0 <1.19.0"
+        continue-on-error: true
+      - name: Build
+        run: |
+          make test
+  build_go119:
+    name: Linux Debug build (Go 1.19)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.19.0 <1.20.0"
+        continue-on-error: true
+      - name: Build
+        run: |
+          make test
+  build_go120:
+    name: Linux Debug build (Go 1.20)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.20.0 <1.21.0"
+        continue-on-error: true
+      - name: Build
+        run: |
+          make test
+  build__windows:
+    name: Windows Debug build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.21.0 <1.22.0"
+        continue-on-error: true
+      - name: Build
+        run: |
+          make test
+  build_darwin:
+    name: macOS Debug build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.21.0 <1.22.0"
         continue-on-error: true
       - name: Build
         run: |
