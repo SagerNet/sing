@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int) error {
+func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int, preferInterfaceName bool) error {
 	return Raw(conn, func(fd uintptr) error {
 		var err error
 		if interfaceIndex == -1 {
