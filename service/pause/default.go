@@ -6,6 +6,7 @@ import (
 
 	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/x/list"
+	"github.com/sagernet/sing/service"
 )
 
 type defaultManager struct {
@@ -18,16 +19,20 @@ type defaultManager struct {
 	callbacks     list.List[Callback]
 }
 
-func NewDefaultManager(ctx context.Context) Manager {
+func WithDefaultManager(ctx context.Context) context.Context {
+	if service.FromContext[Manager](ctx) != nil {
+		return ctx
+	}
 	devicePauseChan := make(chan struct{})
 	networkPauseChan := make(chan struct{})
 	close(devicePauseChan)
 	close(networkPauseChan)
-	return &defaultManager{
+	manager := &defaultManager{
 		ctx:          ctx,
 		devicePause:  devicePauseChan,
 		networkPause: networkPauseChan,
 	}
+	return service.ContextWith[Manager](ctx, manager)
 }
 
 func (d *defaultManager) DevicePause() {
