@@ -118,6 +118,10 @@ func (m *defaultManager) Mkdir(path string, perm os.FileMode) error {
 
 func (m *defaultManager) MkdirAll(path string, perm os.FileMode) error {
 	path = m.BasePath(path)
+	return m.mkdirAll(path, perm)
+}
+
+func (m *defaultManager) mkdirAll(path string, perm os.FileMode) error {
 	dir, err := os.Stat(path)
 	if err == nil {
 		if dir.IsDir() {
