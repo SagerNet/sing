@@ -11,8 +11,6 @@ import (
 func TestWriteVectorised(t *testing.T) {
 	t.Parallel()
 	inputConn, outputConn := TCPPipe(t)
-	defer inputConn.Close()
-	defer outputConn.Close()
 	vectorisedWriter, created := CreateVectorisedWriter(inputConn)
 	require.True(t, created)
 	require.NotNil(t, vectorisedWriter)
@@ -36,9 +34,8 @@ func TestWriteVectorised(t *testing.T) {
 }
 
 func TestWriteVectorisedPacket(t *testing.T) {
+	t.Parallel()
 	inputConn, outputConn, outputAddr := UDPPipe(t)
-	defer inputConn.Close()
-	defer outputConn.Close()
 	vectorisedWriter, created := CreateVectorisedPacketWriter(inputConn)
 	require.True(t, created)
 	require.NotNil(t, vectorisedWriter)
