@@ -99,7 +99,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			httpClient = &http.Client{
 				Transport: &http.Transport{
 					DisableCompression: true,
-					DialContext: func(context context.Context, network, address string) (net.Conn, error) {
+					DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 						metadata.Destination = M.ParseSocksaddr(address)
 						metadata.Protocol = "http"
 						input, output := net.Pipe()
