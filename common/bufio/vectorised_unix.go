@@ -84,6 +84,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	if innerErr != nil {
 		err = innerErr
 	}
+	for index := range iovecList {
+		iovecList[index] = unix.Iovec{}
+	}
 	return err
 }
 
