@@ -23,6 +23,7 @@ type Client struct {
 	serverAddr M.Socksaddr
 	username   string
 	password   string
+	host       string
 	path       string
 	headers    http.Header
 }
@@ -48,6 +49,12 @@ func NewClient(options Options) *Client {
 	if options.Dialer == nil {
 		client.dialer = N.SystemDialer
 	}
+	var host string
+	if client.headers != nil {
+		host = client.headers.Get("Host")
+		client.headers.Del("Host")
+		client.host = host
+	}
 	return client
 }
 
@@ -71,16 +78,11 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 			"Proxy-Connection": []string{"Keep-Alive"},
 		},
 	}
-	var host string
-	if c.headers != nil {
-		host = c.headers.Get("Host")
-		c.headers.Del("Host")
-	}
-	if host != "" && host != destination.Fqdn {
+	if c.host != "" && c.host != destination.Fqdn {
 		if c.path != "" {
 			return nil, E.New("Host header and path are not allowed at the same time")
 		}
-		request.Host = host
+		request.Host = c.host
 		request.URL = &url.URL{Opaque: destination.String()}
 	} else {
 		request.URL = &url.URL{Host: destination.String()}
