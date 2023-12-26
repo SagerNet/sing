@@ -38,6 +38,10 @@ func (c *SerialConn) ReadBuffer(buffer *buf.Buffer) error {
 	return c.ExtendedConn.ReadBuffer(buffer)
 }
 
+func (c *SerialConn) Upstream() any {
+	return c.ExtendedConn
+}
+
 type SerialPacketConn struct {
 	N.NetPacketConn
 	access sync.Mutex
