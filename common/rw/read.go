@@ -11,7 +11,7 @@ func Skip(reader io.Reader) error {
 }
 
 func SkipN(reader io.Reader, size int) error {
-	return common.Error(io.CopyN(io.Discard, reader, int64(size)))
+	return common.Error(io.CopyN(Discard, reader, int64(size)))
 }
 
 func ReadByte(reader io.Reader) (byte, error) {
