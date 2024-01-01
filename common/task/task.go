@@ -68,17 +68,24 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 
 	var errorAccess sync.Mutex
 	var returnError error
-	taskCount := int8(len(g.tasks))
+	taskCount := len(g.tasks)
 
 	for _, task := range g.tasks {
 		currentTask := task
 		go func() {
 			if g.queue != nil {
-				<-g.queue
 				select {
 				case <-taskCancelContext.Done():
+					errorAccess.Lock()
+					taskCount--
+					currentCount := taskCount
+					if currentCount == 0 {
+						taskCancel(errTaskSucceed{})
+						taskFinish(errTaskSucceed{})
+					}
+					errorAccess.Unlock()
 					return
-				default:
+				case <-g.queue:
 				}
 			}
 			err := currentTask.Run(taskCancelContext)
