@@ -14,14 +14,19 @@ type Matcher struct {
 }
 
 func NewMatcher(domains []string, domainSuffix []string) *Matcher {
-	domainList := make([]string, 0, len(domains)+len(domainSuffix))
+	domainList := make([]string, 0, len(domains)+2*len(domainSuffix))
 	seen := make(map[string]bool, len(domainList))
 	for _, domain := range domainSuffix {
 		if seen[domain] {
 			continue
 		}
 		seen[domain] = true
-		domainList = append(domainList, reverseDomainSuffix(domain))
+		if domain[0] == '.' {
+			domainList = append(domainList, reverseDomainSuffix(domain))
+		} else {
+			domainList = append(domainList, reverseDomain(domain))
+			domainList = append(domainList, reverseRootDomainSuffix(domain))
+		}
 	}
 	for _, domain := range domains {
 		if seen[domain] {
@@ -132,5 +137,18 @@ func reverseDomainSuffix(domain string) string {
 		utf8.EncodeRune(b[l-i:], r)
 	}
 	b[l] = prefixLabel
+	return string(b)
+}
+
+func reverseRootDomainSuffix(domain string) string {
+	l := len(domain)
+	b := make([]byte, l+2)
+	for i := 0; i < l; {
+		r, n := utf8.DecodeRuneInString(domain[i:])
+		i += n
+		utf8.EncodeRune(b[l-i:], r)
+	}
+	b[l] = '.'
+	b[l+1] = prefixLabel
 	return string(b)
 }
