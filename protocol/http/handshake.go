@@ -180,6 +180,9 @@ func removeExtraHTTPHostPort(req *http.Request) {
 	}
 
 	if pHost, port, err := net.SplitHostPort(host); err == nil && port == "80" {
+		if M.ParseAddr(pHost).Is6() {
+			pHost = "[" + pHost + "]"
+		}
 		host = pHost
 	}
 
