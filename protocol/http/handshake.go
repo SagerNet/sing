@@ -50,7 +50,11 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 				}
 			}
 			if !authOk {
-				err = responseWith(request, http.StatusProxyAuthRequired).Write(conn)
+				// Since no one else is using the library, use a fixed realm until rewritten
+				err = responseWith(
+					request, http.StatusProxyAuthRequired,
+					"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`,
+				).Write(conn)
 				if err != nil {
 					return err
 				}
@@ -206,13 +210,20 @@ func removeExtraHTTPHostPort(req *http.Request) {
 	req.URL.Host = host
 }
 
-func responseWith(request *http.Request, statusCode int) *http.Response {
+func responseWith(request *http.Request, statusCode int, headers ...string) *http.Response {
+	var header http.Header
+	if len(headers) > 0 {
+		header = make(http.Header)
+		for i := 0; i < len(headers); i += 2 {
+			header.Add(headers[i], headers[i+1])
+		}
+	}
 	return &http.Response{
 		StatusCode: statusCode,
 		Status:     http.StatusText(statusCode),
 		Proto:      request.Proto,
 		ProtoMajor: request.ProtoMajor,
 		ProtoMinor: request.ProtoMinor,
-		Header:     http.Header{},
+		Header:     header,
 	}
 }
