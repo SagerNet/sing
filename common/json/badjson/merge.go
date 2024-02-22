@@ -93,6 +93,11 @@ func MergeJSON(rawSource json.RawMessage, rawDestination json.RawMessage) (json.
 	if err != nil {
 		return nil, E.Cause(err, "decode destination")
 	}
+	if source == nil {
+		return json.Marshal(destination)
+	} else if destination == nil {
+		return json.Marshal(source)
+	}
 	merged, err := mergeJSON(source, destination)
 	if err != nil {
 		return nil, err
@@ -125,7 +130,7 @@ func mergeJSON(anySource any, anyDestination any) (any, error) {
 				destination.Put(entry.Key, entry.Value)
 			}
 		default:
-			return nil, E.New("cannot merge json object into ", reflect.TypeOf(destination))
+			return nil, E.New("cannot merge json object into ", reflect.TypeOf(source))
 		}
 		return destination, nil
 	default:
