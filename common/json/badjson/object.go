@@ -15,11 +15,23 @@ type JSONObject struct {
 	linkedhashmap.Map[string, any]
 }
 
-func (m JSONObject) MarshalJSON() ([]byte, error) {
+func (m *JSONObject) IsEmpty() bool {
+	if m.Size() == 0 {
+		return true
+	}
+	return common.All(m.Entries(), func(it collections.MapEntry[string, any]) bool {
+		if valueInterface, valueMaybeEmpty := it.Value.(isEmpty); valueMaybeEmpty && valueInterface.IsEmpty() {
+			return true
+		}
+		return false
+	})
+}
+
+func (m *JSONObject) MarshalJSON() ([]byte, error) {
 	buffer := new(bytes.Buffer)
 	buffer.WriteString("{")
 	items := common.Filter(m.Entries(), func(it collections.MapEntry[string, any]) bool {
-		if valueObject, valueIsJSONObject := it.Value.(*JSONObject); valueIsJSONObject && valueObject.IsEmpty() {
+		if valueInterface, valueMaybeEmpty := it.Value.(isEmpty); valueMaybeEmpty && valueInterface.IsEmpty() {
 			return false
 		}
 		return true
