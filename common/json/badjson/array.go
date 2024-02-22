@@ -3,11 +3,24 @@ package badjson
 import (
 	"bytes"
 
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 )
 
 type JSONArray []any
+
+func (a JSONArray) IsEmpty() bool {
+	if len(a) == 0 {
+		return true
+	}
+	return common.All(a, func(it any) bool {
+		if valueInterface, valueMaybeEmpty := it.(isEmpty); valueMaybeEmpty && valueInterface.IsEmpty() {
+			return true
+		}
+		return false
+	})
+}
 
 func (a JSONArray) MarshalJSON() ([]byte, error) {
 	return json.Marshal([]any(a))
