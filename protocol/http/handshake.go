@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -110,7 +111,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			return responseWith(request, http.StatusBadRequest).Write(conn)
 		}
 
-		var innerErr error
+		var innerErr atomic.TypedValue[error]
 		if httpClient == nil {
 			httpClient = &http.Client{
 				Transport: &http.Transport{
@@ -122,7 +123,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 						go func() {
 							hErr := handler.NewConnection(ctx, output, metadata)
 							if hErr != nil {
-								innerErr = hErr
+								innerErr.Store(hErr)
 								common.Close(input, output)
 							}
 						}()
@@ -138,7 +139,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		response, err := httpClient.Do(request.WithContext(requestCtx))
 		if err != nil {
 			cancel()
-			return E.Errors(innerErr, err, responseWith(request, http.StatusBadGateway).Write(conn))
+			return E.Errors(innerErr.Load(), err, responseWith(request, http.StatusBadGateway).Write(conn))
 		}
 
 		removeHopByHopHeaders(response.Header)
@@ -154,7 +155,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		err = response.Write(conn)
 		if err != nil {
 			cancel()
-			return E.Errors(innerErr, err)
+			return E.Errors(innerErr.Load(), err)
 		}
 
 		cancel()
