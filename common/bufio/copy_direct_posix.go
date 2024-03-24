@@ -47,6 +47,7 @@ func (w *syscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (nee
 		} else {
 			buffer.Release()
 		}
+		//goland:noinspection GoDirectComparisonOfErrors
 		if w.readErr == syscall.EAGAIN {
 			return false
 		}
@@ -105,23 +106,21 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions
 		var readN int
 		var from syscall.Sockaddr
 		readN, _, _, from, w.readErr = syscall.Recvmsg(int(fd), buffer.FreeBytes(), nil, 0)
+		//goland:noinspection GoDirectComparisonOfErrors
+		if w.readErr != nil {
+			buffer.Release()
+			return w.readErr != syscall.EAGAIN
+		}
 		if readN > 0 {
 			buffer.Truncate(readN)
-			w.options.PostReturn(buffer)
-			w.buffer = buffer
-		} else {
-			buffer.Release()
 		}
-		if w.readErr == syscall.EAGAIN {
-			return false
-		}
-		if from != nil {
-			switch fromAddr := from.(type) {
-			case *syscall.SockaddrInet4:
-				w.readFrom = M.SocksaddrFrom(netip.AddrFrom4(fromAddr.Addr), uint16(fromAddr.Port))
-			case *syscall.SockaddrInet6:
-				w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
-			}
+		w.options.PostReturn(buffer)
+		w.buffer = buffer
+		switch fromAddr := from.(type) {
+		case *syscall.SockaddrInet4:
+			w.readFrom = M.SocksaddrFrom(netip.AddrFrom4(fromAddr.Addr), uint16(fromAddr.Port))
+		case *syscall.SockaddrInet6:
+			w.readFrom = M.SocksaddrFrom(netip.AddrFrom16(fromAddr.Addr), uint16(fromAddr.Port)).Unwrap()
 		}
 		return true
 	}
