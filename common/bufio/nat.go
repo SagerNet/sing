@@ -37,15 +37,25 @@ type unidirectionalNATPacketConn struct {
 }
 
 func (c *unidirectionalNATPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	if M.SocksaddrFromNet(addr) == c.destination {
-		addr = c.origin.UDPAddr()
+	destination := M.SocksaddrFromNet(addr)
+	if destination == c.destination {
+		destination = c.origin
 	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.destination.AddrString() {
+		destination.Addr = c.origin.Addr
+		destination.Fqdn = c.origin.Fqdn
+	}
+	addr = destination.UDPAddr()
 	return c.NetPacketConn.WriteTo(p, addr)
 }
 
 func (c *unidirectionalNATPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	if destination == c.destination {
 		destination = c.origin
+	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.destination.AddrString() {
+		destination.Addr = c.origin.Addr
+		destination.Fqdn = c.origin.Fqdn
 	}
 	return c.NetPacketConn.WritePacket(buffer, destination)
 }
@@ -66,16 +76,28 @@ type bidirectionalNATPacketConn struct {
 
 func (c *bidirectionalNATPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = c.NetPacketConn.ReadFrom(p)
-	if err == nil && M.SocksaddrFromNet(addr) == c.origin {
-		addr = c.destination.UDPAddr()
+	destination := M.SocksaddrFromNet(addr)
+	if err == nil && destination == c.origin {
+		destination = c.destination
 	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.origin.AddrString() {
+		destination.Addr = c.destination.Addr
+		destination.Fqdn = c.destination.Fqdn
+	}
+	addr = destination.UDPAddr()
 	return
 }
 
 func (c *bidirectionalNATPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	if M.SocksaddrFromNet(addr) == c.destination {
-		addr = c.origin.UDPAddr()
+	destination := M.SocksaddrFromNet(addr)
+	if destination == c.destination {
+		destination = c.origin
 	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.destination.AddrString() {
+		destination.Addr = c.origin.Addr
+		destination.Fqdn = c.origin.Fqdn
+	}
+	addr = destination.UDPAddr()
 	return c.NetPacketConn.WriteTo(p, addr)
 }
 
@@ -84,12 +106,20 @@ func (c *bidirectionalNATPacketConn) ReadPacket(buffer *buf.Buffer) (destination
 	if destination == c.origin {
 		destination = c.destination
 	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.origin.AddrString() {
+		destination.Addr = c.destination.Addr
+		destination.Fqdn = c.destination.Fqdn
+	}
 	return
 }
 
 func (c *bidirectionalNATPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	if destination == c.destination {
 		destination = c.origin
+	}
+	if c.destination.Port == c.origin.Port && destination.AddrString() == c.destination.AddrString() {
+		destination.Addr = c.origin.Addr
+		destination.Fqdn = c.origin.Fqdn
 	}
 	return c.NetPacketConn.WritePacket(buffer, destination)
 }
