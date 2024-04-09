@@ -76,6 +76,9 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	} else if authResponse.Method != socks5.AuthTypeNotRequired {
 		return socks5.Response{}, E.New("socks5: unsupported auth method: ", authResponse.Method)
 	}
+	if command == socks5.CommandUDPAssociate {
+		destination = M.SocksaddrFrom(netip.IPv4Unspecified(), 0)
+	}
 	err = socks5.WriteRequest(conn, socks5.Request{
 		Command:     command,
 		Destination: destination,
@@ -215,6 +218,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			if err != nil {
 				return err
 			}
+			request.Destination = M.SocksaddrFrom(netip.IPv4Unspecified(), 0)
 			metadata.Protocol = "socks5"
 			metadata.Destination = request.Destination
 			var innerError error
