@@ -87,6 +87,9 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	} else if authResponse.Method != socks5.AuthTypeNotRequired {
 		return socks5.Response{}, E.New("socks5: unsupported auth method: ", authResponse.Method)
 	}
+	if command == socks5.CommandUDPAssociate {
+		destination = M.SocksaddrFrom(netip.IPv4Unspecified(), 0)
+	}
 	err = socks5.WriteRequest(conn, socks5.Request{
 		Command:     command,
 		Destination: destination,
@@ -259,7 +262,7 @@ func HandleConnectionEx(
 				done := make(chan struct{})
 				go func() {
 					//nolint:staticcheck
-					innerError = handler.NewPacketConnection(ctx, associatePacketConn, M.Metadata{Protocol: "socks5", Source: source, Destination: destination})
+					innerError = handler.NewPacketConnection(ctx, associatePacketConn, M.Metadata{Protocol: "socks5", Source: source, Destination: M.SocksaddrFrom(netip.IPv4Unspecified(), 0)})
 					close(done)
 				}()
 				err = common.Error(io.Copy(io.Discard, conn))
@@ -267,7 +270,8 @@ func HandleConnectionEx(
 				<-done
 				return E.Errors(innerError, err)
 			} else {
-				handlerEx.NewPacketConnectionEx(ctx, NewLazyAssociatePacketConn(bufio.NewServerPacketConn(udpConn), destination, conn), source, destination, onClose)
+				destination = request.Destination
+				handlerEx.NewPacketConnectionEx(ctx, NewLazyAssociatePacketConn(bufio.NewServerPacketConn(udpConn), destination, conn), source, M.SocksaddrFrom(netip.IPv4Unspecified(), 0), onClose)
 				return nil
 			}
 		default:
