@@ -203,7 +203,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			return handler.NewConnection(ctx, conn, metadata)
 		case socks5.CommandUDPAssociate:
 			var udpConn *net.UDPConn
-			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNetAddr(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNetAddr(conn.LocalAddr()), 0)))
+			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNet(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNet(conn.LocalAddr()), 0)))
 			if err != nil {
 				return err
 			}

@@ -1,30 +1,18 @@
 package control
 
-import "net"
+import (
+	"net/netip"
+)
 
 type InterfaceFinder interface {
 	InterfaceIndexByName(name string) (int, error)
 	InterfaceNameByIndex(index int) (string, error)
+	InterfaceByAddr(addr netip.Addr) (*Interface, error)
 }
 
-func DefaultInterfaceFinder() InterfaceFinder {
-	return (*netInterfaceFinder)(nil)
-}
-
-type netInterfaceFinder struct{}
-
-func (w *netInterfaceFinder) InterfaceIndexByName(name string) (int, error) {
-	netInterface, err := net.InterfaceByName(name)
-	if err != nil {
-		return 0, err
-	}
-	return netInterface.Index, nil
-}
-
-func (w *netInterfaceFinder) InterfaceNameByIndex(index int) (string, error) {
-	netInterface, err := net.InterfaceByIndex(index)
-	if err != nil {
-		return "", err
-	}
-	return netInterface.Name, nil
+type Interface struct {
+	Index     int
+	MTU       int
+	Name      string
+	Addresses []netip.Prefix
 }

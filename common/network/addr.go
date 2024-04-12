@@ -13,7 +13,7 @@ func LocalAddrs() ([]netip.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return common.Map(interfaceAddrs, M.AddrFromNetAddr), nil
+	return common.Map(interfaceAddrs, M.AddrFromNet), nil
 }
 
 func IsPublicAddr(addr netip.Addr) bool {
