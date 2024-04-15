@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"syscall"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -83,6 +84,15 @@ type NetPacketConn interface {
 type BindPacketConn interface {
 	NetPacketConn
 	net.Conn
+}
+
+// EXP_UDPConn is a interface used x/net/ipv4 and quic-go
+type EXP_UDPConn interface {
+	net.PacketConn
+	syscall.Conn
+	SetReadBuffer(bytes int) error
+	ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error)
+	WriteMsgUDP(b, oob []byte, addr *net.UDPAddr) (n, oobn int, err error)
 }
 
 type UDPHandler interface {

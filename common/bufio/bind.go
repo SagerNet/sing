@@ -18,10 +18,25 @@ type bindPacketConn struct {
 	addr net.Addr
 }
 
+type bindUDPConn struct {
+	bindPacketConn
+	N.EXP_UDPConn
+}
+
 func NewBindPacketConn(conn net.PacketConn, addr net.Addr) BindPacketConn {
-	return &bindPacketConn{
-		NewPacketConn(conn),
-		addr,
+	if udpConn, isUDPConn := conn.(N.EXP_UDPConn); isUDPConn {
+		return &bindUDPConn{
+			bindPacketConn{
+				NewPacketConn(conn),
+				addr,
+			},
+			udpConn,
+		}
+	} else {
+		return &bindPacketConn{
+			NewPacketConn(conn),
+			addr,
+		}
 	}
 }
 
@@ -61,16 +76,36 @@ type UnbindPacketConn struct {
 }
 
 func NewUnbindPacketConn(conn net.Conn) N.NetPacketConn {
-	return &UnbindPacketConn{
-		NewExtendedConn(conn),
-		M.SocksaddrFromNet(conn.RemoteAddr()),
+	if udpConn, isUDPConn := conn.(N.EXP_UDPConn); isUDPConn {
+		return &UnbindUDPConn{
+			UnbindPacketConn{
+				NewExtendedConn(conn),
+				M.SocksaddrFromNet(conn.RemoteAddr()),
+			},
+			udpConn,
+		}
+	} else {
+		return &UnbindPacketConn{
+			NewExtendedConn(conn),
+			M.SocksaddrFromNet(conn.RemoteAddr()),
+		}
 	}
 }
 
 func NewUnbindPacketConnWithAddr(conn net.Conn, addr M.Socksaddr) N.NetPacketConn {
-	return &UnbindPacketConn{
-		NewExtendedConn(conn),
-		addr,
+	if udpConn, isUDPConn := conn.(N.EXP_UDPConn); isUDPConn {
+		return &UnbindUDPConn{
+			UnbindPacketConn{
+				NewExtendedConn(conn),
+				addr,
+			},
+			udpConn,
+		}
+	} else {
+		return &UnbindPacketConn{
+			NewExtendedConn(conn),
+			addr,
+		}
 	}
 }
 
@@ -109,4 +144,39 @@ func (c *UnbindPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
 
 func (c *UnbindPacketConn) Upstream() any {
 	return c.ExtendedConn
+}
+
+var _ N.EXP_UDPConn = (*UnbindUDPConn)(nil)
+
+type UnbindUDPConn struct {
+	UnbindPacketConn
+	N.EXP_UDPConn
+}
+
+func (c *UnbindUDPConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	return c.UnbindPacketConn.ReadFrom(p)
+}
+
+func (c *UnbindUDPConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
+	return c.ExtendedConn.Write(p)
+}
+
+func (c *UnbindUDPConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	return c.UnbindPacketConn.ReadPacket(buffer)
+}
+
+func (c *UnbindUDPConn) WritePacket(buffer *buf.Buffer, _ M.Socksaddr) error {
+	return c.ExtendedConn.WriteBuffer(buffer)
+}
+
+func (c *UnbindUDPConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
+	n, oobn, flags, addr, err = c.EXP_UDPConn.ReadMsgUDP(b, oob)
+	if err == nil {
+		addr = c.addr.UDPAddr()
+	}
+	return
+}
+
+func (c *UnbindUDPConn) WriteMsgUDP(b, oob []byte, _ *net.UDPAddr) (n, oobn int, err error) {
+	return c.EXP_UDPConn.WriteMsgUDP(b, oob, c.addr.UDPAddr())
 }
