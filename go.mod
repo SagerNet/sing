@@ -1,4 +1,4 @@
-module github.com/sagernet/sing
+module github.com/liuchang103/sing
 
 go 1.18
 
