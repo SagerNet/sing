@@ -49,20 +49,20 @@ func (c *AssociatePacketConn) RemoteAddr() net.Addr {
 
 //warn:unsafe
 func (c *AssociatePacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, addr, err = c.NetPacketConn.ReadFrom(p)
+	n, _, err = c.NetPacketConn.ReadFrom(p)
 	if err != nil {
 		return
 	}
 	if n < 3 {
 		return 0, nil, ErrInvalidPacket
 	}
-	c.remoteAddr = M.SocksaddrFromNet(addr)
 	reader := bytes.NewReader(p[3:n])
 	destination, err := M.SocksaddrSerializer.ReadAddrPort(reader)
 	if err != nil {
 		return
 	}
 	addr = destination.UDPAddr()
+	c.remoteAddr = M.SocksaddrFromNet(addr)
 	index := 3 + int(reader.Size()) - reader.Len()
 	n = copy(p, p[index:n])
 	return
@@ -95,19 +95,19 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	destination, err = c.NetPacketConn.ReadPacket(buffer)
+	_, err = c.NetPacketConn.ReadPacket(buffer)
 	if err != nil {
 		return M.Socksaddr{}, err
 	}
 	if buffer.Len() < 3 {
 		return M.Socksaddr{}, ErrInvalidPacket
 	}
-	c.remoteAddr = destination
 	buffer.Advance(3)
 	destination, err = M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		return
 	}
+	c.remoteAddr = destination
 	return destination.Unwrap(), nil
 }
 
