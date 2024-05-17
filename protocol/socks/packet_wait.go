@@ -10,7 +10,7 @@ import (
 var _ N.PacketReadWaitCreator = (*AssociatePacketConn)(nil)
 
 func (c *AssociatePacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
-	readWaiter, isReadWaiter := bufio.CreatePacketReadWaiter(c.NetPacketConn)
+	readWaiter, isReadWaiter := bufio.CreateReadWaiter(c.conn)
 	if !isReadWaiter {
 		return nil, false
 	}
@@ -21,7 +21,7 @@ var _ N.PacketReadWaiter = (*AssociatePacketReadWaiter)(nil)
 
 type AssociatePacketReadWaiter struct {
 	conn       *AssociatePacketConn
-	readWaiter N.PacketReadWaiter
+	readWaiter N.ReadWaiter
 }
 
 func (w *AssociatePacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
@@ -29,7 +29,7 @@ func (w *AssociatePacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptio
 }
 
 func (w *AssociatePacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
-	buffer, destination, err = w.readWaiter.WaitReadPacket()
+	buffer, err = w.readWaiter.WaitReadBuffer()
 	if err != nil {
 		return
 	}
@@ -37,12 +37,12 @@ func (w *AssociatePacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destin
 		buffer.Release()
 		return nil, M.Socksaddr{}, ErrInvalidPacket
 	}
-	w.conn.remoteAddr = destination
 	buffer.Advance(3)
 	destination, err = M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		buffer.Release()
-		return nil, M.Socksaddr{}, err
+		return
 	}
+	w.conn.remoteAddr = destination
 	return
 }

@@ -63,6 +63,10 @@ func (c *unidirectionalNATPacketConn) UpdateDestination(destinationAddress netip
 	c.destination = M.SocksaddrFrom(destinationAddress, c.destination.Port)
 }
 
+func (c *unidirectionalNATPacketConn) RemoteAddr() net.Addr {
+	return c.destination.UDPAddr()
+}
+
 func (c *unidirectionalNATPacketConn) Upstream() any {
 	return c.NetPacketConn
 }
@@ -134,6 +138,10 @@ func (c *bidirectionalNATPacketConn) UpdateDestination(destinationAddress netip.
 
 func (c *bidirectionalNATPacketConn) Upstream() any {
 	return c.NetPacketConn
+}
+
+func (c *bidirectionalNATPacketConn) RemoteAddr() net.Addr {
+	return c.destination.UDPAddr()
 }
 
 func socksaddrWithoutPort(destination M.Socksaddr) M.Socksaddr {

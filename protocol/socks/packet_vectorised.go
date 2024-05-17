@@ -17,23 +17,13 @@ type VectorisedAssociatePacketConn struct {
 	N.VectorisedPacketWriter
 }
 
-func NewVectorisedAssociatePacketConn(conn net.PacketConn, writer N.VectorisedPacketWriter, remoteAddr M.Socksaddr, underlying net.Conn) *VectorisedAssociatePacketConn {
-	return &VectorisedAssociatePacketConn{
-		AssociatePacketConn{
-			NetPacketConn: bufio.NewPacketConn(conn),
-			remoteAddr:    remoteAddr,
-			underlying:    underlying,
-		},
-		writer,
-	}
-}
-
 func NewVectorisedAssociateConn(conn net.Conn, writer N.VectorisedWriter, remoteAddr M.Socksaddr, underlying net.Conn) *VectorisedAssociatePacketConn {
 	return &VectorisedAssociatePacketConn{
 		AssociatePacketConn{
-			NetPacketConn: bufio.NewUnbindPacketConn(conn),
-			remoteAddr:    remoteAddr,
-			underlying:    underlying,
+			AbstractConn: conn,
+			conn:         bufio.NewExtendedConn(conn),
+			remoteAddr:   remoteAddr,
+			underlying:   underlying,
 		},
 		&bufio.UnbindVectorisedPacketWriter{VectorisedWriter: writer},
 	}
