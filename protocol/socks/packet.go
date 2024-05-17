@@ -85,9 +85,10 @@ func (c *AssociatePacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error
 	return bufio.WritePacketBuffer(c.NetPacketConn, buffer, c.remoteAddr)
 }
 
-func (c *AssociatePacketConn) Read(b []byte) (n int, err error) {
-	n, _, err = c.ReadFrom(b)
-	return
+func (c *AssociatePacketConn) Read(b []byte) (int, error) {
+	n, addr, err := c.ReadFrom(b)
+	c.remoteAddr = M.SocksaddrFromNet(addr)
+	return n, err
 }
 
 func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
