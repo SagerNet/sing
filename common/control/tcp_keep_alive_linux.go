@@ -25,5 +25,6 @@ func SetKeepAlivePeriod(idle time.Duration, interval time.Duration) Func {
 	}
 }
 
-//go:linkname roundDurationUp net.roundDurationUp
-func roundDurationUp(d time.Duration, to time.Duration) time.Duration
+func roundDurationUp(d time.Duration, to time.Duration) time.Duration {
+	return (d + to - 1) / to
+}
