@@ -15,13 +15,35 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-//go:linkname modws2_32 golang.org/x/sys/windows.modws2_32
-var modws2_32 *windows.LazyDLL
+var modws2_32 = windows.NewLazySystemDLL("ws2_32.dll")
 
 var procrecv = modws2_32.NewProc("recv")
 
-//go:linkname errnoErr golang.org/x/sys/windows.errnoErr
-func errnoErr(e syscall.Errno) error
+// Do the interface allocations only once for common
+// Errno values.
+const (
+	errnoERROR_IO_PENDING = 997
+)
+
+var (
+	errERROR_IO_PENDING error = syscall.Errno(errnoERROR_IO_PENDING)
+	errERROR_EINVAL     error = syscall.EINVAL
+)
+
+// errnoErr returns common boxed Errno values, to prevent
+// allocations at runtime.
+func errnoErr(e syscall.Errno) error {
+	switch e {
+	case 0:
+		return errERROR_EINVAL
+	case errnoERROR_IO_PENDING:
+		return errERROR_IO_PENDING
+	}
+	// TODO: add more here, after collecting data on the common
+	// error values see on Windows. (perhaps when running
+	// all.bat?)
+	return e
+}
 
 func recv(s windows.Handle, buf []byte, flags int32) (n int32, err error) {
 	var _p0 *byte
