@@ -442,7 +442,7 @@ func marshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	b, err := m.MarshalJSON()
 	if err == nil {
 		e.Grow(len(b))
-		out := e.AvailableBuffer()
+		out := availableBuffer(&e.Buffer)
 		out, err = appendCompact(out, b, opts.escapeHTML)
 		e.Buffer.Write(out)
 	}
@@ -461,7 +461,7 @@ func addrMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	b, err := m.MarshalJSON()
 	if err == nil {
 		e.Grow(len(b))
-		out := e.AvailableBuffer()
+		out := availableBuffer(&e.Buffer)
 		out, err = appendCompact(out, b, opts.escapeHTML)
 		e.Buffer.Write(out)
 	}
@@ -484,7 +484,7 @@ func textMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err, "MarshalText"})
 	}
-	e.Write(appendString(e.AvailableBuffer(), b, opts.escapeHTML))
+	e.Write(appendString(availableBuffer(&e.Buffer), b, opts.escapeHTML))
 }
 
 func addrTextMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
@@ -498,11 +498,11 @@ func addrTextMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err, "MarshalText"})
 	}
-	e.Write(appendString(e.AvailableBuffer(), b, opts.escapeHTML))
+	e.Write(appendString(availableBuffer(&e.Buffer), b, opts.escapeHTML))
 }
 
 func boolEncoder(e *encodeState, v reflect.Value, opts encOpts) {
-	b := e.AvailableBuffer()
+	b := availableBuffer(&e.Buffer)
 	b = mayAppendQuote(b, opts.quoted)
 	b = strconv.AppendBool(b, v.Bool())
 	b = mayAppendQuote(b, opts.quoted)
@@ -510,7 +510,7 @@ func boolEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 }
 
 func intEncoder(e *encodeState, v reflect.Value, opts encOpts) {
-	b := e.AvailableBuffer()
+	b := availableBuffer(&e.Buffer)
 	b = mayAppendQuote(b, opts.quoted)
 	b = strconv.AppendInt(b, v.Int(), 10)
 	b = mayAppendQuote(b, opts.quoted)
@@ -518,7 +518,7 @@ func intEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 }
 
 func uintEncoder(e *encodeState, v reflect.Value, opts encOpts) {
-	b := e.AvailableBuffer()
+	b := availableBuffer(&e.Buffer)
 	b = mayAppendQuote(b, opts.quoted)
 	b = strconv.AppendUint(b, v.Uint(), 10)
 	b = mayAppendQuote(b, opts.quoted)
@@ -538,7 +538,7 @@ func (bits floatEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 	// See golang.org/issue/6384 and golang.org/issue/14135.
 	// Like fmt %g, but the exponent cutoffs are different
 	// and exponents themselves are not padded to two digits.
-	b := e.AvailableBuffer()
+	b := availableBuffer(&e.Buffer)
 	b = mayAppendQuote(b, opts.quoted)
 	abs := math.Abs(f)
 	fmt := byte('f')
@@ -577,7 +577,7 @@ func stringEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 		if !isValidNumber(numStr) {
 			e.error(fmt.Errorf("json: invalid number literal %q", numStr))
 		}
-		b := e.AvailableBuffer()
+		b := availableBuffer(&e.Buffer)
 		b = mayAppendQuote(b, opts.quoted)
 		b = append(b, numStr...)
 		b = mayAppendQuote(b, opts.quoted)
@@ -586,9 +586,9 @@ func stringEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	}
 	if opts.quoted {
 		b := appendString(nil, v.String(), opts.escapeHTML)
-		e.Write(appendString(e.AvailableBuffer(), b, false)) // no need to escape again since it is already escaped
+		e.Write(appendString(availableBuffer(&e.Buffer), b, false)) // no need to escape again since it is already escaped
 	} else {
-		e.Write(appendString(e.AvailableBuffer(), v.String(), opts.escapeHTML))
+		e.Write(appendString(availableBuffer(&e.Buffer), v.String(), opts.escapeHTML))
 	}
 }
 
@@ -754,7 +754,7 @@ func (me mapEncoder) encode(e *encodeState, v reflect.Value, opts encOpts) {
 		if i > 0 {
 			e.WriteByte(',')
 		}
-		e.Write(appendString(e.AvailableBuffer(), kv.ks, opts.escapeHTML))
+		e.Write(appendString(availableBuffer(&e.Buffer), kv.ks, opts.escapeHTML))
 		e.WriteByte(':')
 		me.elemEnc(e, kv.v, opts)
 	}
@@ -786,7 +786,7 @@ func encodeByteSlice(e *encodeState, v reflect.Value, _ encOpts) {
 	e.Grow(len(`"`) + encodedLen + len(`"`))
 
 	// TODO(https://go.dev/issue/53693): Use base64.Encoding.AppendEncode.
-	b := e.AvailableBuffer()
+	b := availableBuffer(&e.Buffer)
 	b = append(b, '"')
 	base64.StdEncoding.Encode(b[len(b):][:encodedLen], s)
 	b = b[:len(b)+encodedLen]
