@@ -6,37 +6,57 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-var _ N.ReadWaiter = (*BindPacketReadWaiter)(nil)
+var _ N.ReadWaiter = (*bindPacketReadWaiter)(nil)
 
-type BindPacketReadWaiter struct {
+type bindPacketReadWaiter struct {
 	readWaiter N.PacketReadWaiter
 }
 
-func (w *BindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+func (w *bindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	return w.readWaiter.InitializeReadWaiter(options)
 }
 
-func (w *BindPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
+func (w *bindPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
 	buffer, _, err = w.readWaiter.WaitReadPacket()
 	return
 }
 
-var _ N.PacketReadWaiter = (*UnbindPacketReadWaiter)(nil)
+var _ N.PacketReadWaiter = (*unbindPacketReadWaiter)(nil)
 
-type UnbindPacketReadWaiter struct {
+type unbindPacketReadWaiter struct {
 	readWaiter N.ReadWaiter
 	addr       M.Socksaddr
 }
 
-func (w *UnbindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+func (w *unbindPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	return w.readWaiter.InitializeReadWaiter(options)
 }
 
-func (w *UnbindPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+func (w *unbindPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
 	buffer, err = w.readWaiter.WaitReadBuffer()
 	if err != nil {
 		return
 	}
 	destination = w.addr
+	return
+}
+
+var _ N.ReadWaiter = (*serverPacketReadWaiter)(nil)
+
+type serverPacketReadWaiter struct {
+	*serverPacketConn
+	readWaiter N.PacketReadWaiter
+}
+
+func (w *serverPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
+}
+
+func (w *serverPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
+	buffer, destination, err := w.readWaiter.WaitReadPacket()
+	if err != nil {
+		return
+	}
+	w.remoteAddr = destination
 	return
 }

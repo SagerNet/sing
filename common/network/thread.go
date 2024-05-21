@@ -154,15 +154,16 @@ type WriterWithMTU interface {
 
 func CalculateMTU(reader any, writer any) int {
 	readerMTU := calculateReaderMTU(reader)
-	readerHeadroom := calculateReaderFrontHeadroom(reader)
 	writerMTU := calculateWriterMTU(writer)
-	if readerMTU > writerMTU {
-		return readerMTU + readerHeadroom
-	}
-	if writerMTU > buf.BufferSize {
+	if readerMTU == 0 && writerMTU == 0 || readerMTU > buf.BufferSize || writerMTU > buf.BufferSize {
 		return 0
 	}
-	return writerMTU + readerHeadroom
+	readerHeadroom := calculateReaderFrontHeadroom(reader)
+	if readerMTU > writerMTU {
+		return readerMTU + readerHeadroom
+	} else {
+		return writerMTU + readerHeadroom
+	}
 }
 
 func calculateReaderMTU(reader any) int {

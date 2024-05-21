@@ -39,7 +39,7 @@ func (c *bindPacketConn) CreateReadWaiter() (N.ReadWaiter, bool) {
 	if !isReadWaiter {
 		return nil, false
 	}
-	return &BindPacketReadWaiter{readWaiter}, true
+	return &bindPacketReadWaiter{readWaiter}, true
 }
 
 func (c *bindPacketConn) RemoteAddr() net.Addr {
@@ -104,9 +104,62 @@ func (c *UnbindPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
 	if !isReadWaiter {
 		return nil, false
 	}
-	return &UnbindPacketReadWaiter{readWaiter, c.addr}, true
+	return &unbindPacketReadWaiter{readWaiter, c.addr}, true
 }
 
 func (c *UnbindPacketConn) Upstream() any {
 	return c.ExtendedConn
+}
+
+func NewServerPacketConn(conn net.PacketConn) N.ExtendedConn {
+	return &serverPacketConn{
+		NetPacketConn: NewPacketConn(conn),
+	}
+}
+
+type serverPacketConn struct {
+	N.NetPacketConn
+	remoteAddr M.Socksaddr
+}
+
+func (c *serverPacketConn) Read(p []byte) (n int, err error) {
+	n, addr, err := c.NetPacketConn.ReadFrom(p)
+	if err != nil {
+		return
+	}
+	c.remoteAddr = M.SocksaddrFromNet(addr)
+	return
+}
+
+func (c *serverPacketConn) ReadBuffer(buffer *buf.Buffer) error {
+	destination, err := c.NetPacketConn.ReadPacket(buffer)
+	if err != nil {
+		return err
+	}
+	c.remoteAddr = destination
+	return nil
+}
+
+func (c *serverPacketConn) Write(p []byte) (n int, err error) {
+	return c.NetPacketConn.WriteTo(p, c.remoteAddr.UDPAddr())
+}
+
+func (c *serverPacketConn) WriteBuffer(buffer *buf.Buffer) error {
+	return c.NetPacketConn.WritePacket(buffer, c.remoteAddr)
+}
+
+func (c *serverPacketConn) RemoteAddr() net.Addr {
+	return c.remoteAddr
+}
+
+func (c *serverPacketConn) Upstream() any {
+	return c.NetPacketConn
+}
+
+func (c *serverPacketConn) CreateReadWaiter() (N.ReadWaiter, bool) {
+	readWaiter, isReadWaiter := CreatePacketReadWaiter(c.NetPacketConn)
+	if !isReadWaiter {
+		return nil, false
+	}
+	return &serverPacketReadWaiter{c, readWaiter}, true
 }

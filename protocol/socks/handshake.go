@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -219,7 +220,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Destination = request.Destination
 			var innerError error
 			done := make(chan struct{})
-			associatePacketConn := NewAssociatePacketConn(udpConn, request.Destination, conn)
+			associatePacketConn := NewAssociatePacketConn(bufio.NewServerPacketConn(udpConn), request.Destination, conn)
 			go func() {
 				innerError = handler.NewPacketConnection(ctx, associatePacketConn, metadata)
 				close(done)
