@@ -5,6 +5,7 @@ import (
 )
 
 type InterfaceFinder interface {
+	Interfaces() []Interface
 	InterfaceIndexByName(name string) (int, error)
 	InterfaceNameByIndex(index int) (string, error)
 	InterfaceByAddr(addr netip.Addr) (*Interface, error)
