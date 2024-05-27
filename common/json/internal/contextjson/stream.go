@@ -153,6 +153,10 @@ func (dec *Decoder) refill() error {
 		dec.scanp = 0
 	}
 
+	return dec.refill0()
+}
+
+func (dec *Decoder) refill0() error {
 	// Grow buffer if not large enough.
 	const minRead = 512
 	if cap(dec.buf)-len(dec.buf) < minRead {
@@ -402,7 +406,7 @@ func (dec *Decoder) Token() (Token, error) {
 			return Delim('{'), nil
 
 		case '}':
-			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma {
+			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma && dec.tokenState != tokenObjectKey {
 				return dec.tokenError(c)
 			}
 			dec.scanp++
@@ -410,7 +414,6 @@ func (dec *Decoder) Token() (Token, error) {
 			dec.tokenStack = dec.tokenStack[:len(dec.tokenStack)-1]
 			dec.tokenValueEnd()
 			return Delim('}'), nil
-
 		case ':':
 			if dec.tokenState != tokenObjectColon {
 				return dec.tokenError(c)
@@ -483,7 +486,26 @@ func (dec *Decoder) tokenError(c byte) (Token, error) {
 // current array or object being parsed.
 func (dec *Decoder) More() bool {
 	c, err := dec.peek()
-	return err == nil && c != ']' && c != '}'
+	// return err == nil && c != ']' && c != '}'
+	if err != nil {
+		return false
+	}
+	if c == ']' || c == '}' {
+		return false
+	}
+	if c == ',' {
+		scanp := dec.scanp
+		dec.scanp++
+		c, err = dec.peekNoRefill()
+		dec.scanp = scanp
+		if err != nil {
+			return false
+		}
+		if c == ']' || c == '}' {
+			return false
+		}
+	}
+	return true
 }
 
 func (dec *Decoder) peek() (byte, error) {
@@ -502,6 +524,25 @@ func (dec *Decoder) peek() (byte, error) {
 			return 0, err
 		}
 		err = dec.refill()
+	}
+}
+
+func (dec *Decoder) peekNoRefill() (byte, error) {
+	var err error
+	for {
+		for i := dec.scanp; i < len(dec.buf); i++ {
+			c := dec.buf[i]
+			if isSpace(c) {
+				continue
+			}
+			dec.scanp = i
+			return c, nil
+		}
+		// buffer has been scanned, now report any error
+		if err != nil {
+			return 0, err
+		}
+		err = dec.refill0()
 	}
 }
 
