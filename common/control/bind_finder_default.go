@@ -9,6 +9,8 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
+var _ InterfaceFinder = (*DefaultInterfaceFinder)(nil)
+
 type DefaultInterfaceFinder struct {
 	interfaces []Interface
 }
@@ -41,6 +43,10 @@ func (f *DefaultInterfaceFinder) Update() error {
 
 func (f *DefaultInterfaceFinder) UpdateInterfaces(interfaces []Interface) {
 	f.interfaces = interfaces
+}
+
+func (f *DefaultInterfaceFinder) Interfaces() []Interface {
+	return f.interfaces
 }
 
 func (f *DefaultInterfaceFinder) InterfaceIndexByName(name string) (int, error) {
