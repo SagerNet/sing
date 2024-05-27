@@ -402,7 +402,7 @@ func (dec *Decoder) Token() (Token, error) {
 			return Delim('{'), nil
 
 		case '}':
-			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma {
+			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma && dec.tokenState != tokenObjectKey {
 				return dec.tokenError(c)
 			}
 			dec.scanp++
@@ -410,7 +410,6 @@ func (dec *Decoder) Token() (Token, error) {
 			dec.tokenStack = dec.tokenStack[:len(dec.tokenStack)-1]
 			dec.tokenValueEnd()
 			return Delim('}'), nil
-
 		case ':':
 			if dec.tokenState != tokenObjectColon {
 				return dec.tokenError(c)
@@ -483,7 +482,26 @@ func (dec *Decoder) tokenError(c byte) (Token, error) {
 // current array or object being parsed.
 func (dec *Decoder) More() bool {
 	c, err := dec.peek()
-	return err == nil && c != ']' && c != '}'
+	//return err == nil && c != ']' && c != '}'
+	if err != nil {
+		return false
+	}
+	if c == ']' || c == '}' {
+		return false
+	}
+	if c == ',' {
+		scanp := dec.scanp
+		dec.scanp++
+		c, err = dec.peek()
+		dec.scanp = scanp
+		if err != nil {
+			return false
+		}
+		if c == ']' || c == '}' {
+			return false
+		}
+	}
+	return true
 }
 
 func (dec *Decoder) peek() (byte, error) {
