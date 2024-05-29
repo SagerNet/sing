@@ -161,7 +161,7 @@ func PrefixFromNet(netAddr net.Addr) netip.Prefix {
 	switch addr := netAddr.(type) {
 	case *net.IPNet:
 		bits, _ := addr.Mask.Size()
-		return netip.PrefixFrom(AddrFromIP(addr.IP), bits)
+		return netip.PrefixFrom(AddrFromIP(addr.IP).Unmap(), bits)
 	default:
 		return netip.Prefix{}
 	}
