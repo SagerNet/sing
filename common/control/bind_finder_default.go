@@ -31,10 +31,11 @@ func (f *DefaultInterfaceFinder) Update() error {
 			return err
 		}
 		interfaces = append(interfaces, Interface{
-			Index:     netIf.Index,
-			MTU:       netIf.MTU,
-			Name:      netIf.Name,
-			Addresses: common.Map(ifAddrs, M.PrefixFromNet),
+			Index:        netIf.Index,
+			MTU:          netIf.MTU,
+			Name:         netIf.Name,
+			Addresses:    common.Map(ifAddrs, M.PrefixFromNet),
+			HardwareAddr: netIf.HardwareAddr,
 		})
 	}
 	f.interfaces = interfaces
