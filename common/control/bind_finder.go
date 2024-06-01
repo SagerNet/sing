@@ -1,6 +1,7 @@
 package control
 
 import (
+	"net"
 	"net/netip"
 )
 
@@ -12,8 +13,9 @@ type InterfaceFinder interface {
 }
 
 type Interface struct {
-	Index     int
-	MTU       int
-	Name      string
-	Addresses []netip.Prefix
+	Index        int
+	MTU          int
+	Name         string
+	Addresses    []netip.Prefix
+	HardwareAddr net.HardwareAddr
 }
