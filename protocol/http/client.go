@@ -80,6 +80,7 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	}
 	if c.host != "" && c.host != destination.Fqdn {
 		if c.path != "" {
+			_ = conn.Close()
 			return nil, E.New("Host header and path are not allowed at the same time")
 		}
 		request.Host = c.host
@@ -90,6 +91,7 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	if c.path != "" {
 		err = URLSetPath(request.URL, c.path)
 		if err != nil {
+			_ = conn.Close()
 			return nil, err
 		}
 	}
