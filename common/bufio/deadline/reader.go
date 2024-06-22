@@ -54,14 +54,13 @@ func (r *reader) Read(p []byte) (n int, err error) {
 	default:
 	}
 	select {
+	case result := <-r.result:
+		return r.pipeReturn(result, p)
+	case <-r.pipeDeadline.wait():
+		return 0, os.ErrDeadlineExceeded
 	case <-r.done:
 		go r.pipeRead(len(p))
-	default:
 	}
-	return r.read(p)
-}
-
-func (r *reader) read(p []byte) (n int, err error) {
 	select {
 	case result := <-r.result:
 		return r.pipeReturn(result, p)
@@ -99,14 +98,13 @@ func (r *reader) ReadBuffer(buffer *buf.Buffer) error {
 	default:
 	}
 	select {
+	case result := <-r.result:
+		return r.pipeReturnBuffer(result, buffer)
+	case <-r.pipeDeadline.wait():
+		return os.ErrDeadlineExceeded
 	case <-r.done:
-		go r.pipeReadBuffer(buffer.FreeLen())
-	default:
+		go r.pipeRead(buffer.FreeLen())
 	}
-	return r.readBuffer(buffer)
-}
-
-func (r *reader) readBuffer(buffer *buf.Buffer) error {
 	select {
 	case result := <-r.result:
 		return r.pipeReturnBuffer(result, buffer)
@@ -125,16 +123,6 @@ func (r *reader) pipeReturnBuffer(result *readResult, buffer *buf.Buffer) error 
 		result.buffer.Release()
 		return result.err
 	}
-}
-
-func (r *reader) pipeReadBuffer(pLen int) {
-	cacheBuffer := buf.NewSize(pLen)
-	err := r.ExtendedReader.ReadBuffer(cacheBuffer)
-	r.result <- &readResult{
-		buffer: cacheBuffer,
-		err:    err,
-	}
-	r.done <- struct{}{}
 }
 
 func (r *reader) SetReadDeadline(t time.Time) error {

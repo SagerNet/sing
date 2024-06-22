@@ -18,7 +18,6 @@ var _ xml.TokenReader = (*Reader)(nil)
 type Reader struct {
 	reader     *bytes.Reader
 	stringRefs []string
-	attrs      []xml.Attr
 }
 
 func NewReader(content []byte) (xml.TokenReader, bool) {
@@ -47,7 +46,7 @@ func (r *Reader) Token() (token xml.Token, err error) {
 			return
 		}
 		var attrs []xml.Attr
-		attrs, err = r.pullAttributes()
+		attrs, err = r.readAttributes()
 		if err != nil {
 			return
 		}
@@ -93,35 +92,41 @@ func (r *Reader) Token() (token xml.Token, err error) {
 		_, err = r.readUTF()
 		return
 	case ATTRIBUTE:
-		return nil, E.New("unexpected attribute")
+		_, err = r.readAttribute()
+		return
 	}
 	return nil, E.New("unknown token type ", tokenType, " with type ", eventType)
 }
 
-func (r *Reader) pullAttributes() ([]xml.Attr, error) {
-	err := r.pullAttribute()
-	if err != nil {
-		return nil, err
+func (r *Reader) readAttributes() ([]xml.Attr, error) {
+	var attrs []xml.Attr
+	for {
+		attr, err := r.readAttribute()
+		if err == io.EOF {
+			break
+		}
+		attrs = append(attrs, attr)
 	}
-	attrs := r.attrs
-	r.attrs = nil
 	return attrs, nil
 }
 
-func (r *Reader) pullAttribute() error {
+func (r *Reader) readAttribute() (xml.Attr, error) {
 	event, err := r.reader.ReadByte()
 	if err != nil {
-		return nil
+		return xml.Attr{}, nil
 	}
 	tokenType := event & 0x0f
 	eventType := event & 0xf0
 	if tokenType != ATTRIBUTE {
-		return r.reader.UnreadByte()
+		err = r.reader.UnreadByte()
+		if err != nil {
+			return xml.Attr{}, nil
+		}
+		return xml.Attr{}, io.EOF
 	}
-	var name string
-	name, err = r.readInternedUTF()
+	name, err := r.readInternedUTF()
 	if err != nil {
-		return err
+		return xml.Attr{}, err
 	}
 	var value string
 	switch eventType {
@@ -134,74 +139,73 @@ func (r *Reader) pullAttribute() error {
 	case TypeString:
 		value, err = r.readUTF()
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 	case TypeStringInterned:
 		value, err = r.readInternedUTF()
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 	case TypeBytesHex:
 		var data []byte
 		data, err = r.readBytes()
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = hex.EncodeToString(data)
 	case TypeBytesBase64:
 		var data []byte
 		data, err = r.readBytes()
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = base64.StdEncoding.EncodeToString(data)
 	case TypeInt:
 		var data int32
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = strconv.FormatInt(int64(data), 10)
 	case TypeIntHex:
 		var data int32
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = "0x" + strconv.FormatInt(int64(data), 16)
 	case TypeLong:
 		var data int64
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = strconv.FormatInt(data, 10)
 	case TypeLongHex:
 		var data int64
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = "0x" + strconv.FormatInt(data, 16)
 	case TypeFloat:
 		var data float32
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = strconv.FormatFloat(float64(data), 'g', -1, 32)
 	case TypeDouble:
 		var data float64
 		err = binary.Read(r.reader, binary.BigEndian, &data)
 		if err != nil {
-			return err
+			return xml.Attr{}, err
 		}
 		value = strconv.FormatFloat(data, 'g', -1, 64)
 	default:
-		return E.New("unexpected attribute type, ", eventType)
+		return xml.Attr{}, E.New("unexpected attribute type, ", eventType)
 	}
-	r.attrs = append(r.attrs, xml.Attr{Name: xml.Name{Local: name}, Value: value})
-	return r.pullAttribute()
+	return xml.Attr{Name: xml.Name{Local: name}, Value: value}, nil
 }
 
 func (r *Reader) readUnsignedShort() (uint16, error) {

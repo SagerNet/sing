@@ -21,13 +21,13 @@ type TimerPacketConn struct {
 	instance *Instance
 }
 
-func NewPacketConn(ctx context.Context, conn N.PacketConn, timeout time.Duration) (context.Context, PacketConn) {
+func NewPacketConn(ctx context.Context, conn N.PacketConn, timeout time.Duration) (context.Context, N.PacketConn) {
 	if timeoutConn, isTimeoutConn := common.Cast[PacketConn](conn); isTimeoutConn {
 		oldTimeout := timeoutConn.Timeout()
 		if timeout < oldTimeout {
 			timeoutConn.SetTimeout(timeout)
 		}
-		return ctx, timeoutConn
+		return ctx, conn
 	}
 	err := conn.SetReadDeadline(time.Time{})
 	if err == nil {

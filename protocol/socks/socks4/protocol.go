@@ -85,9 +85,7 @@ func WriteRequest(writer io.Writer, request Request) error {
 		requestLen += len(request.Username)
 	}
 
-	_buffer := buf.StackNewSize(requestLen)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(requestLen)
 	defer buffer.Release()
 
 	common.Must(
@@ -145,9 +143,7 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 }
 
 func WriteResponse(writer io.Writer, response Response) error {
-	_buffer := buf.StackNewSize(8)
-	defer common.KeepAlive(_buffer)
-	buffer := common.Dup(_buffer)
+	buffer := buf.NewSize(8)
 	defer buffer.Release()
 	common.Must(
 		buffer.WriteByte(0),

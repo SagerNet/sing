@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -93,7 +94,7 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	return response, err
 }
 
-func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnection(ctx context.Context, conn net.Conn, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	version, err := rw.ReadByte(conn)
 	if err != nil {
 		return err
@@ -101,7 +102,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, authenticator auth.Aut
 	return HandleConnection0(ctx, conn, version, authenticator, handler, metadata)
 }
 
-func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authenticator auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	switch version {
 	case socks4.Version:
 		request, err := socks4.ReadRequest0(conn)
@@ -110,6 +111,16 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 		}
 		switch request.Command {
 		case socks4.CommandConnect:
+			if authenticator != nil && !authenticator.Verify(request.Username, "") {
+				err = socks4.WriteResponse(conn, socks4.Response{
+					ReplyCode:   socks4.ReplyCodeRejectedOrFailed,
+					Destination: request.Destination,
+				})
+				if err != nil {
+					return err
+				}
+				return E.New("socks4: authentication failed, username=", request.Username)
+			}
 			err = socks4.WriteResponse(conn, socks4.Response{
 				ReplyCode:   socks4.ReplyCodeGranted,
 				Destination: M.SocksaddrFromNet(conn.LocalAddr()),
@@ -171,6 +182,9 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			if err != nil {
 				return err
 			}
+			if response.Status != socks5.UsernamePasswordStatusSuccess {
+				return E.New("socks5: authentication failed, username=", usernamePasswordAuthRequest.Username, ", password=", usernamePasswordAuthRequest.Password)
+			}
 		}
 		request, err := socks5.ReadRequest(conn)
 		if err != nil {
@@ -190,7 +204,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			return handler.NewConnection(ctx, conn, metadata)
 		case socks5.CommandUDPAssociate:
 			var udpConn *net.UDPConn
-			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNetAddr(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNetAddr(conn.LocalAddr()), 0)))
+			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNet(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNet(conn.LocalAddr()), 0)))
 			if err != nil {
 				return err
 			}
@@ -206,7 +220,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			metadata.Destination = request.Destination
 			var innerError error
 			done := make(chan struct{})
-			associatePacketConn := NewAssociatePacketConn(udpConn, request.Destination, conn)
+			associatePacketConn := NewAssociatePacketConn(bufio.NewServerPacketConn(udpConn), request.Destination, conn)
 			go func() {
 				innerError = handler.NewPacketConnection(ctx, associatePacketConn, metadata)
 				close(done)

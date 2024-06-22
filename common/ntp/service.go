@@ -10,6 +10,8 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
+	"github.com/sagernet/sing/service/pause"
 )
 
 const TimeLayout = "2006-01-02 15:04:05 -0700"
@@ -19,23 +21,26 @@ type TimeService interface {
 }
 
 type Options struct {
-	Context  context.Context
-	Server   M.Socksaddr
-	Interval time.Duration
-	Dialer   N.Dialer
-	Logger   logger.Logger
+	Context       context.Context
+	Dialer        N.Dialer
+	Logger        logger.Logger
+	Server        M.Socksaddr
+	Interval      time.Duration
+	WriteToSystem bool
 }
 
 var _ TimeService = (*Service)(nil)
 
 type Service struct {
-	ctx         context.Context
-	cancel      common.ContextCancelCauseFunc
-	server      M.Socksaddr
-	dialer      N.Dialer
-	logger      logger.Logger
-	ticker      *time.Ticker
-	clockOffset time.Duration
+	ctx           context.Context
+	cancel        common.ContextCancelCauseFunc
+	dialer        N.Dialer
+	logger        logger.Logger
+	server        M.Socksaddr
+	writeToSystem bool
+	ticker        *time.Ticker
+	clockOffset   time.Duration
+	pause         pause.Manager
 }
 
 func NewService(options Options) *Service {
@@ -47,8 +52,11 @@ func NewService(options Options) *Service {
 	destination := options.Server
 	if !destination.IsValid() {
 		destination = M.Socksaddr{
-			Fqdn: "time.google.com",
+			Fqdn: "time.apple.com",
 		}
+	}
+	if options.Logger == nil {
+		options.Logger = logger.NOP()
 	}
 	if destination.Port == 0 {
 		destination.Port = 123
@@ -66,12 +74,14 @@ func NewService(options Options) *Service {
 		dialer = N.SystemDialer
 	}
 	return &Service{
-		ctx:    ctx,
-		cancel: cancel,
-		server: destination,
-		dialer: dialer,
-		logger: options.Logger,
-		ticker: time.NewTicker(interval),
+		ctx:           ctx,
+		cancel:        cancel,
+		dialer:        dialer,
+		logger:        options.Logger,
+		writeToSystem: options.WriteToSystem,
+		server:        destination,
+		ticker:        time.NewTicker(interval),
+		pause:         service.FromContext[pause.Manager](ctx),
 	}
 }
 
@@ -104,6 +114,14 @@ func (s *Service) loopUpdate() {
 			return
 		case <-s.ticker.C:
 		}
+		if s.pause != nil {
+			s.pause.WaitActive()
+			select {
+			case <-s.ctx.Done():
+				return
+			default:
+			}
+		}
 		err := s.update()
 		if err == nil {
 			s.logger.Debug("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
@@ -119,5 +137,11 @@ func (s *Service) update() error {
 		return err
 	}
 	s.clockOffset = response.ClockOffset
+	if s.writeToSystem {
+		writeErr := SetSystemTime(s.TimeFunc()())
+		if writeErr != nil {
+			s.logger.Warn("write time to system: ", writeErr)
+		}
+	}
 	return nil
 }

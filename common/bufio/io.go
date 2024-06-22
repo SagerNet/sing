@@ -37,13 +37,7 @@ func WriteBuffer(writer N.ExtendedWriter, buffer *buf.Buffer) (n int, err error)
 	frontHeadroom := N.CalculateFrontHeadroom(writer)
 	rearHeadroom := N.CalculateRearHeadroom(writer)
 	if frontHeadroom > buffer.Start() || rearHeadroom > buffer.FreeLen() {
-		bufferSize := N.CalculateMTU(nil, writer)
-		if bufferSize > 0 {
-			bufferSize += frontHeadroom + rearHeadroom
-		} else {
-			bufferSize = buf.BufferSize
-		}
-		newBuffer := buf.NewSize(bufferSize)
+		newBuffer := buf.NewSize(buffer.Len() + frontHeadroom + rearHeadroom)
 		newBuffer.Resize(frontHeadroom, 0)
 		common.Must1(newBuffer.Write(buffer.Bytes()))
 		buffer.Release()
@@ -69,13 +63,7 @@ func WritePacketBuffer(writer N.PacketWriter, buffer *buf.Buffer, destination M.
 	frontHeadroom := N.CalculateFrontHeadroom(writer)
 	rearHeadroom := N.CalculateRearHeadroom(writer)
 	if frontHeadroom > buffer.Start() || rearHeadroom > buffer.FreeLen() {
-		bufferSize := N.CalculateMTU(nil, writer)
-		if bufferSize > 0 {
-			bufferSize += frontHeadroom + rearHeadroom
-		} else {
-			bufferSize = buf.BufferSize
-		}
-		newBuffer := buf.NewSize(bufferSize)
+		newBuffer := buf.NewSize(buffer.Len() + frontHeadroom + rearHeadroom)
 		newBuffer.Resize(frontHeadroom, 0)
 		common.Must1(newBuffer.Write(buffer.Bytes()))
 		buffer.Release()

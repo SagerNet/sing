@@ -26,14 +26,14 @@ func New(message ...any) error {
 
 func Cause(cause error, message ...any) error {
 	if cause == nil {
-		return nil
+		panic("cause on an nil error")
 	}
 	return &causeError{F.ToString(message...), cause}
 }
 
 func Extend(cause error, message ...any) error {
 	if cause == nil {
-		return nil
+		panic("extend on an nil error")
 	}
 	return &extendedError{F.ToString(message...), cause}
 }

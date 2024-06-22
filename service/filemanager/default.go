@@ -93,6 +93,13 @@ func (m *defaultManager) CreateTemp(pattern string) (*os.File, error) {
 	return file, nil
 }
 
+func (m *defaultManager) Chown(path string) error {
+	if m.chown {
+		return os.Chown(path, m.userID, m.groupID)
+	}
+	return nil
+}
+
 func (m *defaultManager) Mkdir(path string, perm os.FileMode) error {
 	path = m.BasePath(path)
 	err := os.Mkdir(path, perm)
@@ -111,6 +118,10 @@ func (m *defaultManager) Mkdir(path string, perm os.FileMode) error {
 
 func (m *defaultManager) MkdirAll(path string, perm os.FileMode) error {
 	path = m.BasePath(path)
+	return m.mkdirAll(path, perm)
+}
+
+func (m *defaultManager) mkdirAll(path string, perm os.FileMode) error {
 	dir, err := os.Stat(path)
 	if err == nil {
 		if dir.IsDir() {
@@ -152,6 +163,16 @@ func (m *defaultManager) MkdirAll(path string, perm os.FileMode) error {
 		}
 	}
 	return nil
+}
+
+func (m *defaultManager) Remove(path string) error {
+	path = m.BasePath(path)
+	return os.Remove(path)
+}
+
+func (m *defaultManager) RemoveAll(path string) error {
+	path = m.BasePath(path)
+	return os.RemoveAll(path)
 }
 
 func fixRootDirectory(p string) string {

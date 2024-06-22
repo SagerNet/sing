@@ -17,35 +17,26 @@ type VectorisedAssociatePacketConn struct {
 	N.VectorisedPacketWriter
 }
 
-func NewVectorisedAssociatePacketConn(conn net.PacketConn, writer N.VectorisedPacketWriter, remoteAddr M.Socksaddr, underlying net.Conn) *VectorisedAssociatePacketConn {
-	return &VectorisedAssociatePacketConn{
-		AssociatePacketConn{
-			NetPacketConn: bufio.NewPacketConn(conn),
-			remoteAddr:    remoteAddr,
-			underlying:    underlying,
-		},
-		writer,
-	}
-}
-
 func NewVectorisedAssociateConn(conn net.Conn, writer N.VectorisedWriter, remoteAddr M.Socksaddr, underlying net.Conn) *VectorisedAssociatePacketConn {
 	return &VectorisedAssociatePacketConn{
 		AssociatePacketConn{
-			NetPacketConn: bufio.NewUnbindPacketConn(conn),
-			remoteAddr:    remoteAddr,
-			underlying:    underlying,
+			AbstractConn: conn,
+			conn:         bufio.NewExtendedConn(conn),
+			remoteAddr:   remoteAddr,
+			underlying:   underlying,
 		},
 		&bufio.UnbindVectorisedPacketWriter{VectorisedWriter: writer},
 	}
 }
 
 func (v *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
-	_header := buf.StackNewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
-	defer common.KeepAlive(_header)
-	header := common.Dup(_header)
+	header := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
 	defer header.Release()
 	common.Must(header.WriteZeroN(3))
-	common.Must(M.SocksaddrSerializer.WriteAddrPort(header, destination))
+	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
+	if err != nil {
+		return err
+	}
 	return v.VectorisedPacketWriter.WriteVectorisedPacket(append([]*buf.Buffer{header}, buffers...), destination)
 }
 

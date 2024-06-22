@@ -33,10 +33,10 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 	case syscall.Conn:
 		rawConn, err := w.SyscallConn()
 		if err == nil {
-			return &SyscallVectorisedWriter{writer, rawConn}, true
+			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
 		}
 	case syscall.RawConn:
-		return &SyscallVectorisedWriter{writer, w}, true
+		return &SyscallVectorisedWriter{upstream: writer, rawConn: w}, true
 	}
 	return nil, false
 }
@@ -48,10 +48,10 @@ func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {
 	case syscall.Conn:
 		rawConn, err := w.SyscallConn()
 		if err == nil {
-			return &SyscallVectorisedPacketWriter{writer, rawConn}, true
+			return &SyscallVectorisedPacketWriter{upstream: writer, rawConn: rawConn}, true
 		}
 	case syscall.RawConn:
-		return &SyscallVectorisedPacketWriter{writer, w}, true
+		return &SyscallVectorisedPacketWriter{upstream: writer, rawConn: w}, true
 	}
 	return nil, false
 }
@@ -74,9 +74,7 @@ func (w *BufferedVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error 
 	if bufferLen > 65535 {
 		bufferBytes = make([]byte, bufferLen)
 	} else {
-		_buffer := buf.StackNewSize(bufferLen)
-		defer common.KeepAlive(_buffer)
-		buffer := common.Dup(_buffer)
+		buffer := buf.NewSize(bufferLen)
 		defer buffer.Release()
 		bufferBytes = buffer.FreeBytes()
 	}
@@ -113,6 +111,7 @@ var _ N.VectorisedWriter = (*SyscallVectorisedWriter)(nil)
 type SyscallVectorisedWriter struct {
 	upstream any
 	rawConn  syscall.RawConn
+	syscallVectorisedWriterFields
 }
 
 func (w *SyscallVectorisedWriter) Upstream() any {
@@ -128,6 +127,7 @@ var _ N.VectorisedPacketWriter = (*SyscallVectorisedPacketWriter)(nil)
 type SyscallVectorisedPacketWriter struct {
 	upstream any
 	rawConn  syscall.RawConn
+	syscallVectorisedWriterFields
 }
 
 func (w *SyscallVectorisedPacketWriter) Upstream() any {

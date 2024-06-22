@@ -2,17 +2,28 @@ package control
 
 import (
 	"encoding/binary"
+	"os"
 	"syscall"
 	"unsafe"
 
 	M "github.com/sagernet/sing/common/metadata"
 )
 
-func bindToInterface(conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int) error {
+func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int, preferInterfaceName bool) error {
 	return Raw(conn, func(fd uintptr) error {
+		var err error
+		if interfaceIndex == -1 {
+			if finder == nil {
+				return os.ErrInvalid
+			}
+			interfaceIndex, err = finder.InterfaceIndexByName(interfaceName)
+			if err != nil {
+				return err
+			}
+		}
 		handle := syscall.Handle(fd)
 		if M.ParseSocksaddr(address).AddrString() == "" {
-			err := bind4(handle, interfaceIndex)
+			err = bind4(handle, interfaceIndex)
 			if err != nil {
 				return err
 			}

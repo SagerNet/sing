@@ -68,3 +68,19 @@ func ContextWithPtr[T any](ctx context.Context, servicePtr *T) context.Context {
 	registry.Register(common.DefaultValue[*T](), servicePtr)
 	return ctx
 }
+
+func MustRegister[T any](ctx context.Context, service T) {
+	registry := RegistryFromContext(ctx)
+	if registry == nil {
+		panic("missing service registry in context")
+	}
+	registry.Register(common.DefaultValue[*T](), service)
+}
+
+func MustRegisterPtr[T any](ctx context.Context, servicePtr *T) {
+	registry := RegistryFromContext(ctx)
+	if registry == nil {
+		panic("missing service registry in context")
+	}
+	registry.Register(common.DefaultValue[*T](), servicePtr)
+}

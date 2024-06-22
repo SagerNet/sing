@@ -37,7 +37,7 @@ func (w *BufferedWriter) Write(p []byte) (n int, err error) {
 		if err != nil {
 			return
 		}
-		w.buffer.FullReset()
+		w.buffer.Reset()
 	}
 }
 

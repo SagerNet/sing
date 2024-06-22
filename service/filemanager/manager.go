@@ -12,8 +12,11 @@ type Manager interface {
 	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
 	Create(name string) (*os.File, error)
 	CreateTemp(pattern string) (*os.File, error)
+	Chown(name string) error
 	Mkdir(path string, perm os.FileMode) error
 	MkdirAll(path string, perm os.FileMode) error
+	Remove(path string) error
+	RemoveAll(path string) error
 }
 
 func BasePath(ctx context.Context, name string) string {
@@ -48,6 +51,14 @@ func CreateTemp(ctx context.Context, pattern string) (*os.File, error) {
 	return manager.CreateTemp(pattern)
 }
 
+func Chown(ctx context.Context, name string) error {
+	manager := service.FromContext[Manager](ctx)
+	if manager == nil {
+		return nil
+	}
+	return manager.Chown(name)
+}
+
 func Mkdir(ctx context.Context, path string, perm os.FileMode) error {
 	manager := service.FromContext[Manager](ctx)
 	if manager == nil {
@@ -62,6 +73,22 @@ func MkdirAll(ctx context.Context, path string, perm os.FileMode) error {
 		return os.MkdirAll(path, perm)
 	}
 	return manager.MkdirAll(path, perm)
+}
+
+func Remove(ctx context.Context, path string) error {
+	manager := service.FromContext[Manager](ctx)
+	if manager == nil {
+		return os.Remove(path)
+	}
+	return manager.Remove(path)
+}
+
+func RemoveAll(ctx context.Context, path string) error {
+	manager := service.FromContext[Manager](ctx)
+	if manager == nil {
+		return os.RemoveAll(path)
+	}
+	return manager.RemoveAll(path)
 }
 
 func WriteFile(ctx context.Context, name string, data []byte, perm os.FileMode) error {

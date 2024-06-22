@@ -14,18 +14,18 @@ type PacketConn struct {
 	reader PacketReader
 }
 
-func NewPacketConn(conn N.NetPacketConn) *PacketConn {
+func NewPacketConn(conn N.NetPacketConn) N.NetPacketConn {
 	if deadlineConn, isDeadline := conn.(*PacketConn); isDeadline {
 		return deadlineConn
 	}
-	return &PacketConn{NetPacketConn: conn, reader: NewPacketReader(conn)}
+	return NewSerialPacketConn(&PacketConn{NetPacketConn: conn, reader: NewPacketReader(conn)})
 }
 
-func NewFallbackPacketConn(conn N.NetPacketConn) *PacketConn {
+func NewFallbackPacketConn(conn N.NetPacketConn) N.NetPacketConn {
 	if deadlineConn, isDeadline := conn.(*PacketConn); isDeadline {
 		return deadlineConn
 	}
-	return &PacketConn{NetPacketConn: conn, reader: NewFallbackPacketReader(conn)}
+	return NewSerialPacketConn(&PacketConn{NetPacketConn: conn, reader: NewFallbackPacketReader(conn)})
 }
 
 func (c *PacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
