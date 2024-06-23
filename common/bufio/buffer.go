@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 )
 
@@ -36,6 +37,25 @@ func (w *BufferedWriter) Write(p []byte) (n int, err error) {
 		_, err = w.upstream.Write(w.buffer.Bytes())
 		if err != nil {
 			return
+		}
+		w.buffer.Reset()
+	}
+}
+
+func (w *BufferedWriter) WriteByte(c byte) error {
+	w.access.Lock()
+	defer w.access.Unlock()
+	if w.buffer == nil {
+		return common.Error(w.upstream.Write([]byte{c}))
+	}
+	for {
+		err := w.buffer.WriteByte(c)
+		if err == nil {
+			return nil
+		}
+		_, err = w.upstream.Write(w.buffer.Bytes())
+		if err != nil {
+			return err
 		}
 		w.buffer.Reset()
 	}

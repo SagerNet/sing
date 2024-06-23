@@ -1,4 +1,4 @@
-package rw
+package network
 
 import (
 	"github.com/sagernet/sing/common"

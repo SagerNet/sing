@@ -1,7 +1,7 @@
-package binary
+package varbin
 
 import (
-	"math/rand/v2"
+	"math/rand"
 	"reflect"
 	"testing"
 
@@ -11,7 +11,7 @@ import (
 func TestSlicesValue(t *testing.T) {
 	int64Arr := make([]int64, 64)
 	for i := range int64Arr {
-		int64Arr[i] = rand.Int64()
+		int64Arr[i] = rand.Int63()
 	}
 	require.Equal(t, int64Arr, slicesValue[int64](reflect.ValueOf(int64Arr)))
 	require.Equal(t, int64Arr, baseDataSlices(reflect.ValueOf(int64Arr)))
@@ -22,7 +22,7 @@ func TestSetSliceValue(t *testing.T) {
 	value := reflect.Indirect(reflect.ValueOf(&int64Arr))
 	newInt64Arr := make([]int64, 64)
 	for i := range newInt64Arr {
-		newInt64Arr[i] = rand.Int64()
+		newInt64Arr[i] = rand.Int63()
 	}
 	setSliceValue[int64](value, newInt64Arr)
 	require.Equal(t, newInt64Arr, slicesValue[int64](value))

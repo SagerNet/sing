@@ -1,57 +1,61 @@
-package binary
+package varbin
 
 import (
 	"errors"
 	"io"
 	"reflect"
 
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/binary"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
-type Reader interface {
-	io.Reader
-	io.ByteReader
-}
-
-type Writer interface {
-	io.Writer
-	io.ByteWriter
-}
-
-func ReadData(r Reader, order ByteOrder, rawData any) error {
+func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
+	reader := StubReader(r)
 	switch data := rawData.(type) {
 	case *[]bool:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]int8:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]uint8:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]int16:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]uint16:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]int32:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]uint32:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]int64:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]uint64:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]float32:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	case *[]float64:
-		return readBaseData(r, order, data)
+		return readBase(reader, order, data)
 	default:
 		if intBaseDataSize(rawData) != 0 {
-			return Read(r, order, rawData)
+			return binary.Read(reader, order, rawData)
 		}
 	}
-	return readData(r, order, reflect.Indirect(reflect.ValueOf(rawData)))
+	return read(reader, order, reflect.Indirect(reflect.ValueOf(rawData)))
 }
 
-func readBaseData[T any](r Reader, order ByteOrder, data *[]T) error {
-	dataLen, err := ReadUvarint(r)
+func ReadValue[T any](r io.Reader, order binary.ByteOrder) (T, error) {
+	var value T
+	err := Read(r, order, &value)
+	if err != nil {
+		return common.DefaultValue[T](), err
+	}
+	return value, nil
+}
+
+func readBase[T any](r Reader, order binary.ByteOrder, data *[]T) error {
+	dataLen, err := binary.ReadUvarint(r)
 	if err != nil {
 		return E.Cause(err, "slice length")
 	}
@@ -60,7 +64,7 @@ func readBaseData[T any](r Reader, order ByteOrder, data *[]T) error {
 		return nil
 	}
 	dataSlices := make([]T, dataLen)
-	err = Read(r, order, dataSlices)
+	err = binary.Read(r, order, dataSlices)
 	if err != nil {
 		return err
 	}
@@ -68,7 +72,7 @@ func readBaseData[T any](r Reader, order ByteOrder, data *[]T) error {
 	return nil
 }
 
-func readData(r Reader, order ByteOrder, data reflect.Value) error {
+func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 	switch data.Kind() {
 	case reflect.Pointer:
 		pointerValue, err := r.ReadByte()
@@ -82,9 +86,9 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 		if data.IsNil() {
 			data.Set(reflect.New(data.Type().Elem()))
 		}
-		return readData(r, order, data.Elem())
+		return read(r, order, data.Elem())
 	case reflect.String:
-		stringLength, err := ReadUvarint(r)
+		stringLength, err := binary.ReadUvarint(r)
 		if err != nil {
 			return E.Cause(err, "string length")
 		}
@@ -100,25 +104,24 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 		}
 	case reflect.Array:
 		arrayLen := data.Len()
-		itemSize := sizeof(data.Type())
+		itemSize := data.Type().Elem().Len()
 		if itemSize > 0 {
 			buf := make([]byte, itemSize*arrayLen)
 			_, err := io.ReadFull(r, buf)
 			if err != nil {
 				return err
 			}
-			d := &decoder{order: order, buf: buf}
-			d.value(data)
+			binary.DecodeValue(order, buf, data)
 		} else {
 			for i := 0; i < arrayLen; i++ {
-				err := readData(r, order, data.Index(i))
+				err := read(r, order, data.Index(i))
 				if err != nil {
 					return E.Cause(err, "[", i, "]")
 				}
 			}
 		}
 	case reflect.Slice:
-		sliceLength, err := ReadUvarint(r)
+		sliceLength, err := binary.ReadUvarint(r)
 		if err != nil {
 			return E.Cause(err, "slice length")
 		}
@@ -127,7 +130,7 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 		} else {
 			dataSlices := makeBaseDataSlices(data, int(sliceLength))
 			if dataSlices != nil {
-				err = Read(r, order, dataSlices)
+				err = binary.Read(r, order, dataSlices)
 				if err != nil {
 					return err
 				}
@@ -139,7 +142,7 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 					data.Set(reflect.MakeSlice(data.Type(), int(sliceLength), int(sliceLength)))
 				}
 				for i := 0; i < int(sliceLength); i++ {
-					err = readData(r, order, data.Index(i))
+					err = read(r, order, data.Index(i))
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -147,19 +150,19 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 			}
 		}
 	case reflect.Map:
-		mapLength, err := ReadUvarint(r)
+		mapLength, err := binary.ReadUvarint(r)
 		if err != nil {
 			return E.Cause(err, "map length")
 		}
 		data.Set(reflect.MakeMap(data.Type()))
 		for index := 0; index < int(mapLength); index++ {
 			key := reflect.New(data.Type().Key()).Elem()
-			err = readData(r, order, key)
+			err = read(r, order, key)
 			if err != nil {
 				return E.Cause(err, "[", index, "].key")
 			}
 			value := reflect.New(data.Type().Elem()).Elem()
-			err = readData(r, order, value)
+			err = read(r, order, value)
 			if err != nil {
 				return E.Cause(err, "[", index, "].value")
 			}
@@ -172,71 +175,90 @@ func readData(r Reader, order ByteOrder, data reflect.Value) error {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
 			if field.CanSet() || fieldName != "_" {
-				err := readData(r, order, field)
+				err := read(r, order, field)
 				if err != nil {
 					return E.Cause(err, fieldName)
 				}
 			}
 		}
 	default:
-		size := dataSize(data)
+		size := binary.DataSize(data)
 		if size < 0 {
 			return errors.New("invalid type " + reflect.TypeOf(data).String())
 		}
-		d := &decoder{order: order, buf: make([]byte, size)}
-		_, err := io.ReadFull(r, d.buf)
+		buf := make([]byte, size)
+		_, err := io.ReadFull(r, buf)
 		if err != nil {
 			return err
 		}
-		d.value(data)
+		binary.DecodeValue(order, buf, data)
 	}
 	return nil
 }
 
-func WriteData(writer Writer, order ByteOrder, rawData any) error {
+func Write(w io.Writer, order binary.ByteOrder, rawData any) error {
+	if intBaseDataSize(rawData) != 0 {
+		return binary.Write(w, order, rawData)
+	}
+	var (
+		writer         Writer
+		bufferedWriter *bufio.BufferedWriter
+	)
+	if bw, ok := w.(Writer); ok {
+		writer = bw
+	} else {
+		bufferedWriter = bufio.NewBufferedWriter(w, buf.NewSize(1024))
+		writer = bufferedWriter
+	}
 	switch data := rawData.(type) {
 	case []bool:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []int8:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []uint8:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []int16:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []uint16:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []int32:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []uint32:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []int64:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []uint64:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []float32:
-		return writeBaseData(writer, order, data)
+		return writeBase(writer, order, data)
 	case []float64:
-		return writeBaseData(writer, order, data)
-	default:
-		if intBaseDataSize(rawData) != 0 {
-			return Write(writer, order, rawData)
+		return writeBase(writer, order, data)
+	}
+	err := write(writer, order, reflect.Indirect(reflect.ValueOf(rawData)))
+	if err != nil {
+		return err
+	}
+	if bufferedWriter != nil {
+		err = bufferedWriter.Fallthrough()
+		if err != nil {
+			return err
 		}
 	}
-	return writeData(writer, order, reflect.Indirect(reflect.ValueOf(rawData)))
+	return nil
 }
 
-func writeBaseData[T any](writer Writer, order ByteOrder, data []T) error {
+func writeBase[T any](writer Writer, order binary.ByteOrder, data []T) error {
 	_, err := WriteUvarint(writer, uint64(len(data)))
 	if err != nil {
 		return err
 	}
 	if len(data) > 0 {
-		return Write(writer, order, data)
+		return binary.Write(writer, order, data)
 	}
 	return nil
 }
 
-func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
+func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
 	switch data.Kind() {
 	case reflect.Pointer:
 		if data.IsNil() {
@@ -249,7 +271,7 @@ func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
 			if err != nil {
 				return err
 			}
-			return writeData(writer, order, data.Elem())
+			return write(writer, order, data.Elem())
 		}
 	case reflect.String:
 		stringValue := data.String()
@@ -269,15 +291,14 @@ func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
 			itemSize := intItemBaseDataSize(data)
 			if itemSize > 0 {
 				buf := make([]byte, itemSize*dataLen)
-				e := &encoder{order: order, buf: buf}
-				e.value(data)
+				binary.EncodeValue(order, buf, data)
 				_, err := writer.Write(buf)
 				if err != nil {
 					return E.Cause(err, reflect.TypeOf(data).String())
 				}
 			} else {
 				for i := 0; i < dataLen; i++ {
-					err := writeData(writer, order, data.Index(i))
+					err := write(writer, order, data.Index(i))
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -293,13 +314,13 @@ func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
 		if dataLen > 0 {
 			dataSlices := baseDataSlices(data)
 			if dataSlices != nil {
-				err = Write(writer, order, dataSlices)
+				err = binary.Write(writer, order, dataSlices)
 				if err != nil {
 					return err
 				}
 			} else {
 				for i := 0; i < dataLen; i++ {
-					err = writeData(writer, order, data.Index(i))
+					err = write(writer, order, data.Index(i))
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -314,11 +335,11 @@ func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
 		}
 		if dataLen > 0 {
 			for index, key := range data.MapKeys() {
-				err = writeData(writer, order, key)
+				err = write(writer, order, key)
 				if err != nil {
 					return E.Cause(err, "[", index, "].key")
 				}
-				err = writeData(writer, order, data.MapIndex(key))
+				err = write(writer, order, data.MapIndex(key))
 				if err != nil {
 					return E.Cause(err, "[", index, "].value")
 				}
@@ -331,20 +352,19 @@ func writeData(writer Writer, order ByteOrder, data reflect.Value) error {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
 			if field.CanSet() || fieldName != "_" {
-				err := writeData(writer, order, field)
+				err := write(writer, order, field)
 				if err != nil {
 					return E.Cause(err, fieldName)
 				}
 			}
 		}
 	default:
-		size := dataSize(data)
+		size := binary.DataSize(data)
 		if size < 0 {
 			return errors.New("binary.Write: some values are not fixed-sized in type " + data.Type().String())
 		}
 		buf := make([]byte, size)
-		e := &encoder{order: order, buf: buf}
-		e.value(data)
+		binary.EncodeValue(order, buf, data)
 		_, err := writer.Write(buf)
 		if err != nil {
 			return E.Cause(err, reflect.TypeOf(data).String())

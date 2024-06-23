@@ -1,4 +1,4 @@
-package binary
+package varbin
 
 import (
 	"reflect"

@@ -12,7 +12,6 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/common/task"
 )
 
@@ -163,11 +162,11 @@ func CopyConn(ctx context.Context, source net.Conn, destination net.Conn) error 
 
 func CopyConnContextList(contextList []context.Context, source net.Conn, destination net.Conn) error {
 	var group task.Group
-	if _, dstDuplex := common.Cast[rw.WriteCloser](destination); dstDuplex {
+	if _, dstDuplex := common.Cast[N.WriteCloser](destination); dstDuplex {
 		group.Append("upload", func(ctx context.Context) error {
 			err := common.Error(Copy(destination, source))
 			if err == nil {
-				rw.CloseWrite(destination)
+				N.CloseWrite(destination)
 			} else {
 				common.Close(destination)
 			}
@@ -179,11 +178,11 @@ func CopyConnContextList(contextList []context.Context, source net.Conn, destina
 			return common.Error(Copy(destination, source))
 		})
 	}
-	if _, srcDuplex := common.Cast[rw.WriteCloser](source); srcDuplex {
+	if _, srcDuplex := common.Cast[N.WriteCloser](source); srcDuplex {
 		group.Append("download", func(ctx context.Context) error {
 			err := common.Error(Copy(source, destination))
 			if err == nil {
-				rw.CloseWrite(source)
+				N.CloseWrite(source)
 			} else {
 				common.Close(source)
 			}
