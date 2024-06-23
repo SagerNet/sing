@@ -8,7 +8,6 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/rw"
 )
 
 const (
@@ -116,7 +115,7 @@ func (s *Serializer) WriteAddrPort(writer io.Writer, destination Socksaddr) erro
 		return err
 	}
 	if !isBuffer {
-		err = rw.WriteBytes(writer, buffer.Bytes())
+		err = common.Error(writer.Write(buffer.Bytes()))
 	}
 	return err
 }
@@ -130,7 +129,8 @@ func (s *Serializer) AddrPortLen(destination Socksaddr) int {
 }
 
 func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
-	af, err := rw.ReadByte(reader)
+	var af byte
+	err := binary.Read(reader, binary.BigEndian, &af)
 	if err != nil {
 		return Socksaddr{}, err
 	}
@@ -164,11 +164,12 @@ func (s *Serializer) ReadAddress(reader io.Reader) (Socksaddr, error) {
 }
 
 func (s *Serializer) ReadPort(reader io.Reader) (uint16, error) {
-	port, err := rw.ReadBytes(reader, 2)
+	var port uint16
+	err := binary.Read(reader, binary.BigEndian, &port)
 	if err != nil {
 		return 0, E.Cause(err, "read port")
 	}
-	return binary.BigEndian.Uint16(port), nil
+	return port, nil
 }
 
 func (s *Serializer) ReadAddrPort(reader io.Reader) (destination Socksaddr, err error) {
@@ -195,11 +196,17 @@ func (s *Serializer) ReadAddrPort(reader io.Reader) (destination Socksaddr, err 
 }
 
 func ReadSockString(reader io.Reader) (string, error) {
-	strLen, err := rw.ReadByte(reader)
+	var strLen byte
+	err := binary.Read(reader, binary.BigEndian, &strLen)
 	if err != nil {
 		return "", err
 	}
-	return rw.ReadString(reader, int(strLen))
+	strBytes := make([]byte, strLen)
+	_, err = io.ReadFull(reader, strBytes)
+	if err != nil {
+		return "", err
+	}
+	return string(strBytes), nil
 }
 
 func WriteSocksString(buffer *buf.Buffer, str string) error {

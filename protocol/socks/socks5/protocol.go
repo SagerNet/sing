@@ -8,7 +8,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/varbin"
 )
 
 const (
@@ -55,11 +55,11 @@ func WriteAuthRequest(writer io.Writer, request AuthRequest) error {
 		buffer.WriteByte(byte(len(request.Methods))),
 		common.Error(buffer.Write(request.Methods)),
 	)
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
-func ReadAuthRequest(reader io.Reader) (request AuthRequest, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadAuthRequest(reader varbin.Reader) (request AuthRequest, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -70,12 +70,13 @@ func ReadAuthRequest(reader io.Reader) (request AuthRequest, err error) {
 	return ReadAuthRequest0(reader)
 }
 
-func ReadAuthRequest0(reader io.Reader) (request AuthRequest, err error) {
-	methodLen, err := rw.ReadByte(reader)
+func ReadAuthRequest0(reader varbin.Reader) (request AuthRequest, err error) {
+	methodLen, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
-	request.Methods, err = rw.ReadBytes(reader, int(methodLen))
+	request.Methods = make([]byte, methodLen)
+	_, err = io.ReadFull(reader, request.Methods)
 	return
 }
 
@@ -90,11 +91,11 @@ type AuthResponse struct {
 }
 
 func WriteAuthResponse(writer io.Writer, response AuthResponse) error {
-	return rw.WriteBytes(writer, []byte{Version, response.Method})
+	return common.Error(writer.Write([]byte{Version, response.Method}))
 }
 
-func ReadAuthResponse(reader io.Reader) (response AuthResponse, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadAuthResponse(reader varbin.Reader) (response AuthResponse, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -102,7 +103,7 @@ func ReadAuthResponse(reader io.Reader) (response AuthResponse, err error) {
 		err = E.New("expected socks version 5, got ", version)
 		return
 	}
-	response.Method, err = rw.ReadByte(reader)
+	response.Method, err = reader.ReadByte()
 	return
 }
 
@@ -125,11 +126,11 @@ func WriteUsernamePasswordAuthRequest(writer io.Writer, request UsernamePassword
 		M.WriteSocksString(buffer, request.Username),
 		M.WriteSocksString(buffer, request.Password),
 	)
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
-func ReadUsernamePasswordAuthRequest(reader io.Reader) (request UsernamePasswordAuthRequest, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadUsernamePasswordAuthRequest(reader varbin.Reader) (request UsernamePasswordAuthRequest, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -159,11 +160,11 @@ type UsernamePasswordAuthResponse struct {
 }
 
 func WriteUsernamePasswordAuthResponse(writer io.Writer, response UsernamePasswordAuthResponse) error {
-	return rw.WriteBytes(writer, []byte{1, response.Status})
+	return common.Error(writer.Write([]byte{1, response.Status}))
 }
 
-func ReadUsernamePasswordAuthResponse(reader io.Reader) (response UsernamePasswordAuthResponse, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadUsernamePasswordAuthResponse(reader varbin.Reader) (response UsernamePasswordAuthResponse, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -171,7 +172,7 @@ func ReadUsernamePasswordAuthResponse(reader io.Reader) (response UsernamePasswo
 		err = E.New("excepted password request version 1, got ", version)
 		return
 	}
-	response.Status, err = rw.ReadByte(reader)
+	response.Status, err = reader.ReadByte()
 	return
 }
 
@@ -198,11 +199,11 @@ func WriteRequest(writer io.Writer, request Request) error {
 	if err != nil {
 		return err
 	}
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
-func ReadRequest(reader io.Reader) (request Request, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadRequest(reader varbin.Reader) (request Request, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -210,11 +211,11 @@ func ReadRequest(reader io.Reader) (request Request, err error) {
 		err = E.New("expected socks version 5, got ", version)
 		return
 	}
-	request.Command, err = rw.ReadByte(reader)
+	request.Command, err = reader.ReadByte()
 	if err != nil {
 		return
 	}
-	err = rw.Skip(reader)
+	_, err = reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -252,11 +253,11 @@ func WriteResponse(writer io.Writer, response Response) error {
 	if err != nil {
 		return err
 	}
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
-func ReadResponse(reader io.Reader) (response Response, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadResponse(reader varbin.Reader) (response Response, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -264,11 +265,11 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 		err = E.New("expected socks version 5, got ", version)
 		return
 	}
-	response.ReplyCode, err = rw.ReadByte(reader)
+	response.ReplyCode, err = reader.ReadByte()
 	if err != nil {
 		return
 	}
-	err = rw.Skip(reader)
+	_, err = reader.ReadByte()
 	if err != nil {
 		return
 	}

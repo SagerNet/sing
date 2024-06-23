@@ -363,10 +363,12 @@ func Close(closers ...any) error {
 	return retErr
 }
 
+// Deprecated: wtf is this?
 type Starter interface {
 	Start() error
 }
 
+// Deprecated: wtf is this?
 func Start(starters ...any) error {
 	for _, rawStarter := range starters {
 		if rawStarter == nil {

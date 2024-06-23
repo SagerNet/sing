@@ -10,7 +10,7 @@ import (
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/varbin"
 )
 
 const (
@@ -31,8 +31,8 @@ type Request struct {
 	Username    string
 }
 
-func ReadRequest(reader io.Reader) (request Request, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadRequest(reader varbin.Reader) (request Request, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -43,8 +43,8 @@ func ReadRequest(reader io.Reader) (request Request, err error) {
 	return ReadRequest0(reader)
 }
 
-func ReadRequest0(reader io.Reader) (request Request, err error) {
-	request.Command, err = rw.ReadByte(reader)
+func ReadRequest0(reader varbin.Reader) (request Request, err error) {
+	request.Command, err = reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -108,7 +108,7 @@ func WriteRequest(writer io.Writer, request Request) error {
 		common.Must1(buffer.WriteString(request.Destination.AddrString()))
 		common.Must(buffer.WriteZero())
 	}
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
 type Response struct {
@@ -116,8 +116,8 @@ type Response struct {
 	Destination M.Socksaddr
 }
 
-func ReadResponse(reader io.Reader) (response Response, err error) {
-	version, err := rw.ReadByte(reader)
+func ReadResponse(reader varbin.Reader) (response Response, err error) {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -125,7 +125,7 @@ func ReadResponse(reader io.Reader) (response Response, err error) {
 		err = E.New("excepted socks4 response version 0, got ", version)
 		return
 	}
-	response.ReplyCode, err = rw.ReadByte(reader)
+	response.ReplyCode, err = reader.ReadByte()
 	if err != nil {
 		return
 	}
@@ -151,13 +151,13 @@ func WriteResponse(writer io.Writer, response Response) error {
 		binary.Write(buffer, binary.BigEndian, response.Destination.Port),
 		common.Error(buffer.Write(response.Destination.Addr.AsSlice())),
 	)
-	return rw.WriteBytes(writer, buffer.Bytes())
+	return common.Error(writer.Write(buffer.Bytes()))
 }
 
-func readString(reader io.Reader) (string, error) {
+func readString(reader varbin.Reader) (string, error) {
 	buffer := bytes.Buffer{}
 	for {
-		b, err := rw.ReadByte(reader)
+		b, err := reader.ReadByte()
 		if err != nil {
 			return "", err
 		}

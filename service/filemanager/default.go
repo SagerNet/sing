@@ -44,7 +44,7 @@ func (m *defaultManager) BasePath(name string) string {
 
 func (m *defaultManager) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
 	name = m.BasePath(name)
-	willCreate := flag&os.O_CREATE != 0 && !rw.FileExists(name)
+	willCreate := flag&os.O_CREATE != 0 && !rw.IsFile(name)
 	file, err := os.OpenFile(name, flag, perm)
 	if err != nil {
 		return nil, err

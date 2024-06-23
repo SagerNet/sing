@@ -1,6 +1,7 @@
 package socks
 
 import (
+	std_bufio "bufio"
 	"context"
 	"io"
 	"net"
@@ -13,7 +14,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/varbin"
 	"github.com/sagernet/sing/protocol/socks/socks4"
 	"github.com/sagernet/sing/protocol/socks/socks5"
 )
@@ -32,7 +33,7 @@ func ClientHandshake4(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	if err != nil {
 		return socks4.Response{}, err
 	}
-	response, err := socks4.ReadResponse(conn)
+	response, err := socks4.ReadResponse(varbin.StubReader(conn))
 	if err != nil {
 		return socks4.Response{}, err
 	}
@@ -43,6 +44,7 @@ func ClientHandshake4(conn io.ReadWriter, command byte, destination M.Socksaddr,
 }
 
 func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr, username string, password string) (socks5.Response, error) {
+	reader := varbin.StubReader(conn)
 	var method byte
 	if username == "" {
 		method = socks5.AuthTypeNotRequired
@@ -55,7 +57,7 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	if err != nil {
 		return socks5.Response{}, err
 	}
-	authResponse, err := socks5.ReadAuthResponse(conn)
+	authResponse, err := socks5.ReadAuthResponse(reader)
 	if err != nil {
 		return socks5.Response{}, err
 	}
@@ -67,7 +69,7 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 		if err != nil {
 			return socks5.Response{}, err
 		}
-		usernamePasswordResponse, err := socks5.ReadUsernamePasswordAuthResponse(conn)
+		usernamePasswordResponse, err := socks5.ReadUsernamePasswordAuthResponse(reader)
 		if err != nil {
 			return socks5.Response{}, err
 		}
@@ -84,7 +86,7 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 	if err != nil {
 		return socks5.Response{}, err
 	}
-	response, err := socks5.ReadResponse(conn)
+	response, err := socks5.ReadResponse(reader)
 	if err != nil {
 		return socks5.Response{}, err
 	}
@@ -95,17 +97,17 @@ func ClientHandshake5(conn io.ReadWriter, command byte, destination M.Socksaddr,
 }
 
 func HandleConnection(ctx context.Context, conn net.Conn, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
-	version, err := rw.ReadByte(conn)
+	return HandleConnection0(ctx, conn, std_bufio.NewReader(conn), authenticator, handler, metadata)
+}
+
+func HandleConnection0(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
+	version, err := reader.ReadByte()
 	if err != nil {
 		return err
 	}
-	return HandleConnection0(ctx, conn, version, authenticator, handler, metadata)
-}
-
-func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
 	switch version {
 	case socks4.Version:
-		request, err := socks4.ReadRequest0(conn)
+		request, err := socks4.ReadRequest0(reader)
 		if err != nil {
 			return err
 		}
@@ -142,7 +144,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			return E.New("socks4: unsupported command ", request.Command)
 		}
 	case socks5.Version:
-		authRequest, err := socks5.ReadAuthRequest0(conn)
+		authRequest, err := socks5.ReadAuthRequest0(reader)
 		if err != nil {
 			return err
 		}
@@ -167,7 +169,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 			return err
 		}
 		if authMethod == socks5.AuthTypeUsernamePassword {
-			usernamePasswordAuthRequest, err := socks5.ReadUsernamePasswordAuthRequest(conn)
+			usernamePasswordAuthRequest, err := socks5.ReadUsernamePasswordAuthRequest(reader)
 			if err != nil {
 				return err
 			}
@@ -186,7 +188,7 @@ func HandleConnection0(ctx context.Context, conn net.Conn, version byte, authent
 				return E.New("socks5: authentication failed, username=", usernamePasswordAuthRequest.Username, ", password=", usernamePasswordAuthRequest.Password)
 			}
 		}
-		request, err := socks5.ReadRequest(conn)
+		request, err := socks5.ReadRequest(reader)
 		if err != nil {
 			return err
 		}
