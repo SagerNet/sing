@@ -6,6 +6,7 @@ import (
 	_ "unsafe"
 
 	"github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -78,9 +79,6 @@ func (f *DefaultInterfaceFinder) InterfaceNameByIndex(index int) (string, error)
 	return netInterface.Name, nil
 }
 
-//go:linkname errNoSuchInterface net.errNoSuchInterface
-var errNoSuchInterface error
-
 func (f *DefaultInterfaceFinder) InterfaceByAddr(addr netip.Addr) (*Interface, error) {
 	for _, netInterface := range f.interfaces {
 		for _, prefix := range netInterface.Addresses {
@@ -100,5 +98,5 @@ func (f *DefaultInterfaceFinder) InterfaceByAddr(addr netip.Addr) (*Interface, e
 			}
 		}
 	}
-	return nil, &net.OpError{Op: "route", Net: "ip+net", Source: nil, Addr: &net.IPAddr{IP: addr.AsSlice()}, Err: errNoSuchInterface}
+	return nil, &net.OpError{Op: "route", Net: "ip+net", Source: nil, Addr: &net.IPAddr{IP: addr.AsSlice()}, Err: E.New("no such network interface")}
 }
