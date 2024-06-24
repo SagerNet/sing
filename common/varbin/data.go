@@ -121,28 +121,33 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 			}
 		}
 	case reflect.Slice:
-		sliceLength, err := binary.ReadUvarint(r)
-		if err != nil {
-			return E.Cause(err, "slice length")
+		var itemLength int
+		if !data.IsNil() {
+			itemLength = data.Len()
 		}
-		if sliceLength == 0 {
-			data.SetZero()
-		} else {
-			dataSlices := makeBaseDataSlices(data, int(sliceLength))
+		if itemLength == 0 {
+			slicesLength, err := binary.ReadUvarint(r)
+			if err != nil {
+				return E.Cause(err, "slice length")
+			}
+			itemLength = int(slicesLength)
+		}
+		if itemLength > 0 {
+			dataSlices := makeBaseDataSlices(data, int(itemLength))
 			if dataSlices != nil {
-				err = binary.Read(r, order, dataSlices)
+				err := binary.Read(r, order, dataSlices)
 				if err != nil {
 					return err
 				}
 				setBaseDataSlices(data, dataSlices)
 			} else {
-				if !data.IsNil() && data.Cap() >= int(sliceLength) {
-					data.SetLen(int(sliceLength))
-				} else if sliceLength > 0 {
-					data.Set(reflect.MakeSlice(data.Type(), int(sliceLength), int(sliceLength)))
+				if !data.IsNil() && data.Len() != itemLength && data.Cap() >= itemLength {
+					data.SetLen(itemLength)
+				} else {
+					data.Set(reflect.MakeSlice(data.Type(), itemLength, itemLength))
 				}
-				for i := 0; i < int(sliceLength); i++ {
-					err = read(r, order, data.Index(i))
+				for i := 0; i < itemLength; i++ {
+					err := read(r, order, data.Index(i))
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
