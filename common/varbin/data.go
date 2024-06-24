@@ -42,7 +42,7 @@ func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
 			return binary.Read(reader, order, rawData)
 		}
 	}
-	return read(reader, order, reflect.Indirect(reflect.ValueOf(rawData)))
+	return read(reader, order, reflect.Indirect(reflect.ValueOf(rawData)), false)
 }
 
 func ReadValue[T any](r io.Reader, order binary.ByteOrder) (T, error) {
@@ -72,21 +72,23 @@ func readBase[T any](r Reader, order binary.ByteOrder, data *[]T) error {
 	return nil
 }
 
-func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
+func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue bool) error {
 	switch data.Kind() {
 	case reflect.Pointer:
-		pointerValue, err := r.ReadByte()
-		if err != nil {
-			return err
-		}
-		if pointerValue == 0 {
-			data.SetZero()
-			return nil
+		if !isArrayMapValue {
+			pointerValue, err := r.ReadByte()
+			if err != nil {
+				return err
+			}
+			if pointerValue == 0 {
+				data.SetZero()
+				return nil
+			}
 		}
 		if data.IsNil() {
 			data.Set(reflect.New(data.Type().Elem()))
 		}
-		return read(r, order, data.Elem())
+		return read(r, order, data.Elem(), false)
 	case reflect.String:
 		stringLength, err := binary.ReadUvarint(r)
 		if err != nil {
@@ -114,7 +116,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 			binary.DecodeValue(order, buf, data)
 		} else {
 			for i := 0; i < arrayLen; i++ {
-				err := read(r, order, data.Index(i))
+				err := read(r, order, data.Index(i), true)
 				if err != nil {
 					return E.Cause(err, "[", i, "]")
 				}
@@ -147,7 +149,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 					data.Set(reflect.MakeSlice(data.Type(), itemLength, itemLength))
 				}
 				for i := 0; i < itemLength; i++ {
-					err := read(r, order, data.Index(i))
+					err := read(r, order, data.Index(i), true)
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -162,12 +164,12 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 		data.Set(reflect.MakeMap(data.Type()))
 		for index := 0; index < int(mapLength); index++ {
 			key := reflect.New(data.Type().Key()).Elem()
-			err = read(r, order, key)
+			err = read(r, order, key, false)
 			if err != nil {
 				return E.Cause(err, "[", index, "].key")
 			}
 			value := reflect.New(data.Type().Elem()).Elem()
-			err = read(r, order, value)
+			err = read(r, order, value, true)
 			if err != nil {
 				return E.Cause(err, "[", index, "].value")
 			}
@@ -180,7 +182,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value) error {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
 			if field.CanSet() || fieldName != "_" {
-				err := read(r, order, field)
+				err := read(r, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
 				}
@@ -239,7 +241,7 @@ func Write(w io.Writer, order binary.ByteOrder, rawData any) error {
 	case []float64:
 		return writeBase(writer, order, data)
 	}
-	err := write(writer, order, reflect.Indirect(reflect.ValueOf(rawData)))
+	err := write(writer, order, reflect.Indirect(reflect.ValueOf(rawData)), false)
 	if err != nil {
 		return err
 	}
@@ -263,20 +265,26 @@ func writeBase[T any](writer Writer, order binary.ByteOrder, data []T) error {
 	return nil
 }
 
-func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
+func write(writer Writer, order binary.ByteOrder, data reflect.Value, isArrayOrMapValue bool) error {
 	switch data.Kind() {
 	case reflect.Pointer:
 		if data.IsNil() {
-			err := writer.WriteByte(0)
-			if err != nil {
-				return err
+			if isArrayOrMapValue {
+				return E.New("nil array or map value")
+			} else {
+				err := writer.WriteByte(0)
+				if err != nil {
+					return err
+				}
 			}
 		} else {
-			err := writer.WriteByte(1)
-			if err != nil {
-				return err
+			if !isArrayOrMapValue {
+				err := writer.WriteByte(1)
+				if err != nil {
+					return err
+				}
 			}
-			return write(writer, order, data.Elem())
+			return write(writer, order, data.Elem(), false)
 		}
 	case reflect.String:
 		stringValue := data.String()
@@ -303,7 +311,7 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
 				}
 			} else {
 				for i := 0; i < dataLen; i++ {
-					err := write(writer, order, data.Index(i))
+					err := write(writer, order, data.Index(i), true)
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -325,7 +333,7 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
 				}
 			} else {
 				for i := 0; i < dataLen; i++ {
-					err = write(writer, order, data.Index(i))
+					err = write(writer, order, data.Index(i), true)
 					if err != nil {
 						return E.Cause(err, "[", i, "]")
 					}
@@ -340,11 +348,11 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
 		}
 		if dataLen > 0 {
 			for index, key := range data.MapKeys() {
-				err = write(writer, order, key)
+				err = write(writer, order, key, false)
 				if err != nil {
 					return E.Cause(err, "[", index, "].key")
 				}
-				err = write(writer, order, data.MapIndex(key))
+				err = write(writer, order, data.MapIndex(key), true)
 				if err != nil {
 					return E.Cause(err, "[", index, "].value")
 				}
@@ -357,7 +365,7 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value) error {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
 			if field.CanSet() || fieldName != "_" {
-				err := write(writer, order, field)
+				err := write(writer, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
 				}
