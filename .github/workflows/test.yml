@@ -1,4 +1,4 @@
-name: Debug build
+name: test
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
 
 jobs:
   build:
-    name: Linux Debug build
+    name: Linux
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -31,7 +31,7 @@ jobs:
         run: |
           make test
   build_go120:
-    name: Linux Debug build (Go 1.20)
+    name: Linux (Go 1.20)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -47,7 +47,7 @@ jobs:
         run: |
           make test
   build_go121:
-    name: Linux Debug build (Go 1.21)
+    name: Linux (Go 1.21)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -62,8 +62,8 @@ jobs:
       - name: Build
         run: |
           make test
-  build__windows:
-    name: Windows Debug build
+  build_windows:
+    name: Windows
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -79,7 +79,7 @@ jobs:
         run: |
           make test
   build_darwin:
-    name: macOS Debug build
+    name: macOS
     runs-on: macos-latest
     steps:
       - name: Checkout
