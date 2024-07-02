@@ -232,7 +232,7 @@ func (c *LruCache[K, V]) get(key K) *entry[K, V] {
 		return nil
 	}
 
-	if !c.staleReturn && c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+	if !c.staleReturn && le.Value.expires > 0 && le.Value.expires <= time.Now().Unix() {
 		c.deleteElement(le)
 		c.maybeDeleteOldest()
 
