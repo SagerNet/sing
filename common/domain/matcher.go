@@ -72,6 +72,35 @@ func (m *Matcher) Write(writer varbin.Writer) error {
 	})
 }
 
+func (m *Matcher) Dump() (domainList []string, prefixList []string) {
+	domainMap := make(map[string]bool)
+	prefixMap := make(map[string]bool)
+	for _, key := range m.set.keys() {
+		key = reverseDomain(key)
+		if key[0] == prefixLabel {
+			prefixMap[key[1:]] = true
+		} else {
+			domainMap[key] = true
+		}
+	}
+	for rawPrefix := range prefixMap {
+		if rawPrefix[0] == '.' {
+			if rootDomain := rawPrefix[1:]; domainMap[rootDomain] {
+				delete(domainMap, rootDomain)
+				prefixList = append(prefixList, rootDomain)
+				continue
+			}
+		}
+		prefixList = append(prefixList, rawPrefix)
+	}
+	for domain := range domainMap {
+		domainList = append(domainList, domain)
+	}
+	sort.Strings(domainList)
+	sort.Strings(prefixList)
+	return domainList, prefixList
+}
+
 func reverseDomain(domain string) string {
 	l := len(domain)
 	b := make([]byte, l)

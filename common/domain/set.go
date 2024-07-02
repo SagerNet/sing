@@ -74,6 +74,34 @@ func (ss *succinctSet) Has(key string) bool {
 	}
 }
 
+func (ss *succinctSet) keys() []string {
+	var result []string
+	var currentKey []byte
+	var bmIdx, nodeId int
+
+	var traverse func(int, int)
+	traverse = func(nodeId, bmIdx int) {
+		if getBit(ss.leaves, nodeId) != 0 {
+			result = append(result, string(currentKey))
+		}
+
+		for ; ; bmIdx++ {
+			if getBit(ss.labelBitmap, bmIdx) != 0 {
+				return
+			}
+			nextLabel := ss.labels[bmIdx-nodeId]
+			currentKey = append(currentKey, nextLabel)
+			nextNodeId := countZeros(ss.labelBitmap, ss.ranks, bmIdx+1)
+			nextBmIdx := selectIthOne(ss.labelBitmap, ss.ranks, ss.selects, nextNodeId-1) + 1
+			traverse(nextNodeId, nextBmIdx)
+			currentKey = currentKey[:len(currentKey)-1]
+		}
+	}
+
+	traverse(nodeId, bmIdx)
+	return result
+}
+
 func setBit(bm *[]uint64, i int, v int) {
 	for i>>6 >= len(*bm) {
 		*bm = append(*bm, 0)
