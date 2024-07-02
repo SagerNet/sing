@@ -1,10 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "commitMessagePrefix": "[dependencies]",
-  "branchName": "main",
   "extends": [
     "config:base",
     ":disableRateLimiting"
+  ],
+  "baseBranches": [
+    "dev"
   ],
   "packageRules": [
     {
@@ -15,9 +17,9 @@
     },
     {
       "matchManagers": [
-        "gomod"
+        "dockerfile"
       ],
-      "groupName": "gomod"
+      "groupName": "Dockerfile"
     }
   ]
 }
