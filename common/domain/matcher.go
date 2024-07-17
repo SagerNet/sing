@@ -25,7 +25,11 @@ func NewMatcher(domains []string, domainSuffix []string) *Matcher {
 			domainList = append(domainList, reverseDomainSuffix(domain))
 		} else {
 			domainList = append(domainList, reverseDomain(domain))
-			domainList = append(domainList, reverseRootDomainSuffix(domain))
+			suffixDomain := "." + domain
+			if !seen[suffixDomain] {
+				seen[suffixDomain] = true
+				domainList = append(domainList, reverseDomainSuffix(suffixDomain))
+			}
 		}
 	}
 	for _, domain := range domains {
@@ -137,18 +141,5 @@ func reverseDomainSuffix(domain string) string {
 		utf8.EncodeRune(b[l-i:], r)
 	}
 	b[l] = prefixLabel
-	return string(b)
-}
-
-func reverseRootDomainSuffix(domain string) string {
-	l := len(domain)
-	b := make([]byte, l+2)
-	for i := 0; i < l; {
-		r, n := utf8.DecodeRuneInString(domain[i:])
-		i += n
-		utf8.EncodeRune(b[l-i:], r)
-	}
-	b[l] = '.'
-	b[l+1] = prefixLabel
 	return string(b)
 }
