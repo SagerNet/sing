@@ -13,5 +13,3 @@ linters-settings:
       - standard
       - prefix(github.com/sagernet/)
       - default
-  staticcheck:
-    go: '1.20'
