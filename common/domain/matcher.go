@@ -12,7 +12,7 @@ type Matcher struct {
 	set *succinctSet
 }
 
-func NewMatcher(domains []string, domainSuffix []string) *Matcher {
+func NewMatcher(domains []string, domainSuffix []string, generateLegacy bool) *Matcher {
 	domainList := make([]string, 0, len(domains)+2*len(domainSuffix))
 	seen := make(map[string]bool, len(domainList))
 	for _, domain := range domainSuffix {
@@ -22,9 +22,15 @@ func NewMatcher(domains []string, domainSuffix []string) *Matcher {
 		seen[domain] = true
 		if domain[0] == '.' {
 			domainList = append(domainList, reverseDomainSuffix(domain))
-		} else {
+		} else if generateLegacy {
 			domainList = append(domainList, reverseDomain(domain))
-			domainList = append(domainList, reverseRootDomainSuffix(domain))
+			suffixDomain := "." + domain
+			if !seen[suffixDomain] {
+				seen[suffixDomain] = true
+				domainList = append(domainList, reverseDomainSuffix(suffixDomain))
+			}
+		} else {
+			domainList = append(domainList, reverseDomainRoot(domain))
 		}
 	}
 	for _, domain := range domains {
@@ -79,6 +85,8 @@ func (m *Matcher) Dump() (domainList []string, prefixList []string) {
 		key = reverseDomain(key)
 		if key[0] == prefixLabel {
 			prefixMap[key[1:]] = true
+		} else if key[0] == rootLabel {
+			prefixList = append(prefixList, key[1:])
 		} else {
 			domainMap[key] = true
 		}
@@ -124,15 +132,14 @@ func reverseDomainSuffix(domain string) string {
 	return string(b)
 }
 
-func reverseRootDomainSuffix(domain string) string {
+func reverseDomainRoot(domain string) string {
 	l := len(domain)
-	b := make([]byte, l+2)
+	b := make([]byte, l+1)
 	for i := 0; i < l; {
 		r, n := utf8.DecodeRuneInString(domain[i:])
 		i += n
 		utf8.EncodeRune(b[l-i:], r)
 	}
-	b[l] = '.'
-	b[l+1] = prefixLabel
+	b[l] = rootLabel
 	return string(b)
 }
