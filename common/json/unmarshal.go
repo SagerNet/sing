@@ -2,6 +2,7 @@ package json
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 
 	"github.com/sagernet/sing/common"
@@ -15,7 +16,8 @@ func UnmarshalExtended[T any](content []byte) (T, error) {
 	if err == nil {
 		return value, err
 	}
-	if syntaxError, isSyntaxError := err.(*SyntaxError); isSyntaxError {
+	var syntaxError *SyntaxError
+	if errors.As(err, &syntaxError) {
 		prefix := string(content[:syntaxError.Offset])
 		row := strings.Count(prefix, "\n") + 1
 		column := len(prefix) - strings.LastIndex(prefix, "\n") - 1
