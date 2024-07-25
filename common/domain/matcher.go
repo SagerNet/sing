@@ -1,11 +1,15 @@
 package domain
 
 import (
-	"encoding/binary"
 	"sort"
 	"unicode/utf8"
 
 	"github.com/sagernet/sing/common/varbin"
+)
+
+const (
+	prefixLabel = '\r'
+	rootLabel   = '\n'
 )
 
 type Matcher struct {
@@ -21,16 +25,16 @@ func NewMatcher(domains []string, domainSuffix []string, generateLegacy bool) *M
 		}
 		seen[domain] = true
 		if domain[0] == '.' {
-			domainList = append(domainList, reverseDomainSuffix(domain))
+			domainList = append(domainList, reverseDomain(string(prefixLabel)+domain))
 		} else if generateLegacy {
 			domainList = append(domainList, reverseDomain(domain))
 			suffixDomain := "." + domain
 			if !seen[suffixDomain] {
 				seen[suffixDomain] = true
-				domainList = append(domainList, reverseDomainSuffix(suffixDomain))
+				domainList = append(domainList, reverseDomain(string(prefixLabel)+suffixDomain))
 			}
 		} else {
-			domainList = append(domainList, reverseDomainRoot(domain))
+			domainList = append(domainList, reverseDomain(string(rootLabel)+domain))
 		}
 	}
 	for _, domain := range domains {
@@ -44,38 +48,60 @@ func NewMatcher(domains []string, domainSuffix []string, generateLegacy bool) *M
 	return &Matcher{newSuccinctSet(domainList)}
 }
 
-type matcherData struct {
-	Version     uint8
-	Leaves      []uint64
-	LabelBitmap []uint64
-	Labels      []byte
-}
-
 func ReadMatcher(reader varbin.Reader) (*Matcher, error) {
-	matcher, err := varbin.ReadValue[matcherData](reader, binary.BigEndian)
+	set, err := readSuccinctSet(reader)
 	if err != nil {
 		return nil, err
 	}
-	set := &succinctSet{
-		leaves:      matcher.Leaves,
-		labelBitmap: matcher.LabelBitmap,
-		labels:      matcher.Labels,
-	}
-	set.init()
 	return &Matcher{set}, nil
 }
 
-func (m *Matcher) Match(domain string) bool {
-	return m.set.Has(reverseDomain(domain))
+func (m *Matcher) Write(writer varbin.Writer) error {
+	return m.set.Write(writer)
 }
 
-func (m *Matcher) Write(writer varbin.Writer) error {
-	return varbin.Write(writer, binary.BigEndian, matcherData{
-		Version:     1,
-		Leaves:      m.set.leaves,
-		LabelBitmap: m.set.labelBitmap,
-		Labels:      m.set.labels,
-	})
+func (m *Matcher) Match(domain string) bool {
+	return m.has(reverseDomain(domain))
+}
+
+func (m *Matcher) has(key string) bool {
+	var nodeId, bmIdx int
+	for i := 0; i < len(key); i++ {
+		currentChar := key[i]
+		for ; ; bmIdx++ {
+			if getBit(m.set.labelBitmap, bmIdx) != 0 {
+				return false
+			}
+			nextLabel := m.set.labels[bmIdx-nodeId]
+			if nextLabel == prefixLabel {
+				return true
+			}
+			if nextLabel == rootLabel {
+				nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
+				hasNext := getBit(m.set.leaves, nextNodeId) != 0
+				if currentChar == '.' && hasNext {
+					return true
+				}
+			}
+			if nextLabel == currentChar {
+				break
+			}
+		}
+		nodeId = countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
+		bmIdx = selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nodeId-1) + 1
+	}
+	if getBit(m.set.leaves, nodeId) != 0 {
+		return true
+	}
+	for ; ; bmIdx++ {
+		if getBit(m.set.labelBitmap, bmIdx) != 0 {
+			return false
+		}
+		nextLabel := m.set.labels[bmIdx-nodeId]
+		if nextLabel == prefixLabel || nextLabel == rootLabel {
+			return true
+		}
+	}
 }
 
 func (m *Matcher) Dump() (domainList []string, prefixList []string) {
@@ -117,29 +143,5 @@ func reverseDomain(domain string) string {
 		i += n
 		utf8.EncodeRune(b[l-i:], r)
 	}
-	return string(b)
-}
-
-func reverseDomainSuffix(domain string) string {
-	l := len(domain)
-	b := make([]byte, l+1)
-	for i := 0; i < l; {
-		r, n := utf8.DecodeRuneInString(domain[i:])
-		i += n
-		utf8.EncodeRune(b[l-i:], r)
-	}
-	b[l] = prefixLabel
-	return string(b)
-}
-
-func reverseDomainRoot(domain string) string {
-	l := len(domain)
-	b := make([]byte, l+1)
-	for i := 0; i < l; {
-		r, n := utf8.DecodeRuneInString(domain[i:])
-		i += n
-		utf8.EncodeRune(b[l-i:], r)
-	}
-	b[l] = rootLabel
 	return string(b)
 }

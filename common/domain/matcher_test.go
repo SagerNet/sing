@@ -12,6 +12,7 @@ import (
 )
 
 func TestMatcher(t *testing.T) {
+	t.Parallel()
 	testDomain := []string{"example.com", "example.org"}
 	testDomainSuffix := []string{".com.cn", ".org.cn", "sagernet.org"}
 	matcher := domain.NewMatcher(testDomain, testDomainSuffix, false)
@@ -31,6 +32,7 @@ func TestMatcher(t *testing.T) {
 }
 
 func TestMatcherLegacy(t *testing.T) {
+	t.Parallel()
 	testDomain := []string{"example.com", "example.org"}
 	testDomainSuffix := []string{".com.cn", ".org.cn", "sagernet.org"}
 	matcher := domain.NewMatcher(testDomain, testDomainSuffix, true)
@@ -57,6 +59,7 @@ type simpleRuleSet struct {
 }
 
 func TestDumpLarge(t *testing.T) {
+	t.Parallel()
 	response, err := http.Get("https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.json")
 	require.NoError(t, err)
 	defer response.Body.Close()
