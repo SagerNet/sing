@@ -26,6 +26,7 @@ type Options struct {
 	Logger        logger.Logger
 	Server        M.Socksaddr
 	Interval      time.Duration
+	Timeout       time.Duration
 	WriteToSystem bool
 }
 
@@ -39,6 +40,7 @@ type Service struct {
 	server        M.Socksaddr
 	writeToSystem bool
 	ticker        *time.Ticker
+	timeout       time.Duration
 	clockOffset   time.Duration
 	pause         pause.Manager
 }
@@ -81,6 +83,7 @@ func NewService(options Options) *Service {
 		writeToSystem: options.WriteToSystem,
 		server:        destination,
 		ticker:        time.NewTicker(interval),
+		timeout:       options.Timeout,
 		pause:         service.FromContext[pause.Manager](ctx),
 	}
 }
@@ -88,9 +91,10 @@ func NewService(options Options) *Service {
 func (s *Service) Start() error {
 	err := s.update()
 	if err != nil {
-		return E.Cause(err, "initialize time")
+		s.logger.Error(E.Cause(err, "initialize time"))
+	} else {
+		s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
 	}
-	s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
 	go s.loopUpdate()
 	return nil
 }
@@ -124,15 +128,23 @@ func (s *Service) loopUpdate() {
 		}
 		err := s.update()
 		if err == nil {
-			s.logger.Debug("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
+			s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
 		} else {
-			s.logger.Warn("update time: ", err)
+			s.logger.Error("update time: ", err)
 		}
 	}
 }
 
 func (s *Service) update() error {
+	ctx := s.ctx
+	var cancel context.CancelFunc
+	if s.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+	}
 	response, err := Exchange(s.ctx, s.dialer, s.server)
+	if cancel != nil {
+		cancel()
+	}
 	if err != nil {
 		return err
 	}
@@ -140,7 +152,7 @@ func (s *Service) update() error {
 	if s.writeToSystem {
 		writeErr := SetSystemTime(s.TimeFunc()())
 		if writeErr != nil {
-			s.logger.Warn("write time to system: ", writeErr)
+			s.logger.Error("write time to system: ", writeErr)
 		}
 	}
 	return nil
