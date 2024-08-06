@@ -141,7 +141,7 @@ func (s *Service) update() error {
 	if s.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, s.timeout)
 	}
-	response, err := Exchange(s.ctx, s.dialer, s.server)
+	response, err := Exchange(ctx, s.dialer, s.server)
 	if cancel != nil {
 		cancel()
 	}
