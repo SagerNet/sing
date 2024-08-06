@@ -6,6 +6,6 @@ import (
 	"os"
 )
 
-func NewEventListener(callback func(event int)) (EventListener, error) {
+func NewEventListener(callback EventCallback) (EventListener, error) {
 	return nil, os.ErrInvalid
 }
