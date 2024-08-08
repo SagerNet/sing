@@ -11,6 +11,7 @@ func TestPowerEvents(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.SkipNow()
 	}
+	t.Parallel()
 	listener, err := NewEventListener(func(event int) {})
 	require.NoError(t, err)
 	require.NotNil(t, listener)

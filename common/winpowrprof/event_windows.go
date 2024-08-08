@@ -42,6 +42,7 @@ var suspendResumeNotificationCallback = common.OnceValue(func() uintptr {
 })
 
 type powerEventListener struct {
+	pinner   myPinner
 	callback EventCallback
 	handle   uintptr
 }
@@ -61,6 +62,7 @@ func NewEventListener(callback EventCallback) (EventListener, error) {
 }
 
 func (l *powerEventListener) Start() error {
+	l.pinner.Pin(&l.callback)
 	type DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS struct {
 		callback uintptr
 		context  unsafe.Pointer
@@ -77,15 +79,21 @@ func (l *powerEventListener) Start() error {
 		uintptr(unsafe.Pointer(&l.handle)),
 	)
 	if errno != 0 {
+		l.pinner.Unpin()
 		return errno
 	}
 	return nil
 }
 
 func (l *powerEventListener) Close() error {
-	_, _, errno := syscall.SyscallN(procPowerUnregisterSuspendResumeNotification.Addr(), uintptr(unsafe.Pointer(&l.handle)))
-	if errno != 0 {
-		return errno
+	if l.handle == 0 {
+		return nil
 	}
+	defer l.pinner.Unpin()
+	r0, _, _ := syscall.SyscallN(procPowerUnregisterSuspendResumeNotification.Addr(), l.handle)
+	if r0 != windows.NO_ERROR {
+		return syscall.Errno(r0)
+	}
+	l.handle = 0
 	return nil
 }
