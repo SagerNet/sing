@@ -3,6 +3,7 @@ package winpowrprof
 // modify from https://github.com/golang/go/blob/b634f6fdcbebee23b7da709a243f3db217b64776/src/runtime/os_windows.go#L257
 
 import (
+	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -83,9 +84,10 @@ func (l *powerEventListener) Start() error {
 }
 
 func (l *powerEventListener) Close() error {
-	_, _, errno := syscall.SyscallN(procPowerUnregisterSuspendResumeNotification.Addr(), uintptr(unsafe.Pointer(&l.handle)))
-	if errno != 0 {
-		return errno
+	r0, _, _ := syscall.SyscallN(procPowerUnregisterSuspendResumeNotification.Addr(), l.handle)
+	if r0 != windows.NO_ERROR {
+		return syscall.Errno(r0)
 	}
+	runtime.KeepAlive(l)
 	return nil
 }
