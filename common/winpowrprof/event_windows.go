@@ -3,43 +3,10 @@ package winpowrprof
 // modify from https://github.com/golang/go/blob/b634f6fdcbebee23b7da709a243f3db217b64776/src/runtime/os_windows.go#L257
 
 import (
-	"syscall"
 	"unsafe"
-
-	"github.com/sagernet/sing/common"
 
 	"golang.org/x/sys/windows"
 )
-
-var (
-	modpowerprof                                 = windows.NewLazySystemDLL("powrprof.dll")
-	procPowerRegisterSuspendResumeNotification   = modpowerprof.NewProc("PowerRegisterSuspendResumeNotification")
-	procPowerUnregisterSuspendResumeNotification = modpowerprof.NewProc("PowerUnregisterSuspendResumeNotification")
-)
-
-var suspendResumeNotificationCallback = common.OnceValue(func() uintptr {
-	return windows.NewCallback(func(context *EventCallback, changeType uint32, setting uintptr) uintptr {
-		callback := *context
-		const (
-			PBT_APMSUSPEND         uint32 = 4
-			PBT_APMRESUMESUSPEND   uint32 = 7
-			PBT_APMRESUMEAUTOMATIC uint32 = 18
-		)
-		var event int
-		switch changeType {
-		case PBT_APMSUSPEND:
-			event = EVENT_SUSPEND
-		case PBT_APMRESUMESUSPEND:
-			event = EVENT_RESUME
-		case PBT_APMRESUMEAUTOMATIC:
-			event = EVENT_RESUME_AUTOMATIC
-		default:
-			return 0
-		}
-		callback(event)
-		return 0
-	})
-})
 
 type powerEventListener struct {
 	pinner   myPinner
@@ -63,24 +30,18 @@ func NewEventListener(callback EventCallback) (EventListener, error) {
 
 func (l *powerEventListener) Start() error {
 	l.pinner.Pin(&l.callback)
-	type DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS struct {
-		callback uintptr
-		context  unsafe.Pointer
-	}
-	const DEVICE_NOTIFY_CALLBACK = 2
 	params := DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS{
-		callback: suspendResumeNotificationCallback(),
+		callback: windows.NewCallback(suspendResumeNotificationCallback),
 		context:  unsafe.Pointer(&l.callback),
 	}
-	_, _, errno := syscall.SyscallN(
-		procPowerRegisterSuspendResumeNotification.Addr(),
+	err := PowerRegisterSuspendResumeNotification(
 		DEVICE_NOTIFY_CALLBACK,
-		uintptr(unsafe.Pointer(&params)),
-		uintptr(unsafe.Pointer(&l.handle)),
+		&params,
+		&l.handle,
 	)
-	if errno != 0 {
+	if err != nil {
 		l.pinner.Unpin()
-		return errno
+		return err
 	}
 	return nil
 }
@@ -90,10 +51,27 @@ func (l *powerEventListener) Close() error {
 		return nil
 	}
 	defer l.pinner.Unpin()
-	r0, _, _ := syscall.SyscallN(procPowerUnregisterSuspendResumeNotification.Addr(), l.handle)
-	if r0 != windows.NO_ERROR {
-		return syscall.Errno(r0)
+	err := PowerUnregisterSuspendResumeNotification(l.handle)
+	if err != nil {
+		return err
 	}
 	l.handle = 0
 	return nil
+}
+
+func suspendResumeNotificationCallback(context *EventCallback, changeType uint32, setting uintptr) uintptr {
+	callback := *context
+	var event int
+	switch changeType {
+	case PBT_APMSUSPEND:
+		event = EVENT_SUSPEND
+	case PBT_APMRESUMESUSPEND:
+		event = EVENT_RESUME
+	case PBT_APMRESUMEAUTOMATIC:
+		event = EVENT_RESUME_AUTOMATIC
+	default:
+		return 0
+	}
+	callback(event)
+	return 0
 }

@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"os"
 	"syscall"
-	"unsafe"
 
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -14,49 +13,6 @@ import (
 
 	"golang.org/x/sys/windows"
 )
-
-var modws2_32 = windows.NewLazySystemDLL("ws2_32.dll")
-
-var procrecv = modws2_32.NewProc("recv")
-
-// Do the interface allocations only once for common
-// Errno values.
-const (
-	errnoERROR_IO_PENDING = 997
-)
-
-var (
-	errERROR_IO_PENDING error = syscall.Errno(errnoERROR_IO_PENDING)
-	errERROR_EINVAL     error = syscall.EINVAL
-)
-
-// errnoErr returns common boxed Errno values, to prevent
-// allocations at runtime.
-func errnoErr(e syscall.Errno) error {
-	switch e {
-	case 0:
-		return errERROR_EINVAL
-	case errnoERROR_IO_PENDING:
-		return errERROR_IO_PENDING
-	}
-	// TODO: add more here, after collecting data on the common
-	// error values see on Windows. (perhaps when running
-	// all.bat?)
-	return e
-}
-
-func recv(s windows.Handle, buf []byte, flags int32) (n int32, err error) {
-	var _p0 *byte
-	if len(buf) > 0 {
-		_p0 = &buf[0]
-	}
-	r0, _, e1 := syscall.SyscallN(procrecv.Addr(), uintptr(s), uintptr(unsafe.Pointer(_p0)), uintptr(len(buf)), uintptr(flags))
-	n = int32(r0)
-	if n == -1 {
-		err = errnoErr(e1)
-	}
-	return
-}
 
 var _ N.ReadWaiter = (*syscallReadWaiter)(nil)
 
