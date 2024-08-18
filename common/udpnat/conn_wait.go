@@ -2,6 +2,7 @@ package udpnat
 
 import (
 	"io"
+	"os"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -34,5 +35,7 @@ func (c *conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, er
 		return
 	case <-c.ctx.Done():
 		return nil, M.Socksaddr{}, io.ErrClosedPipe
+	case <-c.readDeadline.Wait():
+		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
 }

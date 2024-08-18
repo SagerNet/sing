@@ -13,6 +13,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/pipe"
 )
 
 type Handler interface {
@@ -116,6 +117,7 @@ type conn struct {
 	localAddr       M.Socksaddr
 	remoteAddr      M.Socksaddr
 	source          N.PacketWriter
+	readDeadline    pipe.Deadline
 	readWaitOptions N.ReadWaitOptions
 }
 
@@ -127,6 +129,8 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 		return p.destination, err
 	case <-c.ctx.Done():
 		return M.Socksaddr{}, io.ErrClosedPipe
+	case <-c.readDeadline.Wait():
+		return M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
 }
 
@@ -159,7 +163,8 @@ func (c *conn) SetDeadline(t time.Time) error {
 }
 
 func (c *conn) SetReadDeadline(t time.Time) error {
-	return os.ErrInvalid
+	c.readDeadline.Set(t)
+	return nil
 }
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
