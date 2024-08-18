@@ -14,24 +14,24 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-// pipeDeadline is an abstraction for handling timeouts.
-type pipeDeadline struct {
+// Deadline is an abstraction for handling timeouts.
+type Deadline struct {
 	mu     sync.Mutex // Guards timer and cancel
 	timer  *time.Timer
 	cancel chan struct{} // Must be non-nil
 }
 
-func makePipeDeadline() pipeDeadline {
-	return pipeDeadline{cancel: make(chan struct{})}
+func MakeDeadline() Deadline {
+	return Deadline{cancel: make(chan struct{})}
 }
 
-// set sets the point in time when the deadline will time out.
+// Set sets the point in time when the deadline will time out.
 // A timeout event is signaled by closing the channel returned by waiter.
 // Once a timeout has occurred, the deadline can be refreshed by specifying a
 // t value in the future.
 //
 // A zero value for t prevents timeout.
-func (d *pipeDeadline) set(t time.Time) {
+func (d *Deadline) Set(t time.Time) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -66,8 +66,8 @@ func (d *pipeDeadline) set(t time.Time) {
 	}
 }
 
-// wait returns a channel that is closed when the deadline is exceeded.
-func (d *pipeDeadline) wait() chan struct{} {
+// Wait returns a channel that is closed when the deadline is exceeded.
+func (d *Deadline) Wait() chan struct{} {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.cancel
@@ -104,8 +104,8 @@ type pipe struct {
 	localDone  chan struct{}
 	remoteDone <-chan struct{}
 
-	readDeadline  pipeDeadline
-	writeDeadline pipeDeadline
+	readDeadline  Deadline
+	writeDeadline Deadline
 
 	readWaitOptions N.ReadWaitOptions
 }
@@ -127,15 +127,15 @@ func Pipe() (net.Conn, net.Conn) {
 		rdRx: cb1, rdTx: cn1,
 		wrTx: cb2, wrRx: cn2,
 		localDone: done1, remoteDone: done2,
-		readDeadline:  makePipeDeadline(),
-		writeDeadline: makePipeDeadline(),
+		readDeadline:  MakeDeadline(),
+		writeDeadline: MakeDeadline(),
 	}
 	p2 := &pipe{
 		rdRx: cb2, rdTx: cn2,
 		wrTx: cb1, wrRx: cn1,
 		localDone: done2, remoteDone: done1,
-		readDeadline:  makePipeDeadline(),
-		writeDeadline: makePipeDeadline(),
+		readDeadline:  MakeDeadline(),
+		writeDeadline: MakeDeadline(),
 	}
 	return p1, p2
 }
@@ -157,7 +157,7 @@ func (p *pipe) read(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	case isClosedChan(p.remoteDone):
 		return 0, io.EOF
-	case isClosedChan(p.readDeadline.wait()):
+	case isClosedChan(p.readDeadline.Wait()):
 		return 0, os.ErrDeadlineExceeded
 	}
 
@@ -170,7 +170,7 @@ func (p *pipe) read(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	case <-p.remoteDone:
 		return 0, io.EOF
-	case <-p.readDeadline.wait():
+	case <-p.readDeadline.Wait():
 		return 0, os.ErrDeadlineExceeded
 	}
 }
@@ -189,7 +189,7 @@ func (p *pipe) write(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	case isClosedChan(p.remoteDone):
 		return 0, io.ErrClosedPipe
-	case isClosedChan(p.writeDeadline.wait()):
+	case isClosedChan(p.writeDeadline.Wait()):
 		return 0, os.ErrDeadlineExceeded
 	}
 
@@ -205,7 +205,7 @@ func (p *pipe) write(b []byte) (n int, err error) {
 			return n, io.ErrClosedPipe
 		case <-p.remoteDone:
 			return n, io.ErrClosedPipe
-		case <-p.writeDeadline.wait():
+		case <-p.writeDeadline.Wait():
 			return n, os.ErrDeadlineExceeded
 		}
 	}
@@ -216,8 +216,8 @@ func (p *pipe) SetDeadline(t time.Time) error {
 	if isClosedChan(p.localDone) || isClosedChan(p.remoteDone) {
 		return io.ErrClosedPipe
 	}
-	p.readDeadline.set(t)
-	p.writeDeadline.set(t)
+	p.readDeadline.Set(t)
+	p.writeDeadline.Set(t)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func (p *pipe) SetReadDeadline(t time.Time) error {
 	if isClosedChan(p.localDone) || isClosedChan(p.remoteDone) {
 		return io.ErrClosedPipe
 	}
-	p.readDeadline.set(t)
+	p.readDeadline.Set(t)
 	return nil
 }
 
@@ -233,7 +233,7 @@ func (p *pipe) SetWriteDeadline(t time.Time) error {
 	if isClosedChan(p.localDone) || isClosedChan(p.remoteDone) {
 		return io.ErrClosedPipe
 	}
-	p.writeDeadline.set(t)
+	p.writeDeadline.Set(t)
 	return nil
 }
 

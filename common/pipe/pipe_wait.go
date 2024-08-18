@@ -30,7 +30,7 @@ func (p *pipe) waitReadBuffer() (buffer *buf.Buffer, err error) {
 		return nil, io.ErrClosedPipe
 	case isClosedChan(p.remoteDone):
 		return nil, io.EOF
-	case isClosedChan(p.readDeadline.wait()):
+	case isClosedChan(p.readDeadline.Wait()):
 		return nil, os.ErrDeadlineExceeded
 	}
 	select {
@@ -49,7 +49,7 @@ func (p *pipe) waitReadBuffer() (buffer *buf.Buffer, err error) {
 		return nil, io.ErrClosedPipe
 	case <-p.remoteDone:
 		return nil, io.EOF
-	case <-p.readDeadline.wait():
+	case <-p.readDeadline.Wait():
 		return nil, os.ErrDeadlineExceeded
 	}
 }
