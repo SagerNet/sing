@@ -25,6 +25,45 @@ func ReadPacket(reader N.PacketReader, buffer *buf.Buffer) (n int, addr net.Addr
 	return
 }
 
+func ReadBufferSize(reader io.Reader, bufferSize int) (buffer *buf.Buffer, err error) {
+	readWaiter, isReadWaiter := CreateReadWaiter(reader)
+	if isReadWaiter {
+		readWaiter.InitializeReadWaiter(N.ReadWaitOptions{
+			MTU: bufferSize,
+		})
+		return readWaiter.WaitReadBuffer()
+	}
+	buffer = buf.NewSize(bufferSize)
+	if extendedReader, isExtendedReader := reader.(N.ExtendedReader); isExtendedReader {
+		err = extendedReader.ReadBuffer(buffer)
+	} else {
+		_, err = buffer.ReadOnceFrom(reader)
+	}
+	if err != nil {
+		buffer.Release()
+		buffer = nil
+	}
+	return
+}
+
+func ReadPacketSize(reader N.PacketReader, packetSize int) (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+	readWaiter, isReadWaiter := CreatePacketReadWaiter(reader)
+	if isReadWaiter {
+		readWaiter.InitializeReadWaiter(N.ReadWaitOptions{
+			MTU: packetSize,
+		})
+		buffer, destination, err = readWaiter.WaitReadPacket()
+		return
+	}
+	buffer = buf.NewSize(packetSize)
+	destination, err = reader.ReadPacket(buffer)
+	if err != nil {
+		buffer.Release()
+		buffer = nil
+	}
+	return
+}
+
 func Write(writer io.Writer, data []byte) (n int, err error) {
 	if extendedWriter, isExtended := writer.(N.ExtendedWriter); isExtended {
 		return WriteBuffer(extendedWriter, buf.As(data))
