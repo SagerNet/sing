@@ -36,7 +36,7 @@ func TCPPipe(t *testing.T) (net.Conn, net.Conn) {
 		clientConn, clientErr = net.Dial("tcp", listener.Addr().String())
 		return clientErr
 	})
-	err = group.Run()
+	err = group.Run(context.Background())
 	require.NoError(t, err)
 	listener.Close()
 	t.Cleanup(func() {

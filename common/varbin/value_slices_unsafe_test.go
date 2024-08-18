@@ -9,6 +9,7 @@ import (
 )
 
 func TestSlicesValue(t *testing.T) {
+	t.Parallel()
 	int64Arr := make([]int64, 64)
 	for i := range int64Arr {
 		int64Arr[i] = rand.Int63()
@@ -18,6 +19,7 @@ func TestSlicesValue(t *testing.T) {
 }
 
 func TestSetSliceValue(t *testing.T) {
+	t.Parallel()
 	int64Arr := make([]int64, 64)
 	value := reflect.Indirect(reflect.ValueOf(&int64Arr))
 	newInt64Arr := make([]int64, 64)

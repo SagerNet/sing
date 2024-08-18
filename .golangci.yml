@@ -5,6 +5,12 @@ linters:
     - govet
     - gci
     - staticcheck
+    - paralleltest
+    - ineffassign
+
+
+
+
 
 linters-settings:
   gci:
@@ -13,3 +19,10 @@ linters-settings:
       - standard
       - prefix(github.com/sagernet/)
       - default
+  staticcheck:
+    checks:
+      - all
+      - -SA1003
+
+run:
+  go: "1.23"

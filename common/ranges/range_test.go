@@ -6,6 +6,7 @@ import (
 )
 
 func TestRevertRanges(t *testing.T) {
+	t.Parallel()
 	for _, testRange := range []struct {
 		start, end int
 		ranges     []Range[int]
@@ -77,6 +78,7 @@ func TestRevertRanges(t *testing.T) {
 }
 
 func TestMergeRanges(t *testing.T) {
+	t.Parallel()
 	for _, testRange := range []struct {
 		ranges   []Range[int]
 		expected []Range[int]
@@ -144,6 +146,7 @@ func TestMergeRanges(t *testing.T) {
 }
 
 func TestExcludeRanges(t *testing.T) {
+	t.Parallel()
 	for _, testRange := range []struct {
 		ranges   []Range[int]
 		exclude  []Range[int]
