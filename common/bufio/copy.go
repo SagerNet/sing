@@ -157,10 +157,6 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 }
 
 func CopyConn(ctx context.Context, source net.Conn, destination net.Conn) error {
-	return CopyConnContextList([]context.Context{ctx}, source, destination)
-}
-
-func CopyConnContextList(contextList []context.Context, source net.Conn, destination net.Conn) error {
 	var group task.Group
 	if _, dstDuplex := common.Cast[N.WriteCloser](destination); dstDuplex {
 		group.Append("upload", func(ctx context.Context) error {
@@ -197,7 +193,19 @@ func CopyConnContextList(contextList []context.Context, source net.Conn, destina
 	group.Cleanup(func() {
 		common.Close(source, destination)
 	})
-	return group.RunContextList(contextList)
+	return group.Run(ctx)
+}
+
+// Deprecated: not used
+func CopyConnContextList(contextList []context.Context, source net.Conn, destination net.Conn) error {
+	switch len(contextList) {
+	case 0:
+		return CopyConn(context.Background(), source, destination)
+	case 1:
+		return CopyConn(contextList[0], source, destination)
+	default:
+		panic("invalid context list")
+	}
 }
 
 func CopyPacket(destinationConn N.PacketWriter, source N.PacketReader) (n int64, err error) {
@@ -318,10 +326,6 @@ func WritePacketWithPool(originSource N.PacketReader, destinationConn N.PacketWr
 }
 
 func CopyPacketConn(ctx context.Context, source N.PacketConn, destination N.PacketConn) error {
-	return CopyPacketConnContextList([]context.Context{ctx}, source, destination)
-}
-
-func CopyPacketConnContextList(contextList []context.Context, source N.PacketConn, destination N.PacketConn) error {
 	var group task.Group
 	group.Append("upload", func(ctx context.Context) error {
 		return common.Error(CopyPacket(destination, source))
@@ -333,5 +337,17 @@ func CopyPacketConnContextList(contextList []context.Context, source N.PacketCon
 		common.Close(source, destination)
 	})
 	group.FastFail()
-	return group.RunContextList(contextList)
+	return group.Run(ctx)
+}
+
+// Deprecated: not used
+func CopyPacketConnContextList(contextList []context.Context, source N.PacketConn, destination N.PacketConn) error {
+	switch len(contextList) {
+	case 0:
+		return CopyPacketConn(context.Background(), source, destination)
+	case 1:
+		return CopyPacketConn(contextList[0], source, destination)
+	default:
+		panic("invalid context list")
+	}
 }

@@ -54,17 +54,9 @@ func (g *Group) Concurrency(n int) {
 	}
 }
 
-func (g *Group) Run(contextList ...context.Context) error {
-	return g.RunContextList(contextList)
-}
-
-func (g *Group) RunContextList(contextList []context.Context) error {
-	if len(contextList) == 0 {
-		contextList = append(contextList, context.Background())
-	}
-
+func (g *Group) Run(ctx context.Context) error {
 	taskContext, taskFinish := common.ContextWithCancelCause(context.Background())
-	taskCancelContext, taskCancel := common.ContextWithCancelCause(contextList[0])
+	taskCancelContext, taskCancel := common.ContextWithCancelCause(ctx)
 
 	var errorAccess sync.Mutex
 	var returnError error
@@ -112,8 +104,13 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 		}()
 	}
 
-	selectedContext, upstreamErr := common.SelectContext(append([]context.Context{taskCancelContext}, contextList[1:]...))
-	taskCancel(upstreamErr)
+	var upstreamErr bool
+	select {
+	case <-taskCancelContext.Done():
+	case <-ctx.Done():
+		upstreamErr = true
+		taskCancel(ctx.Err())
+	}
 
 	if g.cleanup != nil {
 		g.cleanup()
@@ -121,10 +118,8 @@ func (g *Group) RunContextList(contextList []context.Context) error {
 
 	<-taskContext.Done()
 
-	if selectedContext != 0 {
-		returnError = E.Append(returnError, upstreamErr, func(err error) error {
-			return E.Cause(err, "upstream")
-		})
+	if upstreamErr {
+		return ctx.Err()
 	}
 
 	return returnError
