@@ -43,10 +43,10 @@ var (
 	procDnsFlushResolverCache = moddnsapi.NewProc("DnsFlushResolverCache")
 )
 
-func FlushResolverCache() (ret error) {
-	r0, _, _ := syscall.Syscall(procDnsFlushResolverCache.Addr(), 0, 0, 0, 0)
-	if r0 != 0 {
-		ret = syscall.Errno(r0)
+func FlushResolverCache() (err error) {
+	r1, _, e1 := syscall.Syscall(procDnsFlushResolverCache.Addr(), 0, 0, 0, 0)
+	if r1 == 0 {
+		err = errnoErr(e1)
 	}
 	return
 }
