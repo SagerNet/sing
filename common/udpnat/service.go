@@ -70,9 +70,10 @@ func (s *Service[T]) NewPacket(ctx context.Context, key T, buffer *buf.Buffer, m
 func (s *Service[T]) NewContextPacket(ctx context.Context, key T, buffer *buf.Buffer, metadata M.Metadata, init func(natConn N.PacketConn) (context.Context, N.PacketWriter)) {
 	c, loaded := s.nat.LoadOrStore(key, func() *conn {
 		c := &conn{
-			data:       make(chan packet, 64),
-			localAddr:  metadata.Source,
-			remoteAddr: metadata.Destination,
+			data:         make(chan packet, 64),
+			localAddr:    metadata.Source,
+			remoteAddr:   metadata.Destination,
+			readDeadline: pipe.MakeDeadline(),
 		}
 		c.ctx, c.cancel = common.ContextWithCancelCause(ctx)
 		return c
