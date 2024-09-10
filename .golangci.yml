@@ -8,10 +8,6 @@ linters:
     - paralleltest
     - ineffassign
 
-
-
-
-
 linters-settings:
   gci:
     custom-order: true
