@@ -6,6 +6,7 @@ import (
 )
 
 type InterfaceFinder interface {
+	Update() error
 	Interfaces() []Interface
 	InterfaceIndexByName(name string) (int, error)
 	InterfaceNameByIndex(index int) (string, error)
