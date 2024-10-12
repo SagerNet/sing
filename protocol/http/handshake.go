@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/atomic"
@@ -117,6 +118,8 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		var innerErr atomic.TypedValue[error]
 		httpClient := &http.Client{
 			Transport: &http.Transport{
+				MaxIdleConns: 10,
+				IdleConnTimeout: 30 * time.Second,
 				DisableCompression: true,
 				DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 					metadata.Destination = M.ParseSocksaddr(address)
