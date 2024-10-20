@@ -1,8 +1,10 @@
 package socks5
 
 import (
+	"errors"
 	"io"
 	"net/netip"
+	"syscall"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -36,6 +38,20 @@ const (
 	ReplyCodeUnsupported            byte = 7
 	ReplyCodeAddressTypeUnsupported byte = 8
 )
+
+func ReplyCodeForError(err error) byte {
+	if errors.Is(err, syscall.ENETUNREACH) {
+		return ReplyCodeNetworkUnreachable
+	} else if errors.Is(err, syscall.EHOSTUNREACH) {
+		return ReplyCodeHostUnreachable
+	} else if errors.Is(err, syscall.ECONNREFUSED) {
+		return ReplyCodeConnectionRefused
+	} else if errors.Is(err, syscall.EPERM) {
+		return ReplyCodeNotAllowed
+	} else {
+		return ReplyCodeFailure
+	}
+}
 
 // +----+----------+----------+
 // |VER | NMETHODS | METHODS  |

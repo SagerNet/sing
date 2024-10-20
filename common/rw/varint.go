@@ -27,7 +27,6 @@ func ToByteReader(reader io.Reader) io.ByteReader {
 
 // Deprecated: Use binary.ReadUvarint instead.
 func ReadUVariant(reader io.Reader) (uint64, error) {
-	//goland:noinspection GoDeprecation
 	return binary.ReadUvarint(ToByteReader(reader))
 }
 

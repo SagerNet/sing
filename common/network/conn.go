@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -70,8 +71,38 @@ type ExtendedConn interface {
 	net.Conn
 }
 
+type CloseHandlerFunc = func(it error)
+
+func AppendClose(parent CloseHandlerFunc, onClose CloseHandlerFunc) CloseHandlerFunc {
+	if parent == nil {
+		return parent
+	} else if onClose == nil {
+		return onClose
+	}
+	return func(it error) {
+		onClose(it)
+		parent(it)
+	}
+}
+
+func OnceClose(onClose CloseHandlerFunc) CloseHandlerFunc {
+	var once sync.Once
+	return func(it error) {
+		once.Do(func() {
+			onClose(it)
+		})
+	}
+}
+
+// Deprecated: Use TCPConnectionHandlerEx instead.
 type TCPConnectionHandler interface {
-	NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error
+	NewConnection(ctx context.Context, conn net.Conn,
+		//nolint:staticcheck
+		metadata M.Metadata) error
+}
+
+type TCPConnectionHandlerEx interface {
+	NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose CloseHandlerFunc)
 }
 
 type NetPacketConn interface {
@@ -85,12 +116,26 @@ type BindPacketConn interface {
 	net.Conn
 }
 
+// Deprecated: Use UDPHandlerEx instead.
 type UDPHandler interface {
-	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer, metadata M.Metadata) error
+	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer,
+		//nolint:staticcheck
+		metadata M.Metadata) error
 }
 
+type UDPHandlerEx interface {
+	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer, source M.Socksaddr, destination M.Socksaddr) error
+}
+
+// Deprecated: Use UDPConnectionHandlerEx instead.
 type UDPConnectionHandler interface {
-	NewPacketConnection(ctx context.Context, conn PacketConn, metadata M.Metadata) error
+	NewPacketConnection(ctx context.Context, conn PacketConn,
+		//nolint:staticcheck
+		metadata M.Metadata) error
+}
+
+type UDPConnectionHandlerEx interface {
+	NewPacketConnectionEx(ctx context.Context, conn PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose CloseHandlerFunc)
 }
 
 type CachedReader interface {

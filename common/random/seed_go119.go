@@ -20,6 +20,5 @@ func InitializeSeed() {
 func initializeSeed() {
 	var seed int64
 	common.Must(binary.Read(rand.Reader, binary.LittleEndian, &seed))
-	//goland:noinspection GoDeprecation
 	mRand.Seed(seed)
 }

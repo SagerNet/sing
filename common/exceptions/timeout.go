@@ -12,7 +12,6 @@ type TimeoutError interface {
 func IsTimeout(err error) bool {
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		//goland:noinspection GoDeprecation
 		//nolint:staticcheck
 		return netErr.Temporary() && netErr.Timeout()
 	}

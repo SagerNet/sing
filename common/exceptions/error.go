@@ -12,6 +12,7 @@ import (
 	F "github.com/sagernet/sing/common/format"
 )
 
+// Deprecated: wtf is this?
 type Handler interface {
 	NewError(ctx context.Context, err error)
 }

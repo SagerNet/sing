@@ -20,9 +20,18 @@ import (
 	"github.com/sagernet/sing/common/pipe"
 )
 
-type Handler = N.TCPConnectionHandler
+// Deprecated: Use HandleConnectionEx instead.
+func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator,
+	//nolint:staticcheck
+	handler N.TCPConnectionHandler, metadata M.Metadata,
+) error {
+	return HandleConnectionEx(ctx, conn, reader, authenticator, handler, nil, metadata.Source, nil)
+}
 
-func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator, handler Handler, metadata M.Metadata) error {
+func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator,
+	//nolint:staticcheck
+	handler N.TCPConnectionHandler, handlerEx N.TCPConnectionHandlerEx, source M.Socksaddr, onClose N.CloseHandlerFunc,
+) error {
 	for {
 		request, err := ReadRequest(reader)
 		if err != nil {
@@ -68,7 +77,7 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 		}
 
 		if sourceAddress := SourceAddress(request); sourceAddress.IsValid() {
-			metadata.Source = sourceAddress
+			source = sourceAddress
 		}
 
 		if request.Method == "CONNECT" {
@@ -81,9 +90,6 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			if err != nil {
 				return E.Cause(err, "write http response")
 			}
-			metadata.Protocol = "http"
-			metadata.Destination = destination
-
 			var requestConn net.Conn
 			if reader.Buffered() > 0 {
 				buffer := buf.NewSize(reader.Buffered())
@@ -95,75 +101,105 @@ func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Read
 			} else {
 				requestConn = conn
 			}
-			return handler.NewConnection(ctx, requestConn, metadata)
-		}
-
-		keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
-		request.RequestURI = ""
-
-		removeHopByHopHeaders(request.Header)
-		removeExtraHTTPHostPort(request)
-
-		if hostStr := request.Header.Get("Host"); hostStr != "" {
-			if hostStr != request.URL.Host {
-				request.Host = hostStr
+			if handler != nil {
+				//nolint:staticcheck
+				return handler.NewConnection(ctx, requestConn, M.Metadata{Protocol: "http", Source: source, Destination: destination})
+			} else {
+				handlerEx.NewConnectionEx(ctx, requestConn, source, destination, onClose)
+				return nil
 			}
 		}
 
-		if request.URL.Scheme == "" || request.URL.Host == "" {
-			return responseWith(request, http.StatusBadRequest).Write(conn)
+		err = handleHTTPConnection(ctx, handler, handlerEx, conn, request, source)
+		if err != nil {
+			return err
 		}
+	}
+}
 
-		var innerErr atomic.TypedValue[error]
-		httpClient := &http.Client{
-			Transport: &http.Transport{
-				DisableCompression: true,
-				DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-					metadata.Destination = M.ParseSocksaddr(address)
-					metadata.Protocol = "http"
-					input, output := pipe.Pipe()
+func handleHTTPConnection(
+	ctx context.Context,
+	//nolint:staticcheck
+	handler N.TCPConnectionHandler,
+	handlerEx N.TCPConnectionHandlerEx,
+	conn net.Conn,
+	request *http.Request, source M.Socksaddr,
+) error {
+	keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+	request.RequestURI = ""
+
+	removeHopByHopHeaders(request.Header)
+	removeExtraHTTPHostPort(request)
+
+	if hostStr := request.Header.Get("Host"); hostStr != "" {
+		if hostStr != request.URL.Host {
+			request.Host = hostStr
+		}
+	}
+
+	if request.URL.Scheme == "" || request.URL.Host == "" {
+		return responseWith(request, http.StatusBadRequest).Write(conn)
+	}
+
+	var innerErr atomic.TypedValue[error]
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DisableCompression: true,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				input, output := pipe.Pipe()
+				if handler != nil {
 					go func() {
-						hErr := handler.NewConnection(ctx, output, metadata)
+						//nolint:staticcheck
+						hErr := handler.NewConnection(ctx, output, M.Metadata{Protocol: "http", Source: source, Destination: M.ParseSocksaddr(address)})
 						if hErr != nil {
 							innerErr.Store(hErr)
 							common.Close(input, output)
 						}
 					}()
-					return input, nil
-				},
+				} else {
+					go handlerEx.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address), func(it error) {
+						innerErr.Store(it)
+						common.Close(input, output)
+					})
+				}
+				return input, nil
 			},
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
-		requestCtx, cancel := context.WithCancel(ctx)
-		response, err := httpClient.Do(request.WithContext(requestCtx))
-		if err != nil {
-			cancel()
-			return E.Errors(innerErr.Load(), err, responseWith(request, http.StatusBadGateway).Write(conn))
-		}
-
-		removeHopByHopHeaders(response.Header)
-
-		if keepAlive {
-			response.Header.Set("Proxy-Connection", "keep-alive")
-			response.Header.Set("Connection", "keep-alive")
-			response.Header.Set("Keep-Alive", "timeout=4")
-		}
-
-		response.Close = !keepAlive
-
-		err = response.Write(conn)
-		if err != nil {
-			cancel()
-			return E.Errors(innerErr.Load(), err)
-		}
-
-		cancel()
-		if !keepAlive {
-			return conn.Close()
-		}
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
+	defer httpClient.CloseIdleConnections()
+
+	requestCtx, cancel := context.WithCancel(ctx)
+	response, err := httpClient.Do(request.WithContext(requestCtx))
+	if err != nil {
+		cancel()
+		return E.Errors(innerErr.Load(), err, responseWith(request, http.StatusBadGateway).Write(conn))
+	}
+
+	removeHopByHopHeaders(response.Header)
+
+	if keepAlive {
+		response.Header.Set("Proxy-Connection", "keep-alive")
+		response.Header.Set("Connection", "keep-alive")
+		response.Header.Set("Keep-Alive", "timeout=4")
+	}
+
+	response.Close = !keepAlive
+
+	err = response.Write(conn)
+	if err != nil {
+		cancel()
+		return E.Errors(innerErr.Load(), err)
+	}
+
+	cancel()
+	if !keepAlive {
+		return conn.Close()
+	}
+
+	return nil
 }
 
 func removeHopByHopHeaders(header http.Header) {
