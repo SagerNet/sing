@@ -37,7 +37,7 @@ func (c *LazyConn) ConnHandshakeSuccess(conn net.Conn) error {
 			Destination: M.SocksaddrFromNet(conn.LocalAddr()),
 		})
 	case socks5.Version:
-		return socks5.WriteResponse(conn, socks5.Response{
+		return socks5.WriteResponse(c.Conn, socks5.Response{
 			ReplyCode: socks5.ReplyCodeSuccess,
 			Bind:      M.SocksaddrFromNet(conn.LocalAddr()),
 		})
@@ -211,5 +211,5 @@ func (c *LazyAssociatePacketConn) WriterReplaceable() bool {
 }
 
 func (c *LazyAssociatePacketConn) Upstream() any {
-	return c.underlying
+	return &c.AssociatePacketConn
 }

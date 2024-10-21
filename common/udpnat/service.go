@@ -131,8 +131,6 @@ func (s *Service[T]) NewContextPacketEx(ctx context.Context, key T, buffer *buf.
 				s.nat.Delete(key)
 			}
 		}()
-	} else {
-		c.localAddr = source
 	}
 	if common.Done(c.ctx) {
 		s.nat.Delete(key)
@@ -213,10 +211,6 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
-}
-
-func (c *conn) NeedAdditionalReadDeadline() bool {
-	return true
 }
 
 func (c *conn) Upstream() any {

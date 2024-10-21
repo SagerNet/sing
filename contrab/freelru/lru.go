@@ -31,6 +31,8 @@ type OnEvictCallback[K comparable, V any] func(K, V)
 // HashKeyCallback is the function that creates a hash from the passed key.
 type HashKeyCallback[K comparable] func(K) uint32
 
+type HealthCheckCallback[K comparable, V any] func(K, V) bool
+
 type element[K comparable, V any] struct {
 	key   K
 	value V
@@ -61,12 +63,13 @@ const emptyBucket = math.MaxUint32
 
 // LRU implements a non-thread safe fixed size LRU cache.
 type LRU[K comparable, V any] struct {
-	buckets  []uint32 // contains positions of bucket lists or 'emptyBucket'
-	elements []element[K, V]
-	onEvict  OnEvictCallback[K, V]
-	hash     HashKeyCallback[K]
-	lifetime time.Duration
-	metrics  Metrics
+	buckets     []uint32 // contains positions of bucket lists or 'emptyBucket'
+	elements    []element[K, V]
+	onEvict     OnEvictCallback[K, V]
+	hash        HashKeyCallback[K]
+	healthCheck HealthCheckCallback[K, V]
+	lifetime    time.Duration
+	metrics     Metrics
 
 	// used for element clearing after removal or expiration
 	emptyKey   K
@@ -108,6 +111,10 @@ func (lru *LRU[K, V]) SetOnEvict(onEvict OnEvictCallback[K, V]) {
 	lru.onEvict = onEvict
 }
 
+func (lru *LRU[K, V]) SetHealthCheck(healthCheck HealthCheckCallback[K, V]) {
+	lru.healthCheck = healthCheck
+}
+
 // New constructs an LRU with the given capacity of elements.
 // The hash function calculates a hash value from the keys.
 func New[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (*LRU[K, V], error) {
@@ -120,7 +127,8 @@ func New[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (*LRU[K,
 // by reducing the chance of collisions.
 // Size must not be lower than the capacity.
 func NewWithSize[K comparable, V any](capacity, size uint32, hash HashKeyCallback[K]) (
-	*LRU[K, V], error) {
+	*LRU[K, V], error,
+) {
 	if capacity == 0 {
 		return nil, errors.New("capacity must be positive")
 	}
@@ -144,7 +152,8 @@ func NewWithSize[K comparable, V any](capacity, size uint32, hash HashKeyCallbac
 }
 
 func initLRU[K comparable, V any](lru *LRU[K, V], capacity, size uint32, hash HashKeyCallback[K],
-	buckets []uint32, elements []element[K, V]) {
+	buckets []uint32, elements []element[K, V],
+) {
 	lru.cap = capacity
 	lru.size = size
 	lru.hash = hash
@@ -294,7 +303,7 @@ func (lru *LRU[K, V]) clearKeyAndValue(pos uint32) {
 	lru.elements[pos].value = lru.emptyValue
 }
 
-func (lru *LRU[K, V]) findKey(hash uint32, key K) (uint32, bool) {
+func (lru *LRU[K, V]) findKey(hash uint32, key K, updateLifetimeOnGet bool) (uint32, bool) {
 	_, startPos := lru.hashToPos(hash)
 	if startPos == emptyBucket {
 		return emptyBucket, false
@@ -303,9 +312,13 @@ func (lru *LRU[K, V]) findKey(hash uint32, key K) (uint32, bool) {
 	pos := startPos
 	for {
 		if key == lru.elements[pos].key {
-			if lru.elements[pos].expire != 0 && lru.elements[pos].expire <= now() {
+			elem := lru.elements[pos]
+			if (elem.expire != 0 && elem.expire <= now()) || (lru.healthCheck != nil && !lru.healthCheck(key, elem.value)) {
 				lru.removeAt(pos)
 				return emptyBucket, false
+			}
+			if updateLifetimeOnGet {
+				lru.elements[pos].expire = expire(lru.lifetime)
 			}
 			return pos, true
 		}
@@ -330,7 +343,8 @@ func (lru *LRU[K, V]) AddWithLifetime(key K, value V, lifetime time.Duration) (e
 }
 
 func (lru *LRU[K, V]) addWithLifetime(hash uint32, key K, value V,
-	lifetime time.Duration) (evicted bool) {
+	lifetime time.Duration,
+) (evicted bool) {
 	bucketPos, startPos := lru.hashToPos(hash)
 	if startPos == emptyBucket {
 		pos := lru.len
@@ -425,11 +439,11 @@ func (lru *LRU[K, V]) add(hash uint32, key K, value V) (evicted bool) {
 // If the found cache item is already expired, the evict function is called
 // and the return value indicates that the key was not found.
 func (lru *LRU[K, V]) Get(key K) (value V, ok bool) {
-	return lru.get(lru.hash(key), key)
+	return lru.get(lru.hash(key), key, true)
 }
 
-func (lru *LRU[K, V]) get(hash uint32, key K) (value V, ok bool) {
-	if pos, ok := lru.findKey(hash, key); ok {
+func (lru *LRU[K, V]) get(hash uint32, key K, updateLifetime bool) (value V, ok bool) {
+	if pos, ok := lru.findKey(hash, key, updateLifetime); ok {
 		if pos != lru.head {
 			lru.unlinkElement(pos)
 			lru.setHead(pos)
@@ -449,7 +463,7 @@ func (lru *LRU[K, V]) Peek(key K) (value V, ok bool) {
 }
 
 func (lru *LRU[K, V]) peek(hash uint32, key K) (value V, ok bool) {
-	if pos, ok := lru.findKey(hash, key); ok {
+	if pos, ok := lru.findKey(hash, key, false); ok {
 		return lru.elements[pos].value, ok
 	}
 
@@ -476,7 +490,7 @@ func (lru *LRU[K, V]) Remove(key K) (removed bool) {
 }
 
 func (lru *LRU[K, V]) remove(hash uint32, key K) (removed bool) {
-	if pos, ok := lru.findKey(hash, key); ok {
+	if pos, ok := lru.findKey(hash, key, false); ok {
 		lru.removeAt(pos)
 		return ok
 	}

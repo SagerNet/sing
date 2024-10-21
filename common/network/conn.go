@@ -124,7 +124,7 @@ type UDPHandler interface {
 }
 
 type UDPHandlerEx interface {
-	NewPacket(ctx context.Context, conn PacketConn, buffer *buf.Buffer, source M.Socksaddr, destination M.Socksaddr) error
+	NewPacketEx(buffer *buf.Buffer, source M.Socksaddr, destination M.Socksaddr)
 }
 
 // Deprecated: Use UDPConnectionHandlerEx instead.
