@@ -46,3 +46,8 @@ func (h Hasher[K]) Hash(key K) uint64 {
 	p := noescape(unsafe.Pointer(&key))
 	return uint64(h.hash(p, h.seed))
 }
+
+func (h Hasher[K]) Hash32(key K) uint32 {
+	p := noescape(unsafe.Pointer(&key))
+	return uint32(h.hash(p, h.seed))
+}

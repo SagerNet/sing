@@ -35,14 +35,7 @@ func (w *ExtendedUDPConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
 
 func (w *ExtendedUDPConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	if destination.IsFqdn() {
-		udpAddr, err := net.ResolveUDPAddr("udp", destination.String())
-		if err != nil {
-			return err
-		}
-		return common.Error(w.UDPConn.WriteTo(buffer.Bytes(), udpAddr))
-	}
-	return common.Error(w.UDPConn.WriteToUDP(buffer.Bytes(), destination.UDPAddr()))
+	return common.Error(w.UDPConn.WriteToUDPAddrPort(buffer.Bytes(), destination.AddrPort()))
 }
 
 func (w *ExtendedUDPConn) Upstream() any {
