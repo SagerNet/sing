@@ -52,6 +52,7 @@ func newHashSeed() uintptr {
 //go:nocheckptr
 func noescape(p unsafe.Pointer) unsafe.Pointer {
 	x := uintptr(p)
+	//nolint:staticcheck
 	return unsafe.Pointer(x ^ 0)
 }
 
@@ -91,9 +92,11 @@ type hmap struct {
 }
 
 // go/src/runtime/type.go
-type tflag uint8
-type nameOff int32
-type typeOff int32
+type (
+	tflag   uint8
+	nameOff int32
+	typeOff int32
+)
 
 // go/src/runtime/type.go
 type _type struct {
