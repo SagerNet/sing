@@ -124,7 +124,7 @@ type UDPHandler interface {
 }
 
 type UDPHandlerEx interface {
-	NewPacketEx(buffer *buf.Buffer, source M.Socksaddr, destination M.Socksaddr)
+	NewPacketEx(buffer *buf.Buffer, source M.Socksaddr)
 }
 
 // Deprecated: Use UDPConnectionHandlerEx instead.
@@ -144,11 +144,6 @@ type CachedReader interface {
 
 type CachedPacketReader interface {
 	ReadCachedPacket() *PacketBuffer
-}
-
-type PacketBuffer struct {
-	Buffer      *buf.Buffer
-	Destination M.Socksaddr
 }
 
 type WithUpstreamReader interface {

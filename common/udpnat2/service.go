@@ -14,7 +14,7 @@ import (
 )
 
 type Service struct {
-	nat     *freelru.LRU[netip.AddrPort, *natConn]
+	nat     *freelru.LRU[netip.AddrPort, *Conn]
 	handler N.UDPConnectionHandlerEx
 	prepare PrepareFunc
 	metrics Metrics
@@ -30,9 +30,9 @@ type Metrics struct {
 }
 
 func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Duration) *Service {
-	nat := common.Must1(freelru.New[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
+	nat := common.Must1(freelru.New[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
 	nat.SetLifetime(timeout)
-	nat.SetHealthCheck(func(port netip.AddrPort, conn *natConn) bool {
+	nat.SetHealthCheck(func(port netip.AddrPort, conn *Conn) bool {
 		select {
 		case <-conn.doneChan:
 			return false
@@ -40,7 +40,7 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 			return true
 		}
 	})
-	nat.SetOnEvict(func(_ netip.AddrPort, conn *natConn) {
+	nat.SetOnEvict(func(_ netip.AddrPort, conn *Conn) {
 		conn.Close()
 	})
 	return &Service{
@@ -55,26 +55,31 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	if !loaded {
 		ok, ctx, writer, onClose := s.prepare(source, destination, userData)
 		if !ok {
+			println(2)
 			s.metrics.Rejects++
 			return
 		}
-		conn = &natConn{
+		conn = &Conn{
 			writer:       writer,
 			localAddr:    source,
-			packetChan:   make(chan *Packet, 64),
+			packetChan:   make(chan *N.PacketBuffer, 64),
 			doneChan:     make(chan struct{}),
 			readDeadline: pipe.MakeDeadline(),
 		}
 		s.nat.Add(source.AddrPort(), conn)
-		s.handler.NewPacketConnectionEx(ctx, conn, source, destination, onClose)
+		go s.handler.NewPacketConnectionEx(ctx, conn, source, destination, onClose)
 		s.metrics.Creates++
 	}
-	packet := NewPacket()
 	buffer := conn.readWaitOptions.NewPacketBuffer()
 	for _, bufferSlice := range bufferSlices {
 		buffer.Write(bufferSlice)
 	}
-	*packet = Packet{
+	if conn.handler != nil {
+		conn.handler.NewPacketEx(buffer, destination)
+		return
+	}
+	packet := N.NewPacketBuffer()
+	*packet = N.PacketBuffer{
 		Buffer:      buffer,
 		Destination: destination,
 	}
@@ -83,7 +88,7 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 		s.metrics.Inputs++
 	default:
 		packet.Buffer.Release()
-		PutPacket(packet)
+		N.PutPacketBuffer(packet)
 		s.metrics.Drops++
 	}
 }

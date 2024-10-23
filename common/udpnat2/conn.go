@@ -12,22 +12,23 @@ import (
 	"github.com/sagernet/sing/common/pipe"
 )
 
-type natConn struct {
+type Conn struct {
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
-	packetChan      chan *Packet
+	handler         N.UDPHandlerEx
+	packetChan      chan *N.PacketBuffer
 	doneChan        chan struct{}
 	readDeadline    pipe.Deadline
 	readWaitOptions N.ReadWaitOptions
 }
 
-func (c *natConn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
+func (c *Conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	select {
 	case p := <-c.packetChan:
 		_, err = buffer.ReadOnceFrom(p.Buffer)
 		destination := p.Destination
 		p.Buffer.Release()
-		PutPacket(p)
+		N.PutPacketBuffer(p)
 		return destination, err
 	case <-c.doneChan:
 		return M.Socksaddr{}, io.ErrClosedPipe
@@ -36,21 +37,36 @@ func (c *natConn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	}
 }
 
-func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return c.writer.WritePacket(buffer, destination)
 }
 
-func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+func (c *Conn) SetHandler(handler N.UDPHandlerEx) {
+	c.handler = handler
+fetch:
+	for {
+		select {
+		case packet := <-c.packetChan:
+			c.handler.NewPacketEx(packet.Buffer, packet.Destination)
+			N.PutPacketBuffer(packet)
+			continue fetch
+		default:
+			break fetch
+		}
+	}
+}
+
+func (c *Conn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	c.readWaitOptions = options
 	return false
 }
 
-func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+func (c *Conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
 	select {
 	case packet := <-c.packetChan:
 		buffer = c.readWaitOptions.Copy(packet.Buffer)
 		destination = packet.Destination
-		PutPacket(packet)
+		N.PutPacketBuffer(packet)
 		return
 	case <-c.doneChan:
 		return nil, M.Socksaddr{}, io.ErrClosedPipe
@@ -59,7 +75,7 @@ func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr,
 	}
 }
 
-func (c *natConn) Close() error {
+func (c *Conn) Close() error {
 	select {
 	case <-c.doneChan:
 	default:
@@ -68,23 +84,23 @@ func (c *natConn) Close() error {
 	return nil
 }
 
-func (c *natConn) LocalAddr() net.Addr {
+func (c *Conn) LocalAddr() net.Addr {
 	return c.localAddr
 }
 
-func (c *natConn) RemoteAddr() net.Addr {
+func (c *Conn) RemoteAddr() net.Addr {
 	return M.Socksaddr{}
 }
 
-func (c *natConn) SetDeadline(t time.Time) error {
+func (c *Conn) SetDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
 
-func (c *natConn) SetReadDeadline(t time.Time) error {
+func (c *Conn) SetReadDeadline(t time.Time) error {
 	c.readDeadline.Set(t)
 	return nil
 }
 
-func (c *natConn) SetWriteDeadline(t time.Time) error {
+func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
