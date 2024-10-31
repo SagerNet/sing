@@ -2,13 +2,14 @@ package badjson
 
 import (
 	"bytes"
+	"context"
 
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 )
 
-func Decode(content []byte) (any, error) {
-	decoder := json.NewDecoder(bytes.NewReader(content))
+func Decode(ctx context.Context, content []byte) (any, error) {
+	decoder := json.NewDecoderContext(ctx, bytes.NewReader(content))
 	return decodeJSON(decoder)
 }
 

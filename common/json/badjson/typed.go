@@ -2,6 +2,7 @@ package badjson
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	E "github.com/sagernet/sing/common/exceptions"
@@ -14,18 +15,22 @@ type TypedMap[K comparable, V any] struct {
 }
 
 func (m TypedMap[K, V]) MarshalJSON() ([]byte, error) {
+	return m.MarshalJSONContext(context.Background())
+}
+
+func (m TypedMap[K, V]) MarshalJSONContext(ctx context.Context) ([]byte, error) {
 	buffer := new(bytes.Buffer)
 	buffer.WriteString("{")
 	items := m.Entries()
 	iLen := len(items)
 	for i, entry := range items {
-		keyContent, err := json.Marshal(entry.Key)
+		keyContent, err := json.MarshalContext(ctx, entry.Key)
 		if err != nil {
 			return nil, err
 		}
 		buffer.WriteString(strings.TrimSpace(string(keyContent)))
 		buffer.WriteString(": ")
-		valueContent, err := json.Marshal(entry.Value)
+		valueContent, err := json.MarshalContext(ctx, entry.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -39,7 +44,11 @@ func (m TypedMap[K, V]) MarshalJSON() ([]byte, error) {
 }
 
 func (m *TypedMap[K, V]) UnmarshalJSON(content []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(content))
+	return m.UnmarshalJSONContext(context.Background(), content)
+}
+
+func (m *TypedMap[K, V]) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	decoder := json.NewDecoderContext(ctx, bytes.NewReader(content))
 	m.Clear()
 	objectStart, err := decoder.Token()
 	if err != nil {
@@ -47,7 +56,7 @@ func (m *TypedMap[K, V]) UnmarshalJSON(content []byte) error {
 	} else if objectStart != json.Delim('{') {
 		return E.New("expected json object start, but starts with ", objectStart)
 	}
-	err = m.decodeJSON(decoder)
+	err = m.decodeJSON(ctx, decoder)
 	if err != nil {
 		return E.Cause(err, "decode json object content")
 	}
@@ -60,18 +69,18 @@ func (m *TypedMap[K, V]) UnmarshalJSON(content []byte) error {
 	return nil
 }
 
-func (m *TypedMap[K, V]) decodeJSON(decoder *json.Decoder) error {
+func (m *TypedMap[K, V]) decodeJSON(ctx context.Context, decoder *json.Decoder) error {
 	for decoder.More() {
 		keyToken, err := decoder.Token()
 		if err != nil {
 			return err
 		}
-		keyContent, err := json.Marshal(keyToken)
+		keyContent, err := json.MarshalContext(ctx, keyToken)
 		if err != nil {
 			return err
 		}
 		var entryKey K
-		err = json.Unmarshal(keyContent, &entryKey)
+		err = json.UnmarshalContext(ctx, keyContent, &entryKey)
 		if err != nil {
 			return err
 		}
