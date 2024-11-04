@@ -37,6 +37,7 @@ func (f *DefaultInterfaceFinder) Update() error {
 			Name:         netIf.Name,
 			Addresses:    common.Map(ifAddrs, M.PrefixFromNet),
 			HardwareAddr: netIf.HardwareAddr,
+			Flags:        netIf.Flags,
 		})
 	}
 	f.interfaces = interfaces

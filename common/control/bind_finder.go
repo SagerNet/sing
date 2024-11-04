@@ -19,4 +19,5 @@ type Interface struct {
 	Name         string
 	Addresses    []netip.Prefix
 	HardwareAddr net.HardwareAddr
+	Flags        net.Flags
 }
