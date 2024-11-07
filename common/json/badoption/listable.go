@@ -1,6 +1,8 @@
 package badoption
 
 import (
+	"context"
+
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 )
@@ -15,13 +17,13 @@ func (l Listable[T]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(arrayList)
 }
 
-func (l *Listable[T]) UnmarshalJSON(content []byte) error {
-	err := json.UnmarshalDisallowUnknownFields(content, (*[]T)(l))
+func (l *Listable[T]) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	err := json.UnmarshalContextDisallowUnknownFields(ctx, content, (*[]T)(l))
 	if err == nil {
 		return nil
 	}
 	var singleItem T
-	newError := json.UnmarshalDisallowUnknownFields(content, &singleItem)
+	newError := json.UnmarshalContextDisallowUnknownFields(ctx, content, &singleItem)
 	if newError != nil {
 		return E.Errors(err, newError)
 	}
