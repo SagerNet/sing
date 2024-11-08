@@ -55,7 +55,6 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	if !loaded {
 		ok, ctx, writer, onClose := s.prepare(source, destination, userData)
 		if !ok {
-			println(2)
 			s.metrics.Rejects++
 			return
 		}

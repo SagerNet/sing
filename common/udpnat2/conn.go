@@ -104,3 +104,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 func (c *Conn) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
+
+func (c *Conn) Upstream() any {
+	return c.writer
+}
