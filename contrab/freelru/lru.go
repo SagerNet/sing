@@ -439,11 +439,11 @@ func (lru *LRU[K, V]) add(hash uint32, key K, value V) (evicted bool) {
 // If the found cache item is already expired, the evict function is called
 // and the return value indicates that the key was not found.
 func (lru *LRU[K, V]) Get(key K) (value V, ok bool) {
-	return lru.get(lru.hash(key), key, true)
+	return lru.get(lru.hash(key), key)
 }
 
-func (lru *LRU[K, V]) get(hash uint32, key K, updateLifetime bool) (value V, ok bool) {
-	if pos, ok := lru.findKey(hash, key, updateLifetime); ok {
+func (lru *LRU[K, V]) get(hash uint32, key K) (value V, ok bool) {
+	if pos, ok := lru.findKey(hash, key, true); ok {
 		if pos != lru.head {
 			lru.unlinkElement(pos)
 			lru.setHead(pos)
