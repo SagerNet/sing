@@ -14,7 +14,7 @@ import (
 )
 
 type Service struct {
-	nat     *freelru.LRU[netip.AddrPort, *Conn]
+	cache   freelru.Cache[netip.AddrPort, *Conn]
 	handler N.UDPConnectionHandlerEx
 	prepare PrepareFunc
 	metrics Metrics
@@ -29,10 +29,15 @@ type Metrics struct {
 	Drops   uint64
 }
 
-func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Duration) *Service {
-	nat := common.Must1(freelru.New[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
-	nat.SetLifetime(timeout)
-	nat.SetHealthCheck(func(port netip.AddrPort, conn *Conn) bool {
+func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Duration, shared bool) *Service {
+	var cache freelru.Cache[netip.AddrPort, *Conn]
+	if !shared {
+		cache = common.Must1(freelru.New[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
+	} else {
+		cache = common.Must1(freelru.NewSharded[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
+	}
+	cache.SetLifetime(timeout)
+	cache.SetHealthCheck(func(port netip.AddrPort, conn *Conn) bool {
 		select {
 		case <-conn.doneChan:
 			return false
@@ -40,18 +45,18 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 			return true
 		}
 	})
-	nat.SetOnEvict(func(_ netip.AddrPort, conn *Conn) {
+	cache.SetOnEvict(func(_ netip.AddrPort, conn *Conn) {
 		conn.Close()
 	})
 	return &Service{
-		nat:     nat,
+		cache:   cache,
 		handler: handler,
 		prepare: prepare,
 	}
 }
 
 func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destination M.Socksaddr, userData any) {
-	conn, loaded := s.nat.Get(source.AddrPort())
+	conn, loaded := s.cache.Get(source.AddrPort())
 	if !loaded {
 		ok, ctx, writer, onClose := s.prepare(source, destination, userData)
 		if !ok {
@@ -65,7 +70,7 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 			doneChan:     make(chan struct{}),
 			readDeadline: pipe.MakeDeadline(),
 		}
-		s.nat.Add(source.AddrPort(), conn)
+		s.cache.Add(source.AddrPort(), conn)
 		go s.handler.NewPacketConnectionEx(ctx, conn, source, destination, onClose)
 		s.metrics.Creates++
 	}
