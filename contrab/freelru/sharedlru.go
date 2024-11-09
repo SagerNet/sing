@@ -42,6 +42,14 @@ func (lru *ShardedLRU[K, V]) SetOnEvict(onEvict OnEvictCallback[K, V]) {
 	}
 }
 
+func (lru *ShardedLRU[K, V]) SetHealthCheck(healthCheck HealthCheckCallback[K, V]) {
+	for shard := range lru.lrus {
+		lru.mus[shard].Lock()
+		lru.lrus[shard].SetHealthCheck(healthCheck)
+		lru.mus[shard].Unlock()
+	}
+}
+
 func nextPowerOfTwo(val uint32) uint32 {
 	if bits.OnesCount32(val) != 1 {
 		return 1 << bits.Len32(val)
@@ -51,7 +59,8 @@ func nextPowerOfTwo(val uint32) uint32 {
 
 // NewSharded creates a new thread-safe sharded LRU hashmap with the given capacity.
 func NewSharded[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (*ShardedLRU[K, V],
-	error) {
+	error,
+) {
 	size := uint32(float64(capacity) * 1.25) // 25% extra space for fewer collisions
 
 	return NewShardedWithSize[K, V](uint32(runtime.GOMAXPROCS(0)*16), capacity, size, hash)
@@ -59,7 +68,8 @@ func NewSharded[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (
 
 func NewShardedWithSize[K comparable, V any](shards, capacity, size uint32,
 	hash HashKeyCallback[K]) (
-	*ShardedLRU[K, V], error) {
+	*ShardedLRU[K, V], error,
+) {
 	if capacity == 0 {
 		return nil, errors.New("capacity must be positive")
 	}
@@ -126,7 +136,8 @@ func (lru *ShardedLRU[K, V]) Len() (length int) {
 // AddWithLifetime adds a key:value to the cache with a lifetime.
 // Returns true, true if key was updated and eviction occurred.
 func (lru *ShardedLRU[K, V]) AddWithLifetime(key K, value V,
-	lifetime time.Duration) (evicted bool) {
+	lifetime time.Duration,
+) (evicted bool) {
 	hash := lru.hash(key)
 	shard := (hash >> 16) & lru.mask
 

@@ -24,6 +24,8 @@ type Cache[K comparable, V any] interface {
 	// Lifetime 0 means "forever".
 	SetLifetime(lifetime time.Duration)
 
+	SetHealthCheck(healthCheck HealthCheckCallback[K, V])
+
 	// SetOnEvict sets the OnEvict callback function.
 	// The onEvict function is called for each evicted lru entry.
 	SetOnEvict(onEvict OnEvictCallback[K, V])
