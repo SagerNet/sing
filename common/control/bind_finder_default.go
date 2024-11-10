@@ -3,11 +3,8 @@ package control
 import (
 	"net"
 	"net/netip"
-	_ "unsafe"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
 )
 
 var _ InterfaceFinder = (*DefaultInterfaceFinder)(nil)
@@ -27,18 +24,12 @@ func (f *DefaultInterfaceFinder) Update() error {
 	}
 	interfaces := make([]Interface, 0, len(netIfs))
 	for _, netIf := range netIfs {
-		ifAddrs, err := netIf.Addrs()
+		var iif Interface
+		iif, err = InterfaceFromNet(netIf)
 		if err != nil {
 			return err
 		}
-		interfaces = append(interfaces, Interface{
-			Index:        netIf.Index,
-			MTU:          netIf.MTU,
-			Name:         netIf.Name,
-			Addresses:    common.Map(ifAddrs, M.PrefixFromNet),
-			HardwareAddr: netIf.HardwareAddr,
-			Flags:        netIf.Flags,
-		})
+		interfaces = append(interfaces, iif)
 	}
 	f.interfaces = interfaces
 	return nil
@@ -52,35 +43,41 @@ func (f *DefaultInterfaceFinder) Interfaces() []Interface {
 	return f.interfaces
 }
 
-func (f *DefaultInterfaceFinder) InterfaceIndexByName(name string) (int, error) {
+func (f *DefaultInterfaceFinder) ByName(name string) (*Interface, error) {
 	for _, netInterface := range f.interfaces {
 		if netInterface.Name == name {
-			return netInterface.Index, nil
+			return &netInterface, nil
 		}
 	}
-	netInterface, err := net.InterfaceByName(name)
+	_, err := net.InterfaceByName(name)
 	if err != nil {
-		return 0, err
+		err = f.Update()
+		if err != nil {
+			return nil, err
+		}
+		return f.ByName(name)
 	}
-	f.Update()
-	return netInterface.Index, nil
+	return nil, &net.OpError{Op: "route", Net: "ip+net", Source: nil, Addr: &net.IPAddr{IP: nil}, Err: E.New("no such network interface")}
 }
 
-func (f *DefaultInterfaceFinder) InterfaceNameByIndex(index int) (string, error) {
+func (f *DefaultInterfaceFinder) ByIndex(index int) (*Interface, error) {
 	for _, netInterface := range f.interfaces {
 		if netInterface.Index == index {
-			return netInterface.Name, nil
+			return &netInterface, nil
 		}
 	}
-	netInterface, err := net.InterfaceByIndex(index)
+	_, err := net.InterfaceByIndex(index)
 	if err != nil {
-		return "", err
+		err = f.Update()
+		if err != nil {
+			return nil, err
+		}
+		return f.ByIndex(index)
 	}
-	f.Update()
-	return netInterface.Name, nil
+	return nil, &net.OpError{Op: "route", Net: "ip+net", Source: nil, Addr: &net.IPAddr{IP: nil}, Err: E.New("no such network interface")}
 }
 
-func (f *DefaultInterfaceFinder) InterfaceByAddr(addr netip.Addr) (*Interface, error) {
+func (f *DefaultInterfaceFinder) ByAddr(addr netip.Addr) (*Interface, error) {
 	for _, netInterface := range f.interfaces {
 		for _, prefix := range netInterface.Addresses {
 			if prefix.Contains(addr) {
