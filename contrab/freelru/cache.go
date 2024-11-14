@@ -24,6 +24,8 @@ type Cache[K comparable, V any] interface {
 	// Lifetime 0 means "forever".
 	SetLifetime(lifetime time.Duration)
 
+	SetUpdateLifetimeOnGet(update bool)
+
 	SetHealthCheck(healthCheck HealthCheckCallback[K, V])
 
 	// SetOnEvict sets the OnEvict callback function.
@@ -46,6 +48,8 @@ type Cache[K comparable, V any] interface {
 	// If the found cache item is already expired, the evict function is called
 	// and the return value indicates that the key was not found.
 	Get(key K) (V, bool)
+
+	GetWithLifetime(key K) (value V, lifetime time.Time, ok bool)
 
 	// Peek looks up a key's value from the cache, without changing its recent-ness.
 	// If the found entry is already expired, the evict function is called.

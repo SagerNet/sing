@@ -37,6 +37,7 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 		cache = common.Must1(freelru.NewSharded[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
 	}
 	cache.SetLifetime(timeout)
+	cache.SetUpdateLifetimeOnGet(true)
 	cache.SetHealthCheck(func(port netip.AddrPort, conn *Conn) bool {
 		select {
 		case <-conn.doneChan:

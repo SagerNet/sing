@@ -32,6 +32,14 @@ func (lru *ShardedLRU[K, V]) SetLifetime(lifetime time.Duration) {
 	}
 }
 
+func (lru *ShardedLRU[K, V]) SetUpdateLifetimeOnGet(update bool) {
+	for shard := range lru.lrus {
+		lru.mus[shard].Lock()
+		lru.lrus[shard].SetUpdateLifetimeOnGet(update)
+		lru.mus[shard].Unlock()
+	}
+}
+
 // SetOnEvict sets the OnEvict callback function.
 // The onEvict function is called for each evicted lru entry.
 func (lru *ShardedLRU[K, V]) SetOnEvict(onEvict OnEvictCallback[K, V]) {
@@ -170,9 +178,20 @@ func (lru *ShardedLRU[K, V]) Get(key K) (value V, ok bool) {
 	shard := (hash >> 16) & lru.mask
 
 	lru.mus[shard].Lock()
-	value, ok = lru.lrus[shard].get(hash, key)
+	value, _, ok = lru.lrus[shard].get(hash, key)
 	lru.mus[shard].Unlock()
 
+	return
+}
+
+func (lru *ShardedLRU[K, V]) GetWithLifetime(key K) (value V, lifetime time.Time, ok bool) {
+	hash := lru.hash(key)
+	shard := (hash >> 16) & lru.mask
+
+	lru.mus[shard].Lock()
+	value, expireMills, ok := lru.lrus[shard].get(hash, key)
+	lru.mus[shard].Unlock()
+	lifetime = time.UnixMilli(expireMills)
 	return
 }
 
