@@ -2,6 +2,7 @@ package socks
 
 import (
 	"net"
+	"os"
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -48,7 +49,7 @@ func (c *LazyConn) ConnHandshakeSuccess(conn net.Conn) error {
 
 func (c *LazyConn) HandshakeFailure(err error) error {
 	if c.responseWritten {
-		return nil
+		return os.ErrInvalid
 	}
 	defer func() {
 		c.responseWritten = true
@@ -130,7 +131,7 @@ func (c *LazyAssociatePacketConn) HandshakeSuccess() error {
 
 func (c *LazyAssociatePacketConn) HandshakeFailure(err error) error {
 	if c.responseWritten {
-		return nil
+		return os.ErrInvalid
 	}
 	defer func() {
 		c.responseWritten = true
