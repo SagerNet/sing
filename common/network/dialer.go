@@ -14,7 +14,7 @@ type Dialer interface {
 }
 
 type PayloadDialer interface {
-	DialPayloadContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error)
+	DialPayloadContext(ctx context.Context, network string, destination M.Socksaddr, payload [][]byte) (net.Conn, error)
 }
 
 type ParallelDialer interface {
