@@ -11,7 +11,7 @@ import (
 )
 
 func Omitempty[T any](ctx context.Context, value T) (T, error) {
-	objectContent, err := json.Marshal(value)
+	objectContent, err := json.MarshalContext(ctx, value)
 	if err != nil {
 		return common.DefaultValue[T](), E.Cause(err, "marshal object")
 	}
