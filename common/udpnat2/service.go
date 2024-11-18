@@ -98,6 +98,20 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	}
 }
 
+func (s *Service) Purge() {
+	s.cache.Purge()
+}
+
+func (s *Service) PurgeExpired() {
+	s.cache.PurgeExpired()
+}
+
 func (s *Service) Metrics() Metrics {
 	return s.metrics
+}
+
+func (s *Service) ResetMetrics() Metrics {
+	metrics := s.metrics
+	s.metrics = Metrics{}
+	return metrics
 }
