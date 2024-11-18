@@ -261,9 +261,15 @@ func (c *LruCache[K, V]) Delete(key K) {
 func (c *LruCache[K, V]) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for element := c.lru.Front(); element != nil; element = element.Next() {
-		c.deleteElement(element)
+
+	if c.onEvict != nil {
+		for le := c.lru.Front(); le != nil; le = le.Next() {
+			c.onEvict(le.Value.key, le.Value.value)
+		}
 	}
+
+	c.lru.Init()
+	c.cache = make(map[K]*list.Element[*entry[K, V]])
 }
 
 func (c *LruCache[K, V]) maybeDeleteOldest() {
