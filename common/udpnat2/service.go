@@ -14,7 +14,7 @@ import (
 )
 
 type Service struct {
-	cache   freelru.Cache[netip.AddrPort, *Conn]
+	cache   freelru.Cache[netip.AddrPort, *natConn]
 	handler N.UDPConnectionHandlerEx
 	prepare PrepareFunc
 	metrics Metrics
@@ -30,15 +30,15 @@ type Metrics struct {
 }
 
 func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Duration, shared bool) *Service {
-	var cache freelru.Cache[netip.AddrPort, *Conn]
+	var cache freelru.Cache[netip.AddrPort, *natConn]
 	if !shared {
-		cache = common.Must1(freelru.New[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
+		cache = common.Must1(freelru.New[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
 	} else {
-		cache = common.Must1(freelru.NewSharded[netip.AddrPort, *Conn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
+		cache = common.Must1(freelru.NewSharded[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
 	}
 	cache.SetLifetime(timeout)
 	cache.SetUpdateLifetimeOnGet(true)
-	cache.SetHealthCheck(func(port netip.AddrPort, conn *Conn) bool {
+	cache.SetHealthCheck(func(port netip.AddrPort, conn *natConn) bool {
 		select {
 		case <-conn.doneChan:
 			return false
@@ -46,7 +46,7 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 			return true
 		}
 	})
-	cache.SetOnEvict(func(_ netip.AddrPort, conn *Conn) {
+	cache.SetOnEvict(func(_ netip.AddrPort, conn *natConn) {
 		conn.Close()
 	})
 	return &Service{
@@ -64,7 +64,7 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 			s.metrics.Rejects++
 			return
 		}
-		conn = &Conn{
+		conn = &natConn{
 			writer:       writer,
 			localAddr:    source,
 			packetChan:   make(chan *N.PacketBuffer, 64),

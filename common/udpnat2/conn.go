@@ -12,7 +12,14 @@ import (
 	"github.com/sagernet/sing/common/pipe"
 )
 
-type Conn struct {
+type Conn interface {
+	N.PacketConn
+	SetHandler(handler N.UDPHandlerEx)
+}
+
+var _ Conn = (*natConn)(nil)
+
+type natConn struct {
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
 	handler         N.UDPHandlerEx
@@ -22,7 +29,7 @@ type Conn struct {
 	readWaitOptions N.ReadWaitOptions
 }
 
-func (c *Conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
+func (c *natConn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	select {
 	case p := <-c.packetChan:
 		_, err = buffer.ReadOnceFrom(p.Buffer)
@@ -37,12 +44,17 @@ func (c *Conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 	}
 }
 
-func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	return c.writer.WritePacket(buffer, destination)
 }
 
-func (c *Conn) SetHandler(handler N.UDPHandlerEx) {
+func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
+	select {
+	case <-c.doneChan:
+	default:
+	}
 	c.handler = handler
+	c.readWaitOptions = N.NewReadWaitOptions(c.writer, handler)
 fetch:
 	for {
 		select {
@@ -56,12 +68,12 @@ fetch:
 	}
 }
 
-func (c *Conn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	c.readWaitOptions = options
 	return false
 }
 
-func (c *Conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
 	select {
 	case packet := <-c.packetChan:
 		buffer = c.readWaitOptions.Copy(packet.Buffer)
@@ -75,7 +87,7 @@ func (c *Conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, er
 	}
 }
 
-func (c *Conn) Close() error {
+func (c *natConn) Close() error {
 	select {
 	case <-c.doneChan:
 	default:
@@ -84,27 +96,27 @@ func (c *Conn) Close() error {
 	return nil
 }
 
-func (c *Conn) LocalAddr() net.Addr {
+func (c *natConn) LocalAddr() net.Addr {
 	return c.localAddr
 }
 
-func (c *Conn) RemoteAddr() net.Addr {
+func (c *natConn) RemoteAddr() net.Addr {
 	return M.Socksaddr{}
 }
 
-func (c *Conn) SetDeadline(t time.Time) error {
+func (c *natConn) SetDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
 
-func (c *Conn) SetReadDeadline(t time.Time) error {
+func (c *natConn) SetReadDeadline(t time.Time) error {
 	c.readDeadline.Set(t)
 	return nil
 }
 
-func (c *Conn) SetWriteDeadline(t time.Time) error {
+func (c *natConn) SetWriteDeadline(t time.Time) error {
 	return os.ErrInvalid
 }
 
-func (c *Conn) Upstream() any {
+func (c *natConn) Upstream() any {
 	return c.writer
 }

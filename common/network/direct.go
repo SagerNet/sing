@@ -15,6 +15,14 @@ type ReadWaitOptions struct {
 	MTU           int
 }
 
+func NewReadWaitOptions(source any, destination any) ReadWaitOptions {
+	return ReadWaitOptions{
+		FrontHeadroom: CalculateFrontHeadroom(destination),
+		RearHeadroom:  CalculateRearHeadroom(destination),
+		MTU:           CalculateMTU(source, destination),
+	}
+}
+
 func (o ReadWaitOptions) NeedHeadroom() bool {
 	return o.FrontHeadroom > 0 || o.RearHeadroom > 0
 }
