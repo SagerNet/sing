@@ -29,21 +29,18 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 		if cachedSrc, isCached := source.(N.CachedReader); isCached {
 			cachedBuffer := cachedSrc.ReadCached()
 			if cachedBuffer != nil {
-				if !cachedBuffer.IsEmpty() {
-					dataLen := cachedBuffer.Len()
-					for _, counter := range readCounters {
-						counter(int64(dataLen))
-					}
-					_, err = destination.Write(cachedBuffer.Bytes())
-					if err != nil {
-						cachedBuffer.Release()
-						return
-					}
-					for _, counter := range writeCounters {
-						counter(int64(dataLen))
-					}
-				}
+				dataLen := cachedBuffer.Len()
+				_, err = destination.Write(cachedBuffer.Bytes())
 				cachedBuffer.Release()
+				if err != nil {
+					return
+				}
+				for _, counter := range readCounters {
+					counter(int64(dataLen))
+				}
+				for _, counter := range writeCounters {
+					counter(int64(dataLen))
+				}
 				continue
 			}
 		}
@@ -139,9 +136,6 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			return
 		}
 		dataLen := buffer.Len()
-		for _, counter := range readCounters {
-			counter(int64(dataLen))
-		}
 		options.PostReturn(buffer)
 		err = destination.WriteBuffer(buffer)
 		if err != nil {
@@ -152,6 +146,9 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			return
 		}
 		n += int64(dataLen)
+		for _, counter := range readCounters {
+			counter(int64(dataLen))
+		}
 		for _, counter := range writeCounters {
 			counter(int64(dataLen))
 		}
@@ -258,9 +255,6 @@ func CopyPacketWithPool(originSource N.PacketReader, destination N.PacketWriter,
 			return
 		}
 		dataLen := buffer.Len()
-		for _, counter := range readCounters {
-			counter(int64(dataLen))
-		}
 		options.PostReturn(buffer)
 		err = destination.WritePacket(buffer, destinationAddress)
 		if err != nil {
@@ -269,6 +263,9 @@ func CopyPacketWithPool(originSource N.PacketReader, destination N.PacketWriter,
 				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
+		}
+		for _, counter := range readCounters {
+			counter(int64(dataLen))
 		}
 		for _, counter := range writeCounters {
 			counter(int64(dataLen))
@@ -282,9 +279,6 @@ func WritePacketWithPool(originSource N.PacketReader, destination N.PacketWriter
 	options := N.NewReadWaitOptions(nil, destination)
 	var notFirstTime bool
 	for _, packetBuffer := range packetBuffers {
-		for _, counter := range readCounters {
-			counter(int64(packetBuffer.Buffer.Len()))
-		}
 		buffer := options.Copy(packetBuffer.Buffer)
 		dataLen := buffer.Len()
 		err = destination.WritePacket(buffer, packetBuffer.Destination)
@@ -295,6 +289,9 @@ func WritePacketWithPool(originSource N.PacketReader, destination N.PacketWriter
 				err = N.ReportHandshakeFailure(originSource, err)
 			}
 			return
+		}
+		for _, counter := range readCounters {
+			counter(int64(dataLen))
 		}
 		for _, counter := range writeCounters {
 			counter(int64(dataLen))
