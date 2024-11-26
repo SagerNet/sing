@@ -65,6 +65,7 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 			return
 		}
 		conn = &natConn{
+			service:      s,
 			writer:       writer,
 			localAddr:    source,
 			packetChan:   make(chan *N.PacketBuffer, 64),
