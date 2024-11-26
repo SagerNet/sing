@@ -61,9 +61,9 @@ func (c *TimeoutPacketConn) Timeout() time.Duration {
 	return c.timeout
 }
 
-func (c *TimeoutPacketConn) SetTimeout(timeout time.Duration) {
+func (c *TimeoutPacketConn) SetTimeout(timeout time.Duration) bool {
 	c.timeout = timeout
-	c.PacketConn.SetReadDeadline(time.Now())
+	return c.PacketConn.SetReadDeadline(time.Now()) == nil
 }
 
 func (c *TimeoutPacketConn) Close() error {

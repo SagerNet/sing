@@ -4,9 +4,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/canceler"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
@@ -15,15 +17,18 @@ import (
 type Conn interface {
 	N.PacketConn
 	SetHandler(handler N.UDPHandlerEx)
+	canceler.PacketConn
 }
 
 var _ Conn = (*natConn)(nil)
 
 type natConn struct {
+	service         *Service
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
 	handler         N.UDPHandlerEx
 	packetChan      chan *N.PacketBuffer
+	closeOnce       sync.Once
 	doneChan        chan struct{}
 	readDeadline    pipe.Deadline
 	readWaitOptions N.ReadWaitOptions
@@ -48,6 +53,25 @@ func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error
 	return c.writer.WritePacket(buffer, destination)
 }
 
+func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	c.readWaitOptions = options
+	return false
+}
+
+func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+	select {
+	case packet := <-c.packetChan:
+		buffer = c.readWaitOptions.Copy(packet.Buffer)
+		destination = packet.Destination
+		N.PutPacketBuffer(packet)
+		return
+	case <-c.doneChan:
+		return nil, M.Socksaddr{}, io.ErrClosedPipe
+	case <-c.readDeadline.Wait():
+		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
+	}
+}
+
 func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
 	select {
 	case <-c.doneChan:
@@ -68,31 +92,22 @@ fetch:
 	}
 }
 
-func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
-	c.readWaitOptions = options
-	return false
+func (c *natConn) Timeout() time.Duration {
+	rawConn, lifetime, loaded := c.service.cache.PeekWithLifetime(c.localAddr.AddrPort())
+	if !loaded || rawConn != c {
+		return 0
+	}
+	return time.Until(lifetime)
 }
 
-func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
-	select {
-	case packet := <-c.packetChan:
-		buffer = c.readWaitOptions.Copy(packet.Buffer)
-		destination = packet.Destination
-		N.PutPacketBuffer(packet)
-		return
-	case <-c.doneChan:
-		return nil, M.Socksaddr{}, io.ErrClosedPipe
-	case <-c.readDeadline.Wait():
-		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
-	}
+func (c *natConn) SetTimeout(timeout time.Duration) bool {
+	return c.service.cache.UpdateLifetime(c.localAddr.AddrPort(), c, timeout)
 }
 
 func (c *natConn) Close() error {
-	select {
-	case <-c.doneChan:
-	default:
+	c.closeOnce.Do(func() {
 		close(c.doneChan)
-	}
+	})
 	return nil
 }
 
