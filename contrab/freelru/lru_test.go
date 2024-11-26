@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMyChange0(t *testing.T) {
+func TestUpdateLifetimeOnGet(t *testing.T) {
 	t.Parallel()
 	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
 	require.NoError(t, err)
@@ -24,7 +24,7 @@ func TestMyChange0(t *testing.T) {
 	require.True(t, ok)
 }
 
-func TestMyChange1(t *testing.T) {
+func TestUpdateLifetimeOnGet1(t *testing.T) {
 	t.Parallel()
 	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
 	require.NoError(t, err)
@@ -34,5 +34,45 @@ func TestMyChange1(t *testing.T) {
 	lru.Peek("hello")
 	time.Sleep(time.Second + time.Millisecond*100)
 	_, ok := lru.Get("hello")
+	require.False(t, ok)
+}
+
+func TestUpdateLifetime(t *testing.T) {
+	t.Parallel()
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.Add("hello", "world")
+	require.True(t, lru.UpdateLifetime("hello", "world", 2*time.Second))
+	time.Sleep(time.Second)
+	_, ok := lru.Get("hello")
+	require.True(t, ok)
+	time.Sleep(time.Second + time.Millisecond*100)
+	_, ok = lru.Get("hello")
+	require.False(t, ok)
+}
+
+func TestUpdateLifetime1(t *testing.T) {
+	t.Parallel()
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.Add("hello", "world")
+	require.False(t, lru.UpdateLifetime("hello", "not world", 2*time.Second))
+	time.Sleep(2*time.Second + time.Millisecond*100)
+	_, ok := lru.Get("hello")
+	require.True(t, ok)
+}
+
+func TestUpdateLifetime2(t *testing.T) {
+	t.Parallel()
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.AddWithLifetime("hello", "world", 2*time.Second)
+	time.Sleep(time.Second)
+	require.True(t, lru.UpdateLifetime("hello", "world", 2*time.Second))
+	time.Sleep(time.Second + time.Millisecond*100)
+	_, ok := lru.Get("hello")
+	require.True(t, ok)
+	time.Sleep(time.Second + time.Millisecond*100)
+	_, ok = lru.Get("hello")
 	require.False(t, ok)
 }

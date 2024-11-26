@@ -62,7 +62,7 @@ type element[K comparable, V any] struct {
 const emptyBucket = math.MaxUint32
 
 // LRU implements a non-thread safe fixed size LRU cache.
-type LRU[K comparable, V any] struct {
+type LRU[K comparable, V comparable] struct {
 	buckets             []uint32 // contains positions of bucket lists or 'emptyBucket'
 	elements            []element[K, V]
 	onEvict             OnEvictCallback[K, V]
@@ -122,7 +122,7 @@ func (lru *LRU[K, V]) SetHealthCheck(healthCheck HealthCheckCallback[K, V]) {
 
 // New constructs an LRU with the given capacity of elements.
 // The hash function calculates a hash value from the keys.
-func New[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (*LRU[K, V], error) {
+func New[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*LRU[K, V], error) {
 	return NewWithSize[K, V](capacity, capacity, hash)
 }
 
@@ -131,7 +131,7 @@ func New[K comparable, V any](capacity uint32, hash HashKeyCallback[K]) (*LRU[K,
 // A size greater than the capacity increases memory consumption and decreases the CPU consumption
 // by reducing the chance of collisions.
 // Size must not be lower than the capacity.
-func NewWithSize[K comparable, V any](capacity, size uint32, hash HashKeyCallback[K]) (
+func NewWithSize[K comparable, V comparable](capacity, size uint32, hash HashKeyCallback[K]) (
 	*LRU[K, V], error,
 ) {
 	if capacity == 0 {
@@ -156,7 +156,7 @@ func NewWithSize[K comparable, V any](capacity, size uint32, hash HashKeyCallbac
 	return &lru, nil
 }
 
-func initLRU[K comparable, V any](lru *LRU[K, V], capacity, size uint32, hash HashKeyCallback[K],
+func initLRU[K comparable, V comparable](lru *LRU[K, V], capacity, size uint32, hash HashKeyCallback[K],
 	buckets []uint32, elements []element[K, V],
 ) {
 	lru.cap = capacity
@@ -471,26 +471,66 @@ func (lru *LRU[K, V]) get(hash uint32, key K) (value V, expire int64, ok bool) {
 // Peek looks up a key's value from the cache, without changing its recent-ness.
 // If the found entry is already expired, the evict function is called.
 func (lru *LRU[K, V]) Peek(key K) (value V, ok bool) {
-	return lru.peek(lru.hash(key), key)
+	value, _, ok = lru.peek(lru.hash(key), key)
+	return
 }
 
-func (lru *LRU[K, V]) peek(hash uint32, key K) (value V, ok bool) {
-	if pos, _, ok := lru.findKey(hash, key, false); ok {
-		return lru.elements[pos].value, ok
+func (lru *LRU[K, V]) PeekWithLifetime(key K) (value V, lifetime time.Time, ok bool) {
+	value, expireMills, ok := lru.peek(lru.hash(key), key)
+	lifetime = time.UnixMilli(expireMills)
+	return
+}
+
+func (lru *LRU[K, V]) peek(hash uint32, key K) (value V, expire int64, ok bool) {
+	if pos, expireMills, ok := lru.findKey(hash, key, false); ok {
+		return lru.elements[pos].value, expireMills, ok
 	}
 
 	return
 }
 
+func (lru *LRU[K, V]) UpdateLifetime(key K, value V, lifetime time.Duration) bool {
+	return lru.updateLifetime(lru.hash(key), key, value, lifetime)
+}
+
+func (lru *LRU[K, V]) updateLifetime(hash uint32, key K, value V, lifetime time.Duration) bool {
+	_, startPos := lru.hashToPos(hash)
+	if startPos == emptyBucket {
+		return false
+	}
+	pos := startPos
+	for {
+		if lru.elements[pos].key == key {
+			if lru.elements[pos].value != value {
+				return false
+			}
+
+			lru.elements[pos].expire = expire(lifetime)
+
+			if pos != lru.head {
+				lru.unlinkElement(pos)
+				lru.setHead(pos)
+			}
+			lru.metrics.Inserts++
+			return true
+		}
+
+		pos = lru.elements[pos].nextBucket
+		if pos == startPos {
+			return false
+		}
+	}
+}
+
 // Contains checks for the existence of a key, without changing its recent-ness.
 // If the found entry is already expired, the evict function is called.
 func (lru *LRU[K, V]) Contains(key K) (ok bool) {
-	_, ok = lru.peek(lru.hash(key), key)
+	_, _, ok = lru.peek(lru.hash(key), key)
 	return
 }
 
 func (lru *LRU[K, V]) contains(hash uint32, key K) (ok bool) {
-	_, ok = lru.peek(hash, key)
+	_, _, ok = lru.peek(hash, key)
 	return
 }
 
