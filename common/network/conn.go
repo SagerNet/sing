@@ -74,9 +74,10 @@ type ExtendedConn interface {
 type CloseHandlerFunc = func(it error)
 
 func AppendClose(parent CloseHandlerFunc, onClose CloseHandlerFunc) CloseHandlerFunc {
+	if onClose == nil {
+		panic("nil onClose")
+	}
 	if parent == nil {
-		return parent
-	} else if onClose == nil {
 		return onClose
 	}
 	return func(it error) {
