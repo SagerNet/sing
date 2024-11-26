@@ -35,6 +35,9 @@ type Metrics struct {
 }
 
 func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Duration, shared bool) *Service {
+	if timeout == 0 {
+		panic("invalid timeout")
+	}
 	var cache freelru.Cache[netip.AddrPort, *natConn]
 	if !shared {
 		cache = common.Must1(freelru.New[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32))
@@ -80,11 +83,10 @@ func (s *Service) Start() error {
 	return nil
 }
 
-func (s *Service) Close() error {
+func (s *Service) Close() {
 	s.closeOnce.Do(func() {
 		close(s.doneChan)
 	})
-	return nil
 }
 
 func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destination M.Socksaddr, userData any) {
