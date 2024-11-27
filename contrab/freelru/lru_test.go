@@ -76,3 +76,20 @@ func TestUpdateLifetime2(t *testing.T) {
 	_, ok = lru.Get("hello")
 	require.False(t, ok)
 }
+
+func TestPeekWithLifetime(t *testing.T) {
+	t.Parallel()
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.SetLifetime(time.Second)
+	lru.Add("1", "")
+	time.Sleep(300 * time.Millisecond)
+	lru.Add("2", "")
+	time.Sleep(300 * time.Millisecond)
+	lru.Add("3", "")
+	time.Sleep(300 * time.Millisecond)
+	lru.Add("4", "")
+	time.Sleep(time.Second)
+	lru.PurgeExpired()
+	require.Equal(t, 0, lru.Len())
+}
