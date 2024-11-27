@@ -24,7 +24,7 @@ type TimerPacketConn struct {
 func NewPacketConn(ctx context.Context, conn N.PacketConn, timeout time.Duration) (context.Context, N.PacketConn) {
 	if timeoutConn, isTimeoutConn := common.Cast[PacketConn](conn); isTimeoutConn {
 		oldTimeout := timeoutConn.Timeout()
-		if timeout >= oldTimeout {
+		if oldTimeout > 0 && timeout >= oldTimeout {
 			return ctx, conn
 		}
 		if timeoutConn.SetTimeout(timeout) {
