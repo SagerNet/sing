@@ -19,18 +19,16 @@ package freelru
 
 import "time"
 
-type Cache[K comparable, V any] interface {
+type Cache[K comparable, V comparable] interface {
 	// SetLifetime sets the default lifetime of LRU elements.
 	// Lifetime 0 means "forever".
 	SetLifetime(lifetime time.Duration)
 
-	SetUpdateLifetimeOnGet(update bool)
-
-	SetHealthCheck(healthCheck HealthCheckCallback[K, V])
-
 	// SetOnEvict sets the OnEvict callback function.
 	// The onEvict function is called for each evicted lru entry.
 	SetOnEvict(onEvict OnEvictCallback[K, V])
+
+	SetHealthCheck(healthCheck HealthCheckCallback[K, V])
 
 	// Len returns the number of elements stored in the cache.
 	Len() int
@@ -49,13 +47,18 @@ type Cache[K comparable, V any] interface {
 	// and the return value indicates that the key was not found.
 	Get(key K) (V, bool)
 
-	GetWithLifetime(key K) (value V, lifetime time.Time, ok bool)
+	// GetAndRefresh returns the value associated with the key, setting it as the most
+	// recently used item.
+	// The lifetime of the found cache item is refreshed, even if it was already expired.
+	GetAndRefresh(key K) (V, bool)
+
+	GetAndRefreshOrAdd(key K, constructor func() (V, bool)) (V, bool)
 
 	// Peek looks up a key's value from the cache, without changing its recent-ness.
 	// If the found entry is already expired, the evict function is called.
 	Peek(key K) (V, bool)
 
-	PeekWithLifetime(key K) (value V, lifetime time.Time, ok bool)
+	PeekWithLifetime(key K) (V, time.Time, bool)
 
 	UpdateLifetime(key K, value V, lifetime time.Duration) bool
 
