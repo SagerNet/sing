@@ -3,6 +3,7 @@ package udpnat
 import (
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
+	"github.com/sagernet/sing/contrab/freelru"
 )
 
 type Conn interface {
@@ -23,7 +25,7 @@ type Conn interface {
 var _ Conn = (*natConn)(nil)
 
 type natConn struct {
-	service         *Service
+	cache           freelru.Cache[netip.AddrPort, *natConn]
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
 	handler         N.UDPHandlerEx
@@ -93,7 +95,7 @@ fetch:
 }
 
 func (c *natConn) Timeout() time.Duration {
-	rawConn, lifetime, loaded := c.service.cache.PeekWithLifetime(c.localAddr.AddrPort())
+	rawConn, lifetime, loaded := c.cache.PeekWithLifetime(c.localAddr.AddrPort())
 	if !loaded || rawConn != c {
 		return 0
 	}
@@ -101,7 +103,7 @@ func (c *natConn) Timeout() time.Duration {
 }
 
 func (c *natConn) SetTimeout(timeout time.Duration) bool {
-	return c.service.cache.UpdateLifetime(c.localAddr.AddrPort(), c, timeout)
+	return c.cache.UpdateLifetime(c.localAddr.AddrPort(), c, timeout)
 }
 
 func (c *natConn) Close() error {
