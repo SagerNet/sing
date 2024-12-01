@@ -35,6 +35,13 @@ func (a *Addr) UnmarshalJSON(content []byte) error {
 
 type Prefix netip.Prefix
 
+func (p *Prefix) Build(defaultPrefix netip.Prefix) netip.Prefix {
+	if p == nil {
+		return defaultPrefix
+	}
+	return netip.Prefix(*p)
+}
+
 func (p *Prefix) MarshalJSON() ([]byte, error) {
 	return json.Marshal(netip.Prefix(*p).String())
 }
@@ -54,6 +61,13 @@ func (p *Prefix) UnmarshalJSON(content []byte) error {
 }
 
 type Prefixable netip.Prefix
+
+func (p *Prefixable) Build(defaultPrefix netip.Prefix) netip.Prefix {
+	if p == nil {
+		return defaultPrefix
+	}
+	return netip.Prefix(*p)
+}
 
 func (p *Prefixable) MarshalJSON() ([]byte, error) {
 	prefix := netip.Prefix(*p)
