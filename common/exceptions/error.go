@@ -40,7 +40,7 @@ func Extend(cause error, message ...any) error {
 }
 
 func IsClosedOrCanceled(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded) || IsTimeout(err)
 }
 
 func IsClosed(err error) bool {
