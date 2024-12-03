@@ -687,20 +687,19 @@ func (lru *LRU[K, V]) Purge() {
 // PurgeExpired purges all expired items from the LRU.
 // The evict function is called for each expired item.
 func (lru *LRU[K, V]) PurgeExpired() {
+	n := now()
+loop:
 	l := lru.len
 	if l == 0 {
 		return
 	}
-	n := now()
 	pos := lru.head
 	for i := uint32(0); i < l; i++ {
-		next := lru.elements[pos].next
-		if lru.elements[pos].expire != 0 {
-			if lru.elements[pos].expire <= n {
-				lru.removeAt(pos)
-			}
+		if lru.elements[pos].expire != 0 && lru.elements[pos].expire <= n {
+			lru.removeAt(pos)
+			goto loop
 		}
-		pos = next
+		pos = lru.elements[pos].next
 	}
 }
 
