@@ -1,6 +1,9 @@
 package freelru_test
 
 import (
+	"github.com/sagernet/sing/common"
+	F "github.com/sagernet/sing/common/format"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -75,16 +78,23 @@ func TestUpdateLifetime2(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestPeekWithLifetime(t *testing.T) {
+func TestPurgeExpired(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, *string](1024, maphash.NewHasher[string]().Hash32)
 	require.NoError(t, err)
 	lru.SetLifetime(time.Second)
-	lru.AddWithLifetime("hello", "world", 10*time.Second)
-	lru.Add("hello1", "")
-	lru.Add("hello2", "")
-	lru.Add("hello3", "")
-	time.Sleep(2 * time.Second)
-	lru.PurgeExpired()
-	require.Equal(t, 1, lru.Len())
+	lru.SetOnEvict(func(s string, s2 *string) {
+		if s2 == nil {
+			t.Fail()
+		}
+	})
+	for i := 0; i < 100; i++ {
+		lru.AddWithLifetime("hello_"+F.ToString(i), common.Ptr("world_"+F.ToString(i)), time.Duration(rand.Int32N(3000))*time.Millisecond)
+	}
+	for i := 0; i < 5; i++ {
+		time.Sleep(time.Second)
+		lru.GetAndRefreshOrAdd("hellox"+F.ToString(i), func() (*string, bool) {
+			return common.Ptr("worldx"), true
+		})
+	}
 }
