@@ -33,7 +33,7 @@ func ReportHandshakeFailure(reporter any, err error) error {
 	return nil
 }
 
-func CloseOnHandshakeFailure(reporter any, onClose CloseHandlerFunc, err error) error {
+func CloseOnHandshakeFailure(reporter io.Closer, onClose CloseHandlerFunc, err error) error {
 	if err != nil {
 		if handshakeConn, isHandshakeConn := common.Cast[HandshakeFailure](reporter); isHandshakeConn {
 			hErr := handshakeConn.HandshakeFailure(err)
@@ -51,12 +51,10 @@ func CloseOnHandshakeFailure(reporter any, onClose CloseHandlerFunc, err error) 
 			}](reporter); isTCPConn {
 				tcpConn.SetLinger(0)
 			}
-			if closer, isCloser := reporter.(io.Closer); isCloser {
-				err = E.Append(err, closer.Close(), func(err error) error {
-					return E.Cause(err, "close")
-				})
-			}
 		}
+		err = E.Append(err, reporter.Close(), func(err error) error {
+			return E.Cause(err, "close")
+		})
 	}
 	if onClose != nil {
 		onClose(err)
