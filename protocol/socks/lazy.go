@@ -105,12 +105,11 @@ type LazyAssociatePacketConn struct {
 	responseWritten bool
 }
 
-func NewLazyAssociatePacketConn(conn net.Conn, remoteAddr M.Socksaddr, underlying net.Conn) *LazyAssociatePacketConn {
+func NewLazyAssociatePacketConn(conn net.Conn, underlying net.Conn) *LazyAssociatePacketConn {
 	return &LazyAssociatePacketConn{
 		AssociatePacketConn: AssociatePacketConn{
 			AbstractConn: conn,
 			conn:         bufio.NewExtendedConn(conn),
-			remoteAddr:   remoteAddr,
 			underlying:   underlying,
 		},
 	}

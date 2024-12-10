@@ -21,17 +21,14 @@ import (
 	"github.com/sagernet/sing/common/pipe"
 )
 
-// Deprecated: Use HandleConnectionEx instead.
-func HandleConnection(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator,
-	//nolint:staticcheck
-	handler N.TCPConnectionHandler, metadata M.Metadata,
-) error {
-	return HandleConnectionEx(ctx, conn, reader, authenticator, handler, nil, metadata.Source, nil)
-}
-
-func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Reader, authenticator *auth.Authenticator,
-	//nolint:staticcheck
-	handler N.TCPConnectionHandler, handlerEx N.TCPConnectionHandlerEx, source M.Socksaddr, onClose N.CloseHandlerFunc,
+func HandleConnectionEx(
+	ctx context.Context,
+	conn net.Conn,
+	reader *std_bufio.Reader,
+	authenticator *auth.Authenticator,
+	handler N.TCPConnectionHandlerEx,
+	source M.Socksaddr,
+	onClose N.CloseHandlerFunc,
 ) error {
 	for {
 		request, err := ReadRequest(reader)
@@ -105,13 +102,8 @@ func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Re
 			} else {
 				requestConn = conn
 			}
-			if handler != nil {
-				//nolint:staticcheck
-				return handler.NewConnection(ctx, requestConn, M.Metadata{Protocol: "http", Source: source, Destination: destination})
-			} else {
-				handlerEx.NewConnectionEx(ctx, requestConn, source, destination, onClose)
-				return nil
-			}
+			handler.NewConnectionEx(ctx, requestConn, source, destination, onClose)
+			return nil
 		} else if strings.ToLower(request.Header.Get("Connection")) == "upgrade" {
 			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), request.URL.Port())
 			if destination.Port == 0 {
@@ -124,19 +116,11 @@ func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Re
 			}
 			serverConn, clientConn := pipe.Pipe()
 			go func() {
-				if handler != nil {
-					//nolint:staticcheck
-					err := handler.NewConnection(ctx, clientConn, M.Metadata{Protocol: "http", Source: source, Destination: destination})
-					if err != nil {
+				handler.NewConnectionEx(ctx, clientConn, source, destination, func(it error) {
+					if it != nil {
 						common.Close(serverConn, clientConn)
 					}
-				} else {
-					handlerEx.NewConnectionEx(ctx, clientConn, source, destination, func(it error) {
-						if it != nil {
-							common.Close(serverConn, clientConn)
-						}
-					})
-				}
+				})
 			}()
 			err = request.Write(serverConn)
 			if err != nil {
@@ -150,7 +134,7 @@ func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Re
 			}
 			return bufio.CopyConn(ctx, conn, serverConn)
 		} else {
-			err = handleHTTPConnection(ctx, handler, handlerEx, conn, request, source)
+			err = handleHTTPConnection(ctx, handler, conn, request, source)
 			if err != nil {
 				return err
 			}
@@ -160,9 +144,7 @@ func HandleConnectionEx(ctx context.Context, conn net.Conn, reader *std_bufio.Re
 
 func handleHTTPConnection(
 	ctx context.Context,
-	//nolint:staticcheck
-	handler N.TCPConnectionHandler,
-	handlerEx N.TCPConnectionHandlerEx,
+	handler N.TCPConnectionHandlerEx,
 	conn net.Conn,
 	request *http.Request, source M.Socksaddr,
 ) error {
@@ -188,21 +170,10 @@ func handleHTTPConnection(
 			DisableCompression: true,
 			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 				input, output := pipe.Pipe()
-				if handler != nil {
-					go func() {
-						//nolint:staticcheck
-						hErr := handler.NewConnection(ctx, output, M.Metadata{Protocol: "http", Source: source, Destination: M.ParseSocksaddr(address)})
-						if hErr != nil {
-							innerErr.Store(hErr)
-							common.Close(input, output)
-						}
-					}()
-				} else {
-					go handlerEx.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address), func(it error) {
-						innerErr.Store(it)
-						common.Close(input, output)
-					})
-				}
+				go handler.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address), func(it error) {
+					innerErr.Store(it)
+					common.Close(input, output)
+				})
 				return input, nil
 			},
 		},
