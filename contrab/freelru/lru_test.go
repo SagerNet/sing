@@ -1,12 +1,12 @@
 package freelru_test
 
 import (
-	"github.com/sagernet/sing/common"
-	F "github.com/sagernet/sing/common/format"
-	"math/rand/v2"
+	"math/rand"
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing/common"
+	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/contrab/freelru"
 	"github.com/sagernet/sing/contrab/maphash"
 
@@ -89,7 +89,7 @@ func TestPurgeExpired(t *testing.T) {
 		}
 	})
 	for i := 0; i < 100; i++ {
-		lru.AddWithLifetime("hello_"+F.ToString(i), common.Ptr("world_"+F.ToString(i)), time.Duration(rand.Int32N(3000))*time.Millisecond)
+		lru.AddWithLifetime("hello_"+F.ToString(i), common.Ptr("world_"+F.ToString(i)), time.Duration(rand.Intn(3000))*time.Millisecond)
 	}
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Second)
