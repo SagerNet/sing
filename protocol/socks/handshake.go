@@ -219,6 +219,7 @@ func HandleConnectionEx(
 				return err
 			}
 			handler.NewPacketConnectionEx(ctx, NewLazyAssociatePacketConn(bufio.NewServerPacketConn(udpConn), conn), source, M.Socksaddr{}, onClose)
+			return nil
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeUnsupported,
