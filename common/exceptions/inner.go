@@ -1,24 +1,14 @@
 package exceptions
 
-import "github.com/sagernet/sing/common"
+import (
+	"errors"
 
-type HasInnerError interface {
-	Unwrap() error
-}
+	"github.com/sagernet/sing/common"
+)
 
+// Deprecated: Use errors.Unwrap instead.
 func Unwrap(err error) error {
-	for {
-		inner, ok := err.(HasInnerError)
-		if !ok {
-			break
-		}
-		innerErr := inner.Unwrap()
-		if innerErr == nil {
-			break
-		}
-		err = innerErr
-	}
-	return err
+	return errors.Unwrap(err)
 }
 
 func Cast[T any](err error) (T, bool) {
