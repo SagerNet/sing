@@ -123,9 +123,13 @@ func CopyExtendedBuffer(originSource io.Writer, destination N.ExtendedWriter, so
 
 func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
 	options := N.NewReadWaitOptions(source, destination)
+	needHeadroom := options.NeedHeadroom()
 	var notFirstTime bool
+	var buffer *buf.Buffer
 	for {
-		buffer := options.NewBuffer()
+		if needHeadroom || buffer == nil {
+			buffer = options.NewBuffer()
+		}
 		err = source.ReadBuffer(buffer)
 		if err != nil {
 			buffer.Release()
@@ -136,10 +140,18 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			return
 		}
 		dataLen := buffer.Len()
-		options.PostReturn(buffer)
-		err = destination.WriteBuffer(buffer)
+		if needHeadroom {
+			options.PostReturn(buffer)
+			err = destination.WriteBuffer(buffer)
+		} else {
+			_, err = destination.Write(buffer.Bytes())
+		}
 		if err != nil {
-			buffer.Leak()
+			if needHeadroom {
+				buffer.Leak()
+			} else {
+				buffer.Release()
+			}
 			if !notFirstTime {
 				err = N.ReportHandshakeFailure(originSource, err)
 			}
@@ -153,6 +165,9 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			counter(int64(dataLen))
 		}
 		notFirstTime = true
+		if !needHeadroom {
+			buffer.Reset()
+		}
 	}
 }
 
