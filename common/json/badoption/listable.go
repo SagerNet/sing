@@ -18,6 +18,9 @@ func (l Listable[T]) MarshalJSONContext(ctx context.Context) ([]byte, error) {
 }
 
 func (l *Listable[T]) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	if string(content) == "null" {
+		return nil
+	}
 	var singleItem T
 	err := json.UnmarshalContextDisallowUnknownFields(ctx, content, &singleItem)
 	if err == nil {
