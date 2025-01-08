@@ -2,6 +2,7 @@ package badoption
 
 import (
 	"context"
+	"slices"
 
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
@@ -18,6 +19,9 @@ func (l Listable[T]) MarshalJSONContext(ctx context.Context) ([]byte, error) {
 }
 
 func (l *Listable[T]) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	if slices.Equal(content, []byte("null")) {
+		return nil
+	}
 	var singleItem T
 	err := json.UnmarshalContextDisallowUnknownFields(ctx, content, &singleItem)
 	if err == nil {
