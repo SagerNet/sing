@@ -201,14 +201,17 @@ func (lru *ShardedLRU[K, V]) GetAndRefresh(key K) (value V, ok bool) {
 	return
 }
 
-func (lru *ShardedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, bool)) (value V, updated bool) {
+func (lru *ShardedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, bool)) (value V, updated bool, ok bool) {
 	hash := lru.hash(key)
 	shard := (hash >> 16) & lru.mask
 
 	lru.mus[shard].Lock()
-	value, updated = lru.lrus[shard].getAndRefreshOrAdd(hash, key, constructor)
+	value, updated, ok = lru.lrus[shard].getAndRefreshOrAdd(hash, key, constructor)
 	lru.mus[shard].Unlock()
 
+	if !updated && ok {
+		lru.PurgeExpired()
+	}
 	return
 }
 

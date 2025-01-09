@@ -51,7 +51,7 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 }
 
 func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destination M.Socksaddr, userData any) {
-	conn, loaded := s.cache.GetAndRefreshOrAdd(source.AddrPort(), func() (*natConn, bool) {
+	conn, _, ok := s.cache.GetAndRefreshOrAdd(source.AddrPort(), func() (*natConn, bool) {
 		ok, ctx, writer, onClose := s.prepare(source, destination, userData)
 		if !ok {
 			return nil, false
@@ -67,10 +67,8 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 		go s.handler.NewPacketConnectionEx(ctx, newConn, source, destination, onClose)
 		return newConn, true
 	})
-	if !loaded {
-		if conn == nil {
-			return
-		}
+	if !ok {
+		return
 	}
 	buffer := conn.readWaitOptions.NewPacketBuffer()
 	for _, bufferSlice := range bufferSlices {

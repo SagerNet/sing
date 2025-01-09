@@ -121,11 +121,14 @@ func (lru *SyncedLRU[K, V]) GetAndRefresh(key K) (value V, ok bool) {
 	return
 }
 
-func (lru *SyncedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, bool)) (value V, updated bool) {
+func (lru *SyncedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, bool)) (value V, updated bool, ok bool) {
 	hash := lru.lru.hash(key)
 
 	lru.mu.Lock()
-	value, updated = lru.lru.getAndRefreshOrAdd(hash, key, constructor)
+	value, updated, ok = lru.lru.getAndRefreshOrAdd(hash, key, constructor)
+	if !updated && ok {
+		lru.lru.PurgeExpired()
+	}
 	lru.mu.Unlock()
 
 	return
