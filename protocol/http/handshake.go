@@ -3,7 +3,9 @@ package http
 import (
 	std_bufio "bufio"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"io"
 	"net"
 	"net/http"
@@ -42,6 +44,12 @@ func HandleConnectionEx(
 				authOk   bool
 			)
 			authorization := request.Header.Get("Proxy-Authorization")
+			if strings.HasPrefix(authorization, "Digest ") {
+				username, authOk = authenticator.VerifyDigest(request.Method, request.RequestURI, authorization[7:])
+				if authOk {
+					ctx = auth.ContextWithUser(ctx, username)
+				}
+			}
 			if strings.HasPrefix(authorization, "Basic ") {
 				userPassword, _ := base64.URLEncoding.DecodeString(authorization[6:])
 				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
@@ -56,10 +64,31 @@ func HandleConnectionEx(
 			}
 			if !authOk {
 				// Since no one else is using the library, use a fixed realm until rewritten
-				err = responseWith(
-					request, http.StatusProxyAuthRequired,
-					"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`,
-				).Write(conn)
+				// define realm in common/auth package, still "sing-box" now
+				nonce := "";
+				randomBytes := make([]byte, 16)
+				_, err = rand.Read(randomBytes)
+				if err == nil {
+					nonce = hex.EncodeToString(randomBytes)
+				}
+				if nonce == "" {
+					err = responseWithBody(
+						request, http.StatusProxyAuthRequired,
+						"Proxy authentication required",
+						"Content-Type", "text/plain; charset=utf-8",
+						"Proxy-Authenticate", "Basic realm=\"" + auth.Realm + "\"",
+						"Connection", "close",
+					).Write(conn)
+				} else {
+					err = responseWithBody(
+						request, http.StatusProxyAuthRequired,
+						"Proxy authentication required",
+						"Content-Type", "text/plain; charset=utf-8",
+						"Proxy-Authenticate", "Basic realm=\"" + auth.Realm + "\"",
+						"Proxy-Authenticate", "Digest realm=\"" + auth.Realm + "\", nonce=\"" + nonce + "\", qop=\"auth\", stale=false",
+						"Connection", "close",
+					).Write(conn)
+				}
 				if err != nil {
 					return err
 				}
@@ -68,7 +97,8 @@ func HandleConnectionEx(
 				} else if authorization != "" {
 					return E.New("http: authentication failed, Proxy-Authorization=", authorization)
 				} else {
-					return E.New("http: authentication failed, no Proxy-Authorization header")
+					//return E.New("http: authentication failed, no Proxy-Authorization header")
+					continue
 				}
 			}
 		}
@@ -270,3 +300,31 @@ func responseWith(request *http.Request, statusCode int, headers ...string) *htt
 		Header:     header,
 	}
 }
+
+func responseWithBody(request *http.Request, statusCode int, body string, headers ...string) *http.Response {
+	var header http.Header
+	if len(headers) > 0 {
+		header = make(http.Header)
+		for i := 0; i < len(headers); i += 2 {
+			header.Add(headers[i], headers[i+1])
+		}
+	}
+	var bodyReadCloser io.ReadCloser
+	var bodyContentLength = int64(0)
+	if body != "" {
+		bodyReadCloser = io.NopCloser(strings.NewReader(body))
+		bodyContentLength = int64(len(body))
+	}
+	return &http.Response{
+		StatusCode:    statusCode,
+		Status:        http.StatusText(statusCode),
+		Proto:         request.Proto,
+		ProtoMajor:    request.ProtoMajor,
+		ProtoMinor:    request.ProtoMinor,
+		Header:        header,
+		Body:          bodyReadCloser,
+		ContentLength: bodyContentLength,
+		Close:         true,
+        }
+}
+
