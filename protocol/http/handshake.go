@@ -50,7 +50,7 @@ func HandleConnectionEx(
 					ctx = auth.ContextWithUser(ctx, username)
 				}
 			}
-			if strings.HasPrefix(authorization, "Basic ") {
+			if !authOk && strings.HasPrefix(authorization, "Basic ") {
 				userPassword, _ := base64.URLEncoding.DecodeString(authorization[6:])
 				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
 				if len(userPswdArr) == 2 {
