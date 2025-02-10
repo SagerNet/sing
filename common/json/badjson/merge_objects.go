@@ -2,9 +2,11 @@ package badjson
 
 import (
 	"context"
+	"reflect"
 
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
+	cJSON "github.com/sagernet/sing/common/json/internal/contextjson"
 )
 
 func MarshallObjects(objects ...any) ([]byte, error) {
@@ -31,16 +33,12 @@ func UnmarshallExcluded(inputContent []byte, parentObject any, object any) error
 }
 
 func UnmarshallExcludedContext(ctx context.Context, inputContent []byte, parentObject any, object any) error {
-	parentContent, err := newJSONObject(ctx, parentObject)
-	if err != nil {
-		return err
-	}
 	var content JSONObject
-	err = content.UnmarshalJSONContext(ctx, inputContent)
+	err := content.UnmarshalJSONContext(ctx, inputContent)
 	if err != nil {
 		return err
 	}
-	for _, key := range parentContent.Keys() {
+	for _, key := range cJSON.ObjectKeys(reflect.TypeOf(parentObject)) {
 		content.Remove(key)
 	}
 	if object == nil {
