@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"time"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -86,6 +87,7 @@ func (c *ServerConn) loopInput() {
 		if err != nil {
 			break
 		}
+		c.SetDeadline(time.Now().Add(2 * time.Minute))
 	}
 	c.Close()
 }
@@ -100,6 +102,7 @@ func (c *ServerConn) loopOutput() {
 		if err != nil {
 			break
 		}
+		c.SetDeadline(time.Now().Add(2 * time.Minute))
 		if !c.isConnect {
 			err = AddrParser.WriteAddrPort(c.outputWriter, M.SocksaddrFromNet(addr))
 			if err != nil {
