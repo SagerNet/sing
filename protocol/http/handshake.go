@@ -56,9 +56,12 @@ func HandleConnectionEx(
 			}
 			if !authOk {
 				// Since no one else is using the library, use a fixed realm until rewritten
-				err = responseWith(
+				err = responseWithBody(
 					request, http.StatusProxyAuthRequired,
-					"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`,
+					"Proxy authentication required",
+					"Content-Type", "text/plain; charset=utf-8",
+					"Proxy-Authenticate", `Basic realm="sing-box", charset="UTF-8"`,
+					"Connection", "close",
 				).Write(conn)
 				if err != nil {
 					return err
@@ -68,7 +71,8 @@ func HandleConnectionEx(
 				} else if authorization != "" {
 					return E.New("http: authentication failed, Proxy-Authorization=", authorization)
 				} else {
-					return E.New("http: authentication failed, no Proxy-Authorization header")
+					//return E.New("http: authentication failed, no Proxy-Authorization header")
+					continue
 				}
 			}
 		}
@@ -269,4 +273,31 @@ func responseWith(request *http.Request, statusCode int, headers ...string) *htt
 		ProtoMinor: request.ProtoMinor,
 		Header:     header,
 	}
+}
+
+func responseWithBody(request *http.Request, statusCode int, body string, headers ...string) *http.Response {
+	var header http.Header
+	if len(headers) > 0 {
+		header = make(http.Header)
+		for i := 0; i < len(headers); i += 2 {
+			header.Add(headers[i], headers[i+1])
+		}
+	}
+	var bodyReadCloser io.ReadCloser
+	var bodyContentLength = int64(0)
+	if body != "" {
+		bodyReadCloser = io.NopCloser(strings.NewReader(body))
+		bodyContentLength = int64(len(body))
+	}
+	return &http.Response{
+		StatusCode:    statusCode,
+		Status:        http.StatusText(statusCode),
+		Proto:         request.Proto,
+		ProtoMajor:    request.ProtoMajor,
+		ProtoMinor:    request.ProtoMinor,
+		Header:        header,
+		Body:          bodyReadCloser,
+		ContentLength: bodyContentLength,
+		Close:         true,
+        }
 }
