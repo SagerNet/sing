@@ -85,7 +85,8 @@ func HandleConnectionEx(
 						"Proxy authentication required",
 						"Content-Type", "text/plain; charset=utf-8",
 						"Proxy-Authenticate", "Basic realm=\"" + auth.Realm + "\"",
-						"Proxy-Authenticate", "Digest realm=\"" + auth.Realm + "\", nonce=\"" + nonce + "\", qop=\"auth\", stale=false",
+						"Proxy-Authenticate", "Digest realm=\"" + auth.Realm + "\", nonce=\"" + nonce + "\", qop=\"auth\", algorithm=SHA-256, stale=false",
+						"Proxy-Authenticate", "Digest realm=\"" + auth.Realm + "\", nonce=\"" + nonce + "\", qop=\"auth\", algorithm=MD5, stale=false",
 						"Connection", "close",
 					).Write(conn)
 				}
