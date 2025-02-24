@@ -500,6 +500,24 @@ func (lru *LRU[K, V]) getWithLifetime(hash uint32, key K) (value V, lifetime tim
 	return
 }
 
+func (lru *LRU[K, V]) GetWithLifetimeNoExpire(key K) (value V, lifetime time.Time, ok bool) {
+	return lru.getWithLifetimeNoExpire(lru.hash(key), key)
+}
+
+func (lru *LRU[K, V]) getWithLifetimeNoExpire(hash uint32, key K) (value V, lifetime time.Time, ok bool) {
+	if pos, ok := lru.findKeyNoExpire(hash, key); ok {
+		if pos != lru.head {
+			lru.unlinkElement(pos)
+			lru.setHead(pos)
+		}
+		lru.metrics.Hits++
+		return lru.elements[pos].value, time.UnixMilli(lru.elements[pos].expire), ok
+	}
+
+	lru.metrics.Misses++
+	return
+}
+
 // GetAndRefresh returns the value associated with the key, setting it as the most
 // recently used item.
 // The lifetime of the found cache item is refreshed, even if it was already expired.
