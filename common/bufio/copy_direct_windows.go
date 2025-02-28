@@ -120,16 +120,16 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions
 		var readN int
 		var from windows.Sockaddr
 		readN, from, w.readErr = windows.Recvfrom(windows.Handle(fd), buffer.FreeBytes(), 0)
+		//goland:noinspection GoDirectComparisonOfErrors
+		if w.readErr != nil {
+			buffer.Release()
+			return w.readErr != windows.WSAEWOULDBLOCK
+		}
 		if readN > 0 {
 			buffer.Truncate(readN)
-			w.options.PostReturn(buffer)
-			w.buffer = buffer
-		} else {
-			buffer.Release()
 		}
-		if w.readErr == windows.WSAEWOULDBLOCK {
-			return false
-		}
+		w.options.PostReturn(buffer)
+		w.buffer = buffer
 		if from != nil {
 			switch fromAddr := from.(type) {
 			case *windows.SockaddrInet4:
