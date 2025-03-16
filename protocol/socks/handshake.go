@@ -10,6 +10,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -216,9 +217,24 @@ func HandleConnectionEx(
 			var udpConn *net.UDPConn
 			udpConn, err = net.ListenUDP(M.NetworkFromNetAddr("udp", M.AddrFromNet(conn.LocalAddr())), net.UDPAddrFromAddrPort(netip.AddrPortFrom(M.AddrFromNet(conn.LocalAddr()), 0)))
 			if err != nil {
-				return err
+				return E.Cause(err, "socks5: listen udp")
 			}
-			handler.NewPacketConnectionEx(ctx, NewLazyAssociatePacketConn(bufio.NewServerPacketConn(udpConn), conn), source, M.Socksaddr{}, onClose)
+			err = socks5.WriteResponse(conn, socks5.Response{
+				ReplyCode: socks5.ReplyCodeSuccess,
+				Bind:      M.SocksaddrFromNet(udpConn.LocalAddr()),
+			})
+			if err != nil {
+				return E.Cause(err, "socks5: write response")
+			}
+			var socksPacketConn N.PacketConn = NewAssociatePacketConn(bufio.NewServerPacketConn(udpConn), M.Socksaddr{}, conn)
+			firstPacket := buf.NewPacket()
+			var destination M.Socksaddr
+			destination, err = socksPacketConn.ReadPacket(firstPacket)
+			if err != nil {
+				return E.Cause(err, "socks5: read first packet")
+			}
+			socksPacketConn = bufio.NewCachedPacketConn(socksPacketConn, firstPacket, destination)
+			handler.NewPacketConnectionEx(ctx, socksPacketConn, source, destination, onClose)
 			return nil
 		default:
 			err = socks5.WriteResponse(conn, socks5.Response{
