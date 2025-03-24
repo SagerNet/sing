@@ -74,8 +74,11 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	for _, bufferSlice := range bufferSlices {
 		buffer.Write(bufferSlice)
 	}
-	if conn.handler != nil {
-		conn.handler.NewPacketEx(buffer, destination)
+	conn.handlerAccess.RLock()
+	handler := conn.handler
+	conn.handlerAccess.RUnlock()
+	if handler != nil {
+		handler.NewPacketEx(buffer, destination)
 		return
 	}
 	packet := N.NewPacketBuffer()

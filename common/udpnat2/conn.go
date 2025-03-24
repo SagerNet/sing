@@ -28,6 +28,7 @@ type natConn struct {
 	cache           freelru.Cache[netip.AddrPort, *natConn]
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
+	handlerAccess   sync.RWMutex
 	handler         N.UDPHandlerEx
 	packetChan      chan *N.PacketBuffer
 	closeOnce       sync.Once
@@ -75,23 +76,10 @@ func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr,
 }
 
 func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
-	select {
-	case <-c.doneChan:
-	default:
-	}
+	c.handlerAccess.Lock()
+	defer c.handlerAccess.Unlock()
 	c.handler = handler
 	c.readWaitOptions = N.NewReadWaitOptions(c.writer, handler)
-fetch:
-	for {
-		select {
-		case packet := <-c.packetChan:
-			c.handler.NewPacketEx(packet.Buffer, packet.Destination)
-			N.PutPacketBuffer(packet)
-			continue fetch
-		default:
-			break fetch
-		}
-	}
 }
 
 func (c *natConn) Timeout() time.Duration {
