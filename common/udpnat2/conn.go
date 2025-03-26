@@ -77,9 +77,20 @@ func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr,
 
 func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
 	c.handlerAccess.Lock()
-	defer c.handlerAccess.Unlock()
 	c.handler = handler
 	c.readWaitOptions = N.NewReadWaitOptions(c.writer, handler)
+	c.handlerAccess.Unlock()
+fetch:
+	for {
+		select {
+		case packet := <-c.packetChan:
+			c.handler.NewPacketEx(packet.Buffer, packet.Destination)
+			N.PutPacketBuffer(packet)
+			continue fetch
+		default:
+			break fetch
+		}
+	}
 }
 
 func (c *natConn) Timeout() time.Duration {
