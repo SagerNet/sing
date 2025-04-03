@@ -32,6 +32,13 @@ func Cause(cause error, message ...any) error {
 	return &causeError{F.ToString(message...), cause}
 }
 
+func Cause1(err error, cause error) error {
+	if cause == nil {
+		panic("cause on an nil error")
+	}
+	return &causeError1{err, cause}
+}
+
 func Extend(cause error, message ...any) error {
 	if cause == nil {
 		panic("extend on an nil error")
