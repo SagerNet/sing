@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/x/list"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/pause"
 )
@@ -40,9 +41,11 @@ type Service struct {
 	server        M.Socksaddr
 	writeToSystem bool
 	ticker        *time.Ticker
+	interval      time.Duration
 	timeout       time.Duration
 	clockOffset   time.Duration
 	pause         pause.Manager
+	pauseCallback *list.Element[pause.Callback]
 }
 
 func NewService(options Options) *Service {
@@ -82,7 +85,7 @@ func NewService(options Options) *Service {
 		logger:        options.Logger,
 		writeToSystem: options.WriteToSystem,
 		server:        destination,
-		ticker:        time.NewTicker(interval),
+		interval:      interval,
 		timeout:       options.Timeout,
 		pause:         service.FromContext[pause.Manager](ctx),
 	}
@@ -95,12 +98,18 @@ func (s *Service) Start() error {
 	} else {
 		s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
 	}
+	s.ticker = time.NewTicker(s.interval)
 	go s.loopUpdate()
+	if s.pause != nil {
+		s.pauseCallback = pause.RegisterTicker(s.pause, s.ticker, s.interval, s.updateOnce)
+	}
 	return nil
 }
 
 func (s *Service) Close() error {
-	s.ticker.Stop()
+	if s.ticker != nil {
+		s.ticker.Stop()
+	}
 	s.cancel(os.ErrClosed)
 	return nil
 }
@@ -118,20 +127,16 @@ func (s *Service) loopUpdate() {
 			return
 		case <-s.ticker.C:
 		}
-		if s.pause != nil {
-			s.pause.WaitActive()
-			select {
-			case <-s.ctx.Done():
-				return
-			default:
-			}
-		}
-		err := s.update()
-		if err == nil {
-			s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
-		} else {
-			s.logger.Error("update time: ", err)
-		}
+		s.updateOnce()
+	}
+}
+
+func (s *Service) updateOnce() {
+	err := s.update()
+	if err == nil {
+		s.logger.Info("updated time: ", s.TimeFunc()().Local().Format(TimeLayout))
+	} else {
+		s.logger.Error("update time: ", err)
 	}
 }
 
