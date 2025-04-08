@@ -45,9 +45,10 @@ func TestFindPidTcp6(t *testing.T) {
 
 func TestFindPidUdp4(t *testing.T) {
 	t.Parallel()
-	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	conn, err := net.Dial("udp", "127.0.0.1:53")
 	require.NoError(t, err)
 	defer conn.Close()
+	conn.Write([]byte("test"))
 	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()))
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
@@ -55,9 +56,10 @@ func TestFindPidUdp4(t *testing.T) {
 
 func TestFindPidUdp6(t *testing.T) {
 	t.Parallel()
-	conn, err := net.ListenPacket("udp", "[::1]:0")
+	conn, err := net.Dial("udp", "[::1]:53")
 	require.NoError(t, err)
 	defer conn.Close()
+	conn.Write([]byte("test"))
 	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()))
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
