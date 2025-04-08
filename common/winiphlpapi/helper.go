@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -95,7 +96,8 @@ func FindPid(network string, source netip.AddrPort) (uint32, error) {
 				return 0, err
 			}
 			for _, row := range udpTable {
-				if source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort)) {
+				if source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort)) ||
+					runtime.GOOS == "windows" && DwordToAddr(row.DwLocalAddr) == netip.IPv4Unspecified() && source.Port() == DwordToPort(row.DwLocalPort) {
 					return row.DwOwningPid, nil
 				}
 			}
@@ -105,7 +107,8 @@ func FindPid(network string, source netip.AddrPort) (uint32, error) {
 				return 0, err
 			}
 			for _, row := range udpTable {
-				if source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort)) {
+				if source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort)) ||
+					runtime.GOOS == "windows" && netip.AddrFrom16(row.UcLocalAddr) == netip.IPv6Unspecified() && source.Port() == DwordToPort(row.DwLocalPort) {
 					return row.DwOwningPid, nil
 				}
 			}
