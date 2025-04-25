@@ -3,12 +3,11 @@ package badoption
 import (
 	"context"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 )
 
-type Listable[T comparable] []T
+type Listable[T any] []T
 
 func (l Listable[T]) MarshalJSONContext(ctx context.Context) ([]byte, error) {
 	arrayList := []T(l)
@@ -19,11 +18,11 @@ func (l Listable[T]) MarshalJSONContext(ctx context.Context) ([]byte, error) {
 }
 
 func (l *Listable[T]) UnmarshalJSONContext(ctx context.Context, content []byte) error {
-	var singleItem T
+	var singleItem *T
 	err := json.UnmarshalContextDisallowUnknownFields(ctx, content, &singleItem)
 	if err == nil {
-		if singleItem != common.DefaultValue[T]() {
-			*l = []T{singleItem}
+		if singleItem != nil {
+			*l = []T{*singleItem}
 		}
 		return nil
 	}
