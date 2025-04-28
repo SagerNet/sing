@@ -13,7 +13,7 @@ type multiError struct {
 }
 
 func (e *multiError) Error() string {
-	return strings.Join(F.MapToString(e.errors), " | ")
+	return "(" + strings.Join(F.MapToString(e.errors), " | ") + ")"
 }
 
 func (e *multiError) Unwrap() []error {
