@@ -93,13 +93,6 @@ type rawBytes struct {
 	unitValue uint64
 }
 
-func (b *rawBytes) Value() uint64 {
-	if b == nil {
-		return 0
-	}
-	return b.value
-}
-
 func (b rawBytes) MarshalJSON() ([]byte, error) {
 	if b.unit == "" {
 		return json.Marshal(b.value)
@@ -156,12 +149,26 @@ type Bytes struct {
 	rawBytes
 }
 
+func (b *Bytes) Value() uint64 {
+	if b == nil {
+		return 0
+	}
+	return b.value
+}
+
 func (b *Bytes) UnmarshalJSON(bytes []byte) error {
 	return parseUnit(&b.rawBytes, unitValueTable, false, bytes)
 }
 
 type MemoryBytes struct {
 	rawBytes
+}
+
+func (b *MemoryBytes) Value() uint64 {
+	if b == nil {
+		return 0
+	}
+	return b.value
 }
 
 func (m *MemoryBytes) UnmarshalJSON(bytes []byte) error {
@@ -172,12 +179,26 @@ type NetworkBytes struct {
 	rawBytes
 }
 
+func (n *NetworkBytes) Value() uint64 {
+	if n == nil {
+		return 0
+	}
+	return n.value
+}
+
 func (n *NetworkBytes) UnmarshalJSON(bytes []byte) error {
 	return parseUnit(&n.rawBytes, networkUnitValueTable, true, bytes)
 }
 
 type NetworkBytesCompat struct {
 	rawBytes
+}
+
+func (n *NetworkBytesCompat) Value() uint64 {
+	if n == nil {
+		return 0
+	}
+	return n.value
 }
 
 func (n *NetworkBytesCompat) UnmarshalJSON(bytes []byte) error {
