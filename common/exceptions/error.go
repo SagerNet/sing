@@ -39,11 +39,11 @@ func Extend(cause error, message ...any) error {
 }
 
 func IsClosedOrCanceled(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, context.Canceled, context.DeadlineExceeded)
+	return IsClosed(err) || IsCanceled(err) || IsTimeout(err)
 }
 
 func IsClosed(err error) bool {
-	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET)
+	return IsMulti(err, io.EOF, net.ErrClosed, io.ErrClosedPipe, os.ErrClosed, syscall.EPIPE, syscall.ECONNRESET, syscall.ENOTCONN)
 }
 
 func IsCanceled(err error) bool {
