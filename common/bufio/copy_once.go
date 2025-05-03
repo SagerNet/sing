@@ -1,20 +1,18 @@
 package bufio
 
 import (
+	"io"
+
 	"github.com/metacubex/sing/common"
 	"github.com/metacubex/sing/common/buf"
 	N "github.com/metacubex/sing/common/network"
 )
 
-func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {
-	options := N.ReadWaitOptions{
-		FrontHeadroom: N.CalculateFrontHeadroom(dst),
-		RearHeadroom:  N.CalculateRearHeadroom(dst),
-		MTU:           N.CalculateMTU(src, dst),
-	}
+func CopyExtendedOnce(destination io.Writer, source io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
+	options := N.NewReadWaitOptions(source, destination)
 	var buffer *buf.Buffer
 	calledWaitRead := false
-	if readWaiter, isReadWaiter := CreateReadWaiter(src); isReadWaiter {
+	if readWaiter, isReadWaiter := CreateReadWaiter(source); isReadWaiter {
 		if needCopy := readWaiter.InitializeReadWaiter(options); !needCopy || common.LowMemory {
 			calledWaitRead = true
 			buffer, err = readWaiter.WaitReadBuffer()
@@ -22,7 +20,7 @@ func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err 
 	}
 	if !calledWaitRead {
 		buffer = options.NewBuffer()
-		err = src.ReadBuffer(buffer)
+		err = NewExtendedReader(source).ReadBuffer(buffer)
 		options.PostReturn(buffer)
 	}
 	if err != nil {
@@ -31,11 +29,18 @@ func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err 
 	}
 
 	dataLen := buffer.Len()
-	err = dst.WriteBuffer(buffer)
+	err = NewExtendedWriter(destination).WriteBuffer(buffer)
 	if err != nil {
 		buffer.Release()
-	} else {
-		n = int64(dataLen)
+		return
 	}
+	for _, counter := range readCounters {
+		counter(int64(dataLen))
+	}
+	for _, counter := range writeCounters {
+		counter(int64(dataLen))
+	}
+	n = int64(dataLen)
+
 	return
 }

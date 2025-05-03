@@ -6,14 +6,6 @@ import (
 
 type CountFunc func(n int64)
 
-func Count(n int64, counters ...[]CountFunc) {
-	for _, counter := range counters {
-		for _, countFunc := range counter {
-			countFunc(n)
-		}
-	}
-}
-
 type ReadCounter interface {
 	io.Reader
 	UnwrapReader() (io.Reader, []CountFunc)

@@ -54,8 +54,7 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 			(isReaderPossiblyReplaceable && replaceableReader.ReaderPossiblyReplaceable()) ||
 			(isWriterPossiblyReplaceable && replaceableWriter.WriterPossiblyReplaceable()) {
 			possibly--
-			_n, err = CopyExtendedOnce(NewExtendedWriter(destination), NewExtendedReader(source))
-			N.Count(_n, readCounters, writeCounters)
+			_n, err = CopyExtendedOnce(destination, source, readCounters, writeCounters)
 			n += _n
 			if err != nil {
 				if n == _n { // first time
