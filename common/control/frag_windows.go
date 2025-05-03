@@ -25,17 +25,19 @@ const (
 
 func DisableUDPFragment() Func {
 	return func(network, address string, conn syscall.RawConn) error {
-		switch N.NetworkName(network) {
-		case N.NetworkUDP:
-		default:
+		if N.NetworkName(network) != N.NetworkUDP {
 			return nil
 		}
 		return Raw(conn, func(fd uintptr) error {
-			if err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_DO); err != nil {
-				return os.NewSyscallError("SETSOCKOPT IP_MTU_DISCOVER IP_PMTUDISC_DO", err)
+			if network == "udp" || network == "udp4" {
+				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_DO)
+				if err != nil {
+					return os.NewSyscallError("SETSOCKOPT IP_MTU_DISCOVER IP_PMTUDISC_DO", err)
+				}
 			}
-			if network == "udp6" {
-				if err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IPV6, IPV6_MTU_DISCOVER, IP_PMTUDISC_DO); err != nil {
+			if network == "udp" || network == "udp6" {
+				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IPV6, IPV6_MTU_DISCOVER, IP_PMTUDISC_DO)
+				if err != nil {
 					return os.NewSyscallError("SETSOCKOPT IPV6_MTU_DISCOVER IP_PMTUDISC_DO", err)
 				}
 			}
