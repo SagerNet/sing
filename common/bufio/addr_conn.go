@@ -9,19 +9,20 @@ import (
 
 type AddrConn struct {
 	net.Conn
-	M.Metadata
+	Source      M.Socksaddr
+	Destination M.Socksaddr
 }
 
 func (c *AddrConn) LocalAddr() net.Addr {
-	if c.Metadata.Destination.IsValid() {
-		return c.Metadata.Destination.TCPAddr()
+	if c.Destination.IsValid() {
+		return c.Destination.TCPAddr()
 	}
 	return c.Conn.LocalAddr()
 }
 
 func (c *AddrConn) RemoteAddr() net.Addr {
-	if c.Metadata.Source.IsValid() {
-		return c.Metadata.Source.TCPAddr()
+	if c.Source.IsValid() {
+		return c.Source.TCPAddr()
 	}
 	return c.Conn.RemoteAddr()
 }
