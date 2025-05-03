@@ -4,7 +4,7 @@ import (
 	"os"
 	"syscall"
 
-	N "github.com/sagernet/sing/common/network"
+	N "github.com/metacubex/sing/common/network"
 
 	"golang.org/x/sys/unix"
 )

@@ -8,15 +8,15 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/auth"
-	"github.com/sagernet/sing/common/bufio"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/varbin"
-	"github.com/sagernet/sing/protocol/socks/socks4"
-	"github.com/sagernet/sing/protocol/socks/socks5"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/auth"
+	"github.com/metacubex/sing/common/bufio"
+	E "github.com/metacubex/sing/common/exceptions"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
+	"github.com/metacubex/sing/common/varbin"
+	"github.com/metacubex/sing/protocol/socks/socks4"
+	"github.com/metacubex/sing/protocol/socks/socks5"
 )
 
 type Handler interface {

@@ -4,8 +4,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/sagernet/sing/common/atomic"
-	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/metacubex/sing/common/atomic"
+	E "github.com/metacubex/sing/common/exceptions"
 
 	"golang.org/x/sys/unix"
 )

@@ -6,7 +6,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	M "github.com/sagernet/sing/common/metadata"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int, preferInterfaceName bool) error {

@@ -3,9 +3,9 @@ package control
 import (
 	"syscall"
 
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	E "github.com/metacubex/sing/common/exceptions"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
 )
 
 func BindToInterface(finder InterfaceFinder, interfaceName string, interfaceIndex int) Func {

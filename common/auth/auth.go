@@ -1,6 +1,6 @@
 package auth
 
-import "github.com/sagernet/sing/common"
+import "github.com/metacubex/sing/common"
 
 type User struct {
 	Username string

@@ -1,9 +1,9 @@
 package network
 
 import (
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
-	M "github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/buf"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 type ThreadUnsafeWriter interface {

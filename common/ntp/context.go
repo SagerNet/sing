@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/sagernet/sing/service"
+	"github.com/metacubex/sing/service"
 )
 
 func TimeFuncFromContext(ctx context.Context) func() time.Time {

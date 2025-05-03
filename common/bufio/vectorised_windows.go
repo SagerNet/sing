@@ -3,8 +3,8 @@ package bufio
 import (
 	"sync"
 
-	"github.com/sagernet/sing/common/buf"
-	M "github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common/buf"
+	M "github.com/metacubex/sing/common/metadata"
 
 	"golang.org/x/sys/windows"
 )

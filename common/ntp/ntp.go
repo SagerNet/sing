@@ -6,8 +6,8 @@ import (
 	"encoding/binary"
 	"time"
 
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
 )
 
 func Exchange(ctx context.Context, dialer N.Dialer, serverAddress M.Socksaddr) (*Response, error) {

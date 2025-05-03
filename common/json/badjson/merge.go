@@ -4,9 +4,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/json"
+	"github.com/metacubex/sing/common"
+	E "github.com/metacubex/sing/common/exceptions"
+	"github.com/metacubex/sing/common/json"
 )
 
 func Omitempty[T any](value T) (T, error) {

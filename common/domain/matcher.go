@@ -4,7 +4,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
-	"github.com/sagernet/sing/common/varbin"
+	"github.com/metacubex/sing/common/varbin"
 )
 
 const (

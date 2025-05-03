@@ -3,7 +3,7 @@ package badoption
 import (
 	"regexp"
 
-	"github.com/sagernet/sing/common/json"
+	"github.com/metacubex/sing/common/json"
 )
 
 type Regexp regexp.Regexp

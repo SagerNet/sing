@@ -7,12 +7,12 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/task"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/buf"
+	E "github.com/metacubex/sing/common/exceptions"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
+	"github.com/metacubex/sing/common/task"
 )
 
 const MaxCopyExtendedOnceTimes = 10 // max CopyExtendedOnce execute times

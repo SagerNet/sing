@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/cache"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/pipe"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/buf"
+	"github.com/metacubex/sing/common/cache"
+	E "github.com/metacubex/sing/common/exceptions"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
+	"github.com/metacubex/sing/common/pipe"
 )
 
 type Handler interface {

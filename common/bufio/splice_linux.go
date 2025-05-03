@@ -3,8 +3,8 @@ package bufio
 import (
 	"syscall"
 
-	E "github.com/sagernet/sing/common/exceptions"
-	N "github.com/sagernet/sing/common/network"
+	E "github.com/metacubex/sing/common/exceptions"
+	N "github.com/metacubex/sing/common/network"
 
 	"golang.org/x/sys/unix"
 )

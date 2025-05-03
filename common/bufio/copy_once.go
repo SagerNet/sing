@@ -1,9 +1,9 @@
 package bufio
 
 import (
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/buf"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/buf"
+	N "github.com/metacubex/sing/common/network"
 )
 
 func CopyExtendedOnce(dst N.ExtendedWriter, src N.ExtendedReader) (n int64, err error) {

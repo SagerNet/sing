@@ -3,7 +3,7 @@ package pause
 import (
 	"context"
 
-	"github.com/sagernet/sing/service"
+	"github.com/metacubex/sing/service"
 )
 
 // Deprecated: use service.ContextWith instead.

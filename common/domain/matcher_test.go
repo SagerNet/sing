@@ -6,7 +6,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/sagernet/sing/common/domain"
+	"github.com/metacubex/sing/common/domain"
 
 	"github.com/stretchr/testify/require"
 )

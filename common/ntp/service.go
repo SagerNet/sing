@@ -5,13 +5,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/logger"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
-	"github.com/sagernet/sing/service/pause"
+	"github.com/metacubex/sing/common"
+	E "github.com/metacubex/sing/common/exceptions"
+	"github.com/metacubex/sing/common/logger"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
+	"github.com/metacubex/sing/service"
+	"github.com/metacubex/sing/service/pause"
 )
 
 const TimeLayout = "2006-01-02 15:04:05 -0700"

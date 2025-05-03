@@ -3,8 +3,8 @@ package badoption
 import (
 	"time"
 
-	"github.com/sagernet/sing/common/json"
-	"github.com/sagernet/sing/common/json/badoption/internal/my_time"
+	"github.com/metacubex/sing/common/json"
+	"github.com/metacubex/sing/common/json/badoption/internal/my_time"
 )
 
 type Duration time.Duration

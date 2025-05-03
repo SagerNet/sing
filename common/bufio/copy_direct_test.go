@@ -4,8 +4,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/sagernet/sing/common/buf"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/metacubex/sing/common/buf"
+	N "github.com/metacubex/sing/common/network"
 
 	"github.com/stretchr/testify/require"
 )

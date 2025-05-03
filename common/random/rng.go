@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/sagernet/sing/common"
+	"github.com/metacubex/sing/common"
 )
 
 const (

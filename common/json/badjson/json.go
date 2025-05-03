@@ -3,8 +3,8 @@ package badjson
 import (
 	"bytes"
 
-	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/json"
+	E "github.com/metacubex/sing/common/exceptions"
+	"github.com/metacubex/sing/common/json"
 )
 
 func Decode(content []byte) (any, error) {

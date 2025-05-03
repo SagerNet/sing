@@ -4,9 +4,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/metacubex/sing/common/buf"
+	"github.com/metacubex/sing/common/bufio"
+	N "github.com/metacubex/sing/common/network"
 )
 
 type Conn struct {
