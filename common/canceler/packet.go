@@ -13,7 +13,7 @@ import (
 type PacketConn interface {
 	N.PacketConn
 	Timeout() time.Duration
-	SetTimeout(timeout time.Duration)
+	SetTimeout(timeout time.Duration) bool
 }
 
 type TimerPacketConn struct {
@@ -24,10 +24,12 @@ type TimerPacketConn struct {
 func NewPacketConn(ctx context.Context, conn N.PacketConn, timeout time.Duration) (context.Context, N.PacketConn) {
 	if timeoutConn, isTimeoutConn := common.Cast[PacketConn](conn); isTimeoutConn {
 		oldTimeout := timeoutConn.Timeout()
-		if timeout < oldTimeout {
-			timeoutConn.SetTimeout(timeout)
+		if timeout >= oldTimeout {
+			return ctx, conn
 		}
-		return ctx, conn
+		if timeoutConn.SetTimeout(timeout) {
+			return ctx, conn
+		}
 	}
 	err := conn.SetReadDeadline(time.Time{})
 	if err == nil {
@@ -58,8 +60,8 @@ func (c *TimerPacketConn) Timeout() time.Duration {
 	return c.instance.Timeout()
 }
 
-func (c *TimerPacketConn) SetTimeout(timeout time.Duration) {
-	c.instance.SetTimeout(timeout)
+func (c *TimerPacketConn) SetTimeout(timeout time.Duration) bool {
+	return c.instance.SetTimeout(timeout)
 }
 
 func (c *TimerPacketConn) Close() error {
