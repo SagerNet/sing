@@ -8,6 +8,7 @@
 package json
 
 import (
+	"context"
 	"encoding"
 	"encoding/base64"
 	"fmt"
@@ -95,10 +96,15 @@ import (
 // Instead, they are replaced by the Unicode replacement
 // character U+FFFD.
 func Unmarshal(data []byte, v any) error {
+	return UnmarshalContext(context.Background(), data, v)
+}
+
+func UnmarshalContext(ctx context.Context, data []byte, v any) error {
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
 	// before discovering a JSON syntax error.
 	var d decodeState
+	d.ctx = ctx
 	err := checkValid(data, &d.scan)
 	if err != nil {
 		return err
@@ -209,6 +215,7 @@ type errorContext struct {
 
 // decodeState represents the state while decoding a JSON value.
 type decodeState struct {
+	ctx                   context.Context
 	data                  []byte
 	off                   int // next read offset in data
 	opcode                int // last read result
@@ -428,7 +435,7 @@ func (d *decodeState) valueQuoted() any {
 // If it encounters an Unmarshaler, indirect stops and returns that.
 // If decodingNull is true, indirect stops at the first settable pointer so it
 // can be set to nil.
-func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnmarshaler, reflect.Value) {
+func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, ContextUnmarshaler, encoding.TextUnmarshaler, reflect.Value) {
 	// Issue #24153 indicates that it is generally not a guaranteed property
 	// that you may round-trip a reflect.Value by calling Value.Addr().Elem()
 	// and expect the value to still be settable for values derived from
@@ -482,11 +489,14 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 		}
 		if v.Type().NumMethod() > 0 && v.CanInterface() {
 			if u, ok := v.Interface().(Unmarshaler); ok {
-				return u, nil, reflect.Value{}
+				return u, nil, nil, reflect.Value{}
+			}
+			if cu, ok := v.Interface().(ContextUnmarshaler); ok {
+				return nil, cu, nil, reflect.Value{}
 			}
 			if !decodingNull {
 				if u, ok := v.Interface().(encoding.TextUnmarshaler); ok {
-					return nil, u, reflect.Value{}
+					return nil, nil, u, reflect.Value{}
 				}
 			}
 		}
@@ -498,18 +508,27 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 			v = v.Elem()
 		}
 	}
-	return nil, nil, v
+	return nil, nil, nil, v
 }
 
 // array consumes an array from d.data[d.off-1:], decoding into v.
 // The first byte of the array ('[') has been read already.
 func (d *decodeState) array(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, ut, pv := indirect(v, false)
+	u, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
 		err := u.UnmarshalJSON(d.data[start:d.off])
+		if err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		start := d.readIndex()
+		d.skip()
+		err := cu.UnmarshalJSONContext(d.ctx, d.data[start:d.off])
 		if err != nil {
 			d.saveError(err)
 		}
@@ -612,11 +631,20 @@ var (
 // The first byte ('{') of the object has been read already.
 func (d *decodeState) object(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, ut, pv := indirect(v, false)
+	u, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
 		err := u.UnmarshalJSON(d.data[start:d.off])
+		if err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		start := d.readIndex()
+		d.skip()
+		err := cu.UnmarshalJSONContext(d.ctx, d.data[start:d.off])
 		if err != nil {
 			d.saveError(err)
 		}
@@ -870,9 +898,16 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		return nil
 	}
 	isNull := item[0] == 'n' // null
-	u, ut, pv := indirect(v, isNull)
+	u, cu, ut, pv := indirect(v, isNull)
 	if u != nil {
 		err := u.UnmarshalJSON(item)
+		if err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		err := cu.UnmarshalJSONContext(d.ctx, item)
 		if err != nil {
 			d.saveError(err)
 		}

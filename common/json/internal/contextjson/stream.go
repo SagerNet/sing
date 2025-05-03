@@ -6,6 +6,7 @@ package json
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 )
@@ -29,7 +30,11 @@ type Decoder struct {
 // The decoder introduces its own buffering and may
 // read data from r beyond the JSON values requested.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: r}
+	return NewDecoderContext(context.Background(), r)
+}
+
+func NewDecoderContext(ctx context.Context, r io.Reader) *Decoder {
+	return &Decoder{r: r, d: decodeState{ctx: ctx}}
 }
 
 // UseNumber causes the Decoder to unmarshal a number into an interface{} as a
@@ -183,6 +188,7 @@ func nonSpace(b []byte) bool {
 
 // An Encoder writes JSON values to an output stream.
 type Encoder struct {
+	ctx        context.Context
 	w          io.Writer
 	err        error
 	escapeHTML bool
@@ -194,7 +200,11 @@ type Encoder struct {
 
 // NewEncoder returns a new encoder that writes to w.
 func NewEncoder(w io.Writer) *Encoder {
-	return &Encoder{w: w, escapeHTML: true}
+	return NewEncoderContext(context.Background(), w)
+}
+
+func NewEncoderContext(ctx context.Context, w io.Writer) *Encoder {
+	return &Encoder{ctx: ctx, w: w, escapeHTML: true}
 }
 
 // Encode writes the JSON encoding of v to the stream,
@@ -207,7 +217,7 @@ func (enc *Encoder) Encode(v any) error {
 		return enc.err
 	}
 
-	e := newEncodeState()
+	e := newEncodeState(enc.ctx)
 	defer encodeStatePool.Put(e)
 
 	err := e.marshal(v, encOpts{escapeHTML: enc.escapeHTML})
