@@ -1,11 +1,12 @@
 package control
 
 import (
-	"github.com/metacubex/sing/common"
-	M "github.com/metacubex/sing/common/metadata"
 	"net"
 	"net/netip"
 	"unsafe"
+
+	"github.com/metacubex/sing/common"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 type InterfaceFinder interface {
