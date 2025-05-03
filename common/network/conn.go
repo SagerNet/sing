@@ -101,11 +101,6 @@ type CachedPacketReader interface {
 	ReadCachedPacket() *PacketBuffer
 }
 
-type PacketBuffer struct {
-	Buffer      *buf.Buffer
-	Destination M.Socksaddr
-}
-
 type WithUpstreamReader interface {
 	UpstreamReader() any
 }
