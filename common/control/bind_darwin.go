@@ -9,12 +9,15 @@ import (
 
 func bindToInterface(conn syscall.RawConn, network string, address string, finder InterfaceFinder, interfaceName string, interfaceIndex int, preferInterfaceName bool) error {
 	return Raw(conn, func(fd uintptr) error {
-		var err error
 		if interfaceIndex == -1 {
 			if finder == nil {
 				return os.ErrInvalid
 			}
-			interfaceIndex, err = finder.InterfaceIndexByName(interfaceName)
+			iif, err := finder.ByName(interfaceName)
+			if err != nil {
+				return err
+			}
+			interfaceIndex = iif.Index
 			if err != nil {
 				return err
 			}

@@ -157,6 +157,18 @@ func IndexIndexed[T any](arr []T, block func(index int, it T) bool) int {
 	return -1
 }
 
+func Equal[S ~[]E, E comparable](s1, s2 S) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+	return true
+}
+
 //go:norace
 func Dup[T any](obj T) T {
 	pointer := uintptr(unsafe.Pointer(&obj))
@@ -268,6 +280,14 @@ func Reverse[T any](arr []T) []T {
 	return arr
 }
 
+func ReverseMap[K comparable, V comparable](m map[K]V) map[V]K {
+	ret := make(map[V]K, len(m))
+	for k, v := range m {
+		ret[v] = k
+	}
+	return ret
+}
+
 func Done(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
@@ -361,25 +381,4 @@ func Close(closers ...any) error {
 		}
 	}
 	return retErr
-}
-
-// Deprecated: wtf is this?
-type Starter interface {
-	Start() error
-}
-
-// Deprecated: wtf is this?
-func Start(starters ...any) error {
-	for _, rawStarter := range starters {
-		if rawStarter == nil {
-			continue
-		}
-		if starter, isStarter := rawStarter.(Starter); isStarter {
-			err := starter.Start()
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }

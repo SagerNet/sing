@@ -19,8 +19,11 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 				if interfaceName == "" {
 					return os.ErrInvalid
 				}
-				var err error
-				interfaceIndex, err = finder.InterfaceIndexByName(interfaceName)
+				iif, err := finder.ByName(interfaceName)
+				if err != nil {
+					return err
+				}
+				interfaceIndex = iif.Index
 				if err != nil {
 					return err
 				}
