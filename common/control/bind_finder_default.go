@@ -81,6 +81,13 @@ func (f *DefaultInterfaceFinder) ByIndex(index int) (*Interface, error) {
 func (f *DefaultInterfaceFinder) ByAddr(addr netip.Addr) (*Interface, error) {
 	for _, netInterface := range f.interfaces {
 		for _, prefix := range netInterface.Addresses {
+			if prefix.Addr() == addr {
+				return &netInterface, nil
+			}
+		}
+	}
+	for _, netInterface := range f.interfaces {
+		for _, prefix := range netInterface.Addresses {
 			if prefix.Contains(addr) {
 				return &netInterface, nil
 			}
