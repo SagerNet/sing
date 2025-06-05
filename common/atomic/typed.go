@@ -42,5 +42,9 @@ func (t *TypedValue[T]) Swap(new T) T {
 }
 
 func (t *TypedValue[T]) CompareAndSwap(old, new T) bool {
-	return t.value.CompareAndSwap(typedValue[T]{old}, typedValue[T]{new})
+	return t.value.CompareAndSwap(typedValue[T]{old}, typedValue[T]{new}) ||
+		// In the edge-case where [atomic.Value.Store] is uninitialized
+		// and trying to compare with the zero value of T,
+		// then compare-and-swap with the nil any value.
+		(any(old) == any(common.DefaultValue[T]()) && t.value.CompareAndSwap(any(nil), typedValue[T]{new}))
 }
