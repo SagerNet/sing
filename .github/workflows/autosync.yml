@@ -17,7 +17,7 @@ jobs:
           # The owner of your forked repository
           owner: getlantern
           # The name of your forked repository
-          repo: sing-box-minimal
+          repo: sing
           # The branch in forked repository to update
           head: lantern-main
           # The branch in the *upstream* repository to sync with
@@ -25,4 +25,4 @@ jobs:
           merge_method: merge
           auto_merge: false
           pr_title: 'Automated Fork Sync from Upstream'
-          pr_message: 'This pull request was automatically generated to sync the `lantern-main` branch with the `main` branch from `sagernet/sing-box`.'
+          pr_message: 'This pull request was automatically generated to sync the `lantern-main` branch with the `main` branch from `sagernet/sing`.'
