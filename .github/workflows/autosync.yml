@@ -19,9 +19,9 @@ jobs:
           # The name of your forked repository
           repo: sing
           # The branch in forked repository to update
-          head: lantern-main
+          head: main
           # The branch in the *upstream* repository to sync with
-          base: main
+          base: lantern-main
           merge_method: merge
           auto_merge: false
           pr_title: 'Automated Fork Sync from Upstream'
