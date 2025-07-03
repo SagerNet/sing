@@ -43,6 +43,11 @@ func (o ReadWaitOptions) NewBuffer() *buf.Buffer {
 	return o.newBuffer(buf.BufferSize, true)
 }
 
+func (o ReadWaitOptions) NewBufferMax() *buf.Buffer {
+	const maxBufferSize = 64<<10 - 1
+	return o.newBuffer(maxBufferSize, true)
+}
+
 func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
 	return o.newBuffer(buf.UDPBufferSize, true)
 }

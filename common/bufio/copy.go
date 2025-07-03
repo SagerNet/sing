@@ -15,7 +15,13 @@ import (
 	"github.com/sagernet/sing/common/task"
 )
 
+const DefaultIncreaseBufferAfter = 512 * 1000
+
 func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
+	return CopyWithIncreateBuffer(destination, source, DefaultIncreaseBufferAfter)
+}
+
+func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBufferAfter int64) (n int64, err error) {
 	if source == nil {
 		return 0, E.New("nil reader")
 	} else if destination == nil {
@@ -46,10 +52,10 @@ func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
 		}
 		break
 	}
-	return CopyWithCounters(destination, source, originSource, readCounters, writeCounters)
+	return CopyWithCounters(destination, source, originSource, readCounters, writeCounters, increaseBufferAfter)
 }
 
-func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
+func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (n int64, err error) {
 	srcSyscallConn, srcIsSyscall := source.(syscall.Conn)
 	dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
 	if srcIsSyscall && dstIsSyscall {
@@ -59,10 +65,10 @@ func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.R
 			return
 		}
 	}
-	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters)
+	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters, increaseBufferAfter)
 }
 
-func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
+func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (n int64, err error) {
 	frontHeadroom := N.CalculateFrontHeadroom(destination)
 	rearHeadroom := N.CalculateRearHeadroom(destination)
 	readWaiter, isReadWaiter := CreateReadWaiter(source)
@@ -74,13 +80,13 @@ func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N
 		})
 		if !needCopy || common.LowMemory {
 			var handled bool
-			handled, n, err = copyWaitWithPool(originSource, destination, readWaiter, readCounters, writeCounters)
+			handled, n, err = copyWaitWithPool(originSource, destination, source, readWaiter, readCounters, writeCounters, increaseBufferAfter)
 			if handled {
 				return
 			}
 		}
 	}
-	return CopyExtendedWithPool(originSource, destination, source, readCounters, writeCounters)
+	return CopyExtendedWithPool(originSource, destination, source, readCounters, writeCounters, increaseBufferAfter)
 }
 
 // Deprecated: not used
@@ -121,7 +127,7 @@ func CopyExtendedBuffer(originSource io.Writer, destination N.ExtendedWriter, so
 	}
 }
 
-func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc) (n int64, err error) {
+func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (n int64, err error) {
 	options := N.NewReadWaitOptions(source, destination)
 	var notFirstTime bool
 	for {
@@ -153,6 +159,53 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			counter(int64(dataLen))
 		}
 		notFirstTime = true
+		if increaseBufferAfter > 0 && n >= increaseBufferAfter {
+			return CopyExtendedChanWithPool(destination, source, readCounters, writeCounters, options, n)
+		}
+	}
+}
+
+func CopyExtendedChanWithPool(destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, options N.ReadWaitOptions, inputN int64) (n int64, err error) {
+	n += inputN
+	sendChan := make(chan *buf.Buffer, 2)
+	errChan := make(chan error, 1)
+	go func() {
+		for {
+			buffer := options.NewBufferMax()
+			readErr := source.ReadBuffer(buffer)
+			if readErr != nil {
+				buffer.Release()
+				if errors.Is(readErr, io.EOF) {
+					errChan <- nil
+				} else {
+					errChan <- readErr
+				}
+				return
+			}
+			dataLen := buffer.Len()
+			options.PostReturn(buffer)
+			sendChan <- buffer
+			n += int64(dataLen)
+			for _, counter := range readCounters {
+				counter(int64(dataLen))
+			}
+		}
+	}()
+	for {
+		select {
+		case buffer := <-sendChan:
+			dataLen := buffer.Len()
+			err = destination.WriteBuffer(buffer)
+			if err != nil {
+				buffer.Leak()
+				return
+			}
+			for _, counter := range writeCounters {
+				counter(int64(dataLen))
+			}
+		case err = <-errChan:
+			return
+		}
 	}
 }
 

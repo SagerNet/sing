@@ -23,14 +23,14 @@ func copyDirect(source syscall.Conn, destination syscall.Conn, readCounters []N.
 	return
 }
 
-func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handled bool, n int64, err error) {
+func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readWaiter N.ReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (handled bool, n int64, err error) {
 	handled = true
 	var (
 		buffer       *buf.Buffer
 		notFirstTime bool
 	)
 	for {
-		buffer, err = source.WaitReadBuffer()
+		buffer, err = readWaiter.WaitReadBuffer()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				err = nil
@@ -55,6 +55,10 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 			counter(int64(dataLen))
 		}
 		notFirstTime = true
+		if increaseBufferAfter > 0 && n >= increaseBufferAfter {
+			n, err = CopyExtendedChanWithPool(destination, source, readCounters, writeCounters, N.NewReadWaitOptions(source, destination), n)
+			return
+		}
 	}
 }
 
