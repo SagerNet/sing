@@ -27,9 +27,8 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		iovecList = *w.iovecList
 	}
 	iovecList = iovecList[:0]
-	for index, buffer := range buffers {
-		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
-		iovecList[index].SetLen(buffer.Len())
+	for _, buffer := range buffers {
+		iovecList = append(iovecList, buffer.Iovec())
 	}
 	if w.iovecList == nil {
 		w.iovecList = new([]unix.Iovec)
@@ -59,9 +58,8 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 		iovecList = *w.iovecList
 	}
 	iovecList = iovecList[:0]
-	for index, buffer := range buffers {
-		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
-		iovecList[index].SetLen(buffer.Len())
+	for _, buffer := range buffers {
+		iovecList = append(iovecList, buffer.Iovec())
 	}
 	if w.iovecList == nil {
 		w.iovecList = new([]unix.Iovec)

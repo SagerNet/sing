@@ -13,6 +13,7 @@ type ReadWaitOptions struct {
 	FrontHeadroom int
 	RearHeadroom  int
 	MTU           int
+	BatchSize     int
 }
 
 func NewReadWaitOptions(source any, destination any) ReadWaitOptions {
@@ -84,6 +85,15 @@ type ReadWaitCreator interface {
 	CreateReadWaiter() (ReadWaiter, bool)
 }
 
+type VectorisedReadWaiter interface {
+	ReadWaitable
+	WaitReadBuffers() (buffers []*buf.Buffer, err error)
+}
+
+type VectorisedReadWaitCreator interface {
+	CreateVectorisedReadWaiter() (VectorisedReadWaiter, bool)
+}
+
 type PacketReadWaiter interface {
 	ReadWaitable
 	WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error)
@@ -91,4 +101,13 @@ type PacketReadWaiter interface {
 
 type PacketReadWaitCreator interface {
 	CreateReadWaiter() (PacketReadWaiter, bool)
+}
+
+type VectorisedPacketReadWaiter interface {
+	ReadWaitable
+	WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error)
+}
+
+type VectorisedPacketReadWaitCreator interface {
+	CreateVectorisedPacketReadWaiter() (VectorisedPacketReadWaiter, bool)
 }

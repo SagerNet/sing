@@ -15,13 +15,16 @@ import (
 	"github.com/sagernet/sing/common/task"
 )
 
-const DefaultIncreaseBufferAfter = 512 * 1000
+const (
+	DefaultIncreaseBufferAfter = 512 * 1000
+	DefaultBatchSize           = 8
+)
 
 func Copy(destination io.Writer, source io.Reader) (n int64, err error) {
-	return CopyWithIncreateBuffer(destination, source, DefaultIncreaseBufferAfter)
+	return CopyWithIncreateBuffer(destination, source, DefaultIncreaseBufferAfter, DefaultBatchSize)
 }
 
-func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBufferAfter int64) (n int64, err error) {
+func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBufferAfter int64, batchSize int) (n int64, err error) {
 	if source == nil {
 		return 0, E.New("nil reader")
 	} else if destination == nil {
@@ -52,10 +55,10 @@ func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBuf
 		}
 		break
 	}
-	return CopyWithCounters(destination, source, originSource, readCounters, writeCounters, increaseBufferAfter)
+	return CopyWithCounters(destination, source, originSource, readCounters, writeCounters, increaseBufferAfter, batchSize)
 }
 
-func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (n int64, err error) {
+func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64, batchSize int) (n int64, err error) {
 	srcSyscallConn, srcIsSyscall := source.(syscall.Conn)
 	dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
 	if srcIsSyscall && dstIsSyscall {
@@ -65,22 +68,19 @@ func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.R
 			return
 		}
 	}
-	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters, increaseBufferAfter)
+	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters, increaseBufferAfter, batchSize)
 }
 
-func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (n int64, err error) {
-	frontHeadroom := N.CalculateFrontHeadroom(destination)
-	rearHeadroom := N.CalculateRearHeadroom(destination)
+func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64, batchSize int) (n int64, err error) {
+	options := N.NewReadWaitOptions(source, destination)
+	options.BatchSize = batchSize
 	readWaiter, isReadWaiter := CreateReadWaiter(source)
+	vectorisedReadWaiter, isVectorisedReadWaiter := CreateVectorisedReadWaiter(source)
 	if isReadWaiter {
-		needCopy := readWaiter.InitializeReadWaiter(N.ReadWaitOptions{
-			FrontHeadroom: frontHeadroom,
-			RearHeadroom:  rearHeadroom,
-			MTU:           N.CalculateMTU(source, destination),
-		})
+		needCopy := readWaiter.InitializeReadWaiter(options)
 		if !needCopy || common.LowMemory {
 			var handled bool
-			handled, n, err = copyWaitWithPool(originSource, destination, source, readWaiter, readCounters, writeCounters, increaseBufferAfter)
+			handled, n, err = copyWaitWithPool(originSource, destination, source, readWaiter, vectorisedReadWaiter, isVectorisedReadWaiter, options, readCounters, writeCounters, increaseBufferAfter)
 			if handled {
 				return
 			}
@@ -166,8 +166,9 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 }
 
 func CopyExtendedChanWithPool(destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, options N.ReadWaitOptions, inputN int64) (n int64, err error) {
+	vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(N.UnwrapWriter(destination))
 	n += inputN
-	sendChan := make(chan *buf.Buffer, 2)
+	sendChan := make(chan *buf.Buffer, options.BatchSize)
 	errChan := make(chan error, 1)
 	go func() {
 		for {
@@ -191,17 +192,51 @@ func CopyExtendedChanWithPool(destination N.ExtendedWriter, source N.ExtendedRea
 			}
 		}
 	}()
+	var buffers []*buf.Buffer
 	for {
 		select {
 		case buffer := <-sendChan:
-			dataLen := buffer.Len()
-			err = destination.WriteBuffer(buffer)
-			if err != nil {
-				buffer.Leak()
-				return
-			}
-			for _, counter := range writeCounters {
-				counter(int64(dataLen))
+			if !isVectorisedWriter {
+				dataLen := buffer.Len()
+				err = destination.WriteBuffer(buffer)
+				if err != nil {
+					buffer.Leak()
+					return
+				}
+				for _, counter := range writeCounters {
+					counter(int64(dataLen))
+				}
+			} else {
+				dataLen := buffer.Len()
+				buffers = append(buffers, buffer)
+			fetch:
+				for {
+					select {
+					case buffer = <-sendChan:
+						dataLen += buffer.Len()
+						buffers = append(buffers, buffer)
+					default:
+						break fetch
+					}
+				}
+				if len(buffers) == 1 {
+					err = destination.WriteBuffer(buffers[0])
+					if err != nil {
+						buffers[0].Leak()
+						buffers = buffers[:0]
+						return
+					}
+				} else {
+					err = vectorisedWriter.WriteVectorised(buffers)
+					if err != nil {
+						for _, b := range buffers {
+							b.Leak()
+						}
+						buffers = buffers[:0]
+						return
+					}
+				}
+				buffers = buffers[:0]
 			}
 		case err = <-errChan:
 			return

@@ -12,7 +12,7 @@ import (
 )
 
 func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
-	if vectorisedWriter, ok := CreateVectorisedWriter(N.UnwrapWriter(writer)); ok {
+	if vectorisedWriter, ok := CreateVectorisedWriter(writer); ok {
 		return vectorisedWriter
 	}
 	return &BufferedVectorisedWriter{upstream: writer}
@@ -22,14 +22,14 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 	switch w := writer.(type) {
 	case N.VectorisedWriter:
 		return w, true
-	case *net.TCPConn:
+	/*case *net.TCPConn:
 		return &NetVectorisedWriterWrapper{w}, true
 	case *net.UDPConn:
 		return &NetVectorisedWriterWrapper{w}, true
 	case *net.IPConn:
 		return &NetVectorisedWriterWrapper{w}, true
 	case *net.UnixConn:
-		return &NetVectorisedWriterWrapper{w}, true
+		return &NetVectorisedWriterWrapper{w}, true*/
 	case syscall.Conn:
 		rawConn, err := w.SyscallConn()
 		if err == nil {
