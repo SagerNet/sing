@@ -10,10 +10,11 @@ type ReadWaitable interface {
 }
 
 type ReadWaitOptions struct {
-	FrontHeadroom int
-	RearHeadroom  int
-	MTU           int
-	BatchSize     int
+	FrontHeadroom  int
+	RearHeadroom   int
+	MTU            int
+	IncreaseBuffer bool
+	BatchSize      int
 }
 
 func NewReadWaitOptions(source any, destination any) ReadWaitOptions {
@@ -44,18 +45,15 @@ func (o ReadWaitOptions) NewBuffer() *buf.Buffer {
 	return o.newBuffer(buf.BufferSize, true)
 }
 
-func (o ReadWaitOptions) NewBufferMax() *buf.Buffer {
-	const maxBufferSize = 64<<10 - 1
-	return o.newBuffer(maxBufferSize, true)
-}
-
 func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
 	return o.newBuffer(buf.UDPBufferSize, true)
 }
 
 func (o ReadWaitOptions) newBuffer(defaultBufferSize int, reserve bool) *buf.Buffer {
 	var bufferSize int
-	if o.MTU > 0 {
+	if o.IncreaseBuffer {
+		bufferSize = 65535
+	} else if o.MTU > 0 {
 		bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
 	} else {
 		bufferSize = defaultBufferSize

@@ -111,7 +111,7 @@ func (w *vectorisedSyscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOpt
 		for i := range w.buffers {
 			buffer := w.buffers[i]
 			if buffer == nil {
-				buffer = w.options.NewBufferMax()
+				buffer = w.options.NewBuffer()
 				w.buffers[i] = buffer
 			}
 			w.iovecList[i] = buffer.Iovec()
@@ -167,7 +167,6 @@ func (w *vectorisedSyscallReadWaiter) WaitReadBuffers() (buffers []*buf.Buffer, 
 		}
 		return nil, E.Cause(w.readErr, "raw read")
 	}
-	buffers = make([]*buf.Buffer, w.readBuffers)
 	buffers = make([]*buf.Buffer, w.readBuffers)
 	for i := 0; i < w.readBuffers; i++ {
 		buffers[i] = w.buffers[i]

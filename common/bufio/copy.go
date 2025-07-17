@@ -75,12 +75,11 @@ func CopyExtended(originSource io.Reader, destination N.ExtendedWriter, source N
 	options := N.NewReadWaitOptions(source, destination)
 	options.BatchSize = batchSize
 	readWaiter, isReadWaiter := CreateReadWaiter(source)
-	vectorisedReadWaiter, isVectorisedReadWaiter := CreateVectorisedReadWaiter(source)
 	if isReadWaiter {
 		needCopy := readWaiter.InitializeReadWaiter(options)
 		if !needCopy || common.LowMemory {
 			var handled bool
-			handled, n, err = copyWaitWithPool(originSource, destination, source, readWaiter, vectorisedReadWaiter, isVectorisedReadWaiter, options, readCounters, writeCounters, increaseBufferAfter)
+			handled, n, err = copyWaitWithPool(originSource, destination, source, readWaiter, options, readCounters, writeCounters, increaseBufferAfter)
 			if handled {
 				return
 			}
@@ -159,87 +158,8 @@ func CopyExtendedWithPool(originSource io.Reader, destination N.ExtendedWriter, 
 			counter(int64(dataLen))
 		}
 		notFirstTime = true
-		if increaseBufferAfter > 0 && n >= increaseBufferAfter {
-			return CopyExtendedChanWithPool(destination, source, readCounters, writeCounters, options, n)
-		}
-	}
-}
-
-func CopyExtendedChanWithPool(destination N.ExtendedWriter, source N.ExtendedReader, readCounters []N.CountFunc, writeCounters []N.CountFunc, options N.ReadWaitOptions, inputN int64) (n int64, err error) {
-	vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(N.UnwrapWriter(destination))
-	n += inputN
-	sendChan := make(chan *buf.Buffer, options.BatchSize)
-	errChan := make(chan error, 1)
-	go func() {
-		for {
-			buffer := options.NewBufferMax()
-			readErr := source.ReadBuffer(buffer)
-			if readErr != nil {
-				buffer.Release()
-				if errors.Is(readErr, io.EOF) {
-					errChan <- nil
-				} else {
-					errChan <- readErr
-				}
-				return
-			}
-			dataLen := buffer.Len()
-			options.PostReturn(buffer)
-			sendChan <- buffer
-			n += int64(dataLen)
-			for _, counter := range readCounters {
-				counter(int64(dataLen))
-			}
-		}
-	}()
-	var buffers []*buf.Buffer
-	for {
-		select {
-		case buffer := <-sendChan:
-			if !isVectorisedWriter {
-				dataLen := buffer.Len()
-				err = destination.WriteBuffer(buffer)
-				if err != nil {
-					buffer.Leak()
-					return
-				}
-				for _, counter := range writeCounters {
-					counter(int64(dataLen))
-				}
-			} else {
-				dataLen := buffer.Len()
-				buffers = append(buffers, buffer)
-			fetch:
-				for {
-					select {
-					case buffer = <-sendChan:
-						dataLen += buffer.Len()
-						buffers = append(buffers, buffer)
-					default:
-						break fetch
-					}
-				}
-				if len(buffers) == 1 {
-					err = destination.WriteBuffer(buffers[0])
-					if err != nil {
-						buffers[0].Leak()
-						buffers = buffers[:0]
-						return
-					}
-				} else {
-					err = vectorisedWriter.WriteVectorised(buffers)
-					if err != nil {
-						for _, b := range buffers {
-							b.Leak()
-						}
-						buffers = buffers[:0]
-						return
-					}
-				}
-				buffers = buffers[:0]
-			}
-		case err = <-errChan:
-			return
+		if !options.IncreaseBuffer && increaseBufferAfter > 0 && n >= increaseBufferAfter {
+			options.IncreaseBuffer = true
 		}
 	}
 }

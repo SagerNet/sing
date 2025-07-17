@@ -120,7 +120,7 @@ func (w *vectorisedSyscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOpt
 		for i := range w.buffers {
 			buffer := w.buffers[i]
 			if buffer == nil {
-				buffer = w.options.NewBufferMax()
+				buffer = w.options.NewBuffer()
 				w.buffers[i] = buffer
 			}
 			w.iovecList[i] = buffer.Iovec()

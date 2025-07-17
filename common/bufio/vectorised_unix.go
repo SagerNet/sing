@@ -15,36 +15,26 @@ import (
 
 type syscallVectorisedWriterFields struct {
 	access    sync.Mutex
-	iovecList *[]unix.Iovec
+	iovecList []unix.Iovec
 }
 
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	var iovecList []unix.Iovec
-	if w.iovecList != nil {
-		iovecList = *w.iovecList
-	}
-	iovecList = iovecList[:0]
+	iovecList := w.iovecList
 	for _, buffer := range buffers {
 		iovecList = append(iovecList, buffer.Iovec())
 	}
-	if w.iovecList == nil {
-		w.iovecList = new([]unix.Iovec)
-	}
-	*w.iovecList = iovecList // cache
 	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		//nolint:staticcheck
 		_, _, innerErr = unix.Syscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecList[0])), uintptr(len(iovecList)))
 		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
 	})
+	w.iovecList = iovecList[:0]
 	if innerErr != 0 {
 		err = os.NewSyscallError("SYS_WRITEV", innerErr)
-	}
-	for index := range iovecList {
-		iovecList[index] = unix.Iovec{}
 	}
 	return err
 }
@@ -53,18 +43,10 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	var iovecList []unix.Iovec
-	if w.iovecList != nil {
-		iovecList = *w.iovecList
-	}
-	iovecList = iovecList[:0]
+	iovecList := w.iovecList
 	for _, buffer := range buffers {
 		iovecList = append(iovecList, buffer.Iovec())
 	}
-	if w.iovecList == nil {
-		w.iovecList = new([]unix.Iovec)
-	}
-	*w.iovecList = iovecList // cache
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		var msg unix.Msghdr
@@ -78,11 +60,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 		_, innerErr = sendmsg(int(fd), &msg, 0)
 		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
 	})
+	w.iovecList = iovecList[:0]
 	if innerErr != nil {
 		err = innerErr
-	}
-	for index := range iovecList {
-		iovecList[index] = unix.Iovec{}
 	}
 	return err
 }

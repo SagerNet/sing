@@ -23,7 +23,7 @@ func copyDirect(source syscall.Conn, destination syscall.Conn, readCounters []N.
 	return
 }
 
-func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readWaiter N.ReadWaiter, vectorisedReadWaiter N.VectorisedReadWaiter, isVectorisedReadWaiter bool, options N.ReadWaitOptions, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (handled bool, n int64, err error) {
+func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, source N.ExtendedReader, readWaiter N.ReadWaiter, options N.ReadWaitOptions, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64) (handled bool, n int64, err error) {
 	handled = true
 	var (
 		buffer       *buf.Buffer
@@ -55,94 +55,51 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 			counter(int64(dataLen))
 		}
 		notFirstTime = true
-		if increaseBufferAfter > 0 && n >= increaseBufferAfter {
-			if !isVectorisedReadWaiter {
-				n, err = CopyExtendedChanWithPool(destination, source, readCounters, writeCounters, options, n)
+		if !options.IncreaseBuffer && increaseBufferAfter > 0 && n >= increaseBufferAfter {
+			options.IncreaseBuffer = true
+			vectorisedReadWaiter, isVectorisedReadWaiter := CreateVectorisedReadWaiter(N.UnwrapReader(source))
+			vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(N.UnwrapWriter(destination))
+			if !isVectorisedReadWaiter || !isVectorisedWriter {
+				readWaiter.InitializeReadWaiter(options)
+				continue
 			} else {
-				n, err = copyWaitChanWithPool(destination, vectorisedReadWaiter, options, readCounters, writeCounters, n)
+				vectorisedReadWaiter.InitializeReadWaiter(options)
 			}
+			n, err = copyWaitVectorisedWithPool(vectorisedWriter, vectorisedReadWaiter, readCounters, writeCounters, n)
 			return
 		}
 	}
 }
 
-func copyWaitChanWithPool(destination N.ExtendedWriter, readWaiter N.VectorisedReadWaiter, options N.ReadWaitOptions, readCounters []N.CountFunc, writeCounters []N.CountFunc, inputN int64) (n int64, err error) {
-	readWaiter.InitializeReadWaiter(options)
-	vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(N.UnwrapWriter(destination))
+func copyWaitVectorisedWithPool(vectorisedWriter N.VectorisedWriter, readWaiter N.VectorisedReadWaiter, readCounters []N.CountFunc, writeCounters []N.CountFunc, inputN int64) (n int64, err error) {
 	n += inputN
-	sendChan := make(chan []*buf.Buffer, options.BatchSize)
-	errChan := make(chan error, 1)
-	go func() {
-		var (
-			buffers []*buf.Buffer
-			readErr error
-		)
-		for {
-			buffers, readErr = readWaiter.WaitReadBuffers()
-			if readErr != nil {
-				if errors.Is(readErr, io.EOF) {
-					errChan <- nil
-				} else {
-					errChan <- readErr
-				}
+	var buffers []*buf.Buffer
+	for {
+		buffers, err = readWaiter.WaitReadBuffers()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				err = nil
 				return
 			}
-			var dataLen int
-			for _, buffer := range buffers {
-				dataLen += buffer.Len()
-			}
-			sendChan <- buffers
-			n += int64(dataLen)
-			for _, counter := range readCounters {
-				counter(int64(dataLen))
-			}
-		}
-	}()
-	for {
-		select {
-		case buffers := <-sendChan:
-			if !isVectorisedWriter {
-				var dataLen int
-				for i, buffer := range buffers {
-					dataLen += buffer.Len()
-					err = destination.WriteBuffer(buffer)
-					if err != nil {
-						for _, buffer = range buffers[i:] {
-							buffer.Leak()
-						}
-						return
-					}
-				}
-				for _, counter := range writeCounters {
-					counter(int64(dataLen))
-				}
-			} else {
-			fetch:
-				for {
-					select {
-					case newBuffers := <-sendChan:
-						buffers = append(buffers, newBuffers...)
-					default:
-						break fetch
-					}
-				}
-				var dataLen int
-				for _, buffer := range buffers {
-					dataLen += buffer.Len()
-				}
-				err = vectorisedWriter.WriteVectorised(buffers)
-				if err != nil {
-					for _, buffer := range buffers {
-						buffer.Leak()
-					}
-					return
-				}
-				for _, counter := range writeCounters {
-					counter(int64(dataLen))
-				}
-			}
-		case err = <-errChan:
 			return
+		}
+		var dataLen int
+		for _, buffer := range buffers {
+			dataLen += buffer.Len()
+		}
+		err = vectorisedWriter.WriteVectorised(buffers)
+		if err != nil {
+			for _, buffer := range buffers {
+				buffer.Leak()
+			}
+			return
+		}
+		n += int64(dataLen)
+		for _, counter := range readCounters {
+			counter(int64(dataLen))
+		}
+		for _, counter := range writeCounters {
+			counter(int64(dataLen))
 		}
 	}
 }
