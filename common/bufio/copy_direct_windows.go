@@ -110,6 +110,8 @@ func createVectorisedSyscallReadWaiter(reader any) (*vectorisedSyscallReadWaiter
 
 func (w *vectorisedSyscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	w.options = options
+	w.buffers = make([]*buf.Buffer, options.BatchSize)
+	w.iovecList = make([]windows.WSABuf, options.BatchSize)
 	w.readFunc = func(fd uintptr) (done bool) {
 		if !w.hasData {
 			w.hasData = true
