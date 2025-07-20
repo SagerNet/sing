@@ -36,11 +36,31 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	}
 	*w.iovecList = iovecList // cache
 	var innerErr unix.Errno
+	writeIovecList := iovecList
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		//nolint:staticcheck
-		//goland:noinspection GoDeprecation
-		_, _, innerErr = unix.Syscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecList[0])), uintptr(len(iovecList)))
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			var r0 uintptr
+			//nolint:staticcheck
+			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&writeIovecList[0])), uintptr(len(writeIovecList)))
+			writeN := int(r0)
+			for writeN > 0 {
+				if buffers[0].Len() > writeN {
+					buffers[0].Advance(writeN)
+					writeIovecList[0].Base = &buffers[0].Bytes()[0]
+					writeIovecList[0].SetLen(buffers[0].Len())
+					break
+				} else {
+					writeN -= buffers[0].Len()
+					buffers[0].Release()
+					buffers = buffers[1:]
+					writeIovecList = writeIovecList[1:]
+				}
+			}
+			if innerErr == unix.EINTR || (innerErr == 0 && len(writeIovecList) > 0) {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
 	if innerErr != 0 {
 		err = os.NewSyscallError("SYS_WRITEV", innerErr)
@@ -68,7 +88,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 		w.iovecList = new([]unix.Iovec)
 	}
 	*w.iovecList = iovecList // cache
-	var innerErr error
+	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		var msg unix.Msghdr
 		name, nameLen := ToSockaddr(destination.AddrPort())
@@ -78,17 +98,19 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 			msg.Iov = &iovecList[0]
 			msg.SetIovlen(len(iovecList))
 		}
-		_, innerErr = sendmsg(int(fd), &msg, 0)
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			_, _, innerErr = unix.RawSyscall(unix.SYS_SENDMSG, fd, uintptr(unsafe.Pointer(&msg)), 0)
+			if innerErr == unix.EINTR {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
-	if innerErr != nil {
-		err = innerErr
+	if innerErr != 0 {
+		err = os.NewSyscallError("SYS_SENDMSG", innerErr)
 	}
 	for index := range iovecList {
 		iovecList[index] = unix.Iovec{}
 	}
 	return err
 }
-
-//go:linkname sendmsg golang.org/x/sys/unix.sendmsg
-func sendmsg(s int, msg *unix.Msghdr, flags int) (n int, err error)
