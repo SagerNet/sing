@@ -28,7 +28,12 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		innerErr = windows.WSASend(windows.Handle(fd), &iovecList[0], uint32(len(iovecList)), &n, 0, nil, nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
-	w.iovecList = iovecList[:0]
+	for i := range iovecList {
+		iovecList[i] = windows.WSABuf{}
+	}
+	if cap(iovecList) > cap(w.iovecList) {
+		w.iovecList = w.iovecList[:0]
+	}
 	if innerErr != nil {
 		err = innerErr
 	}
@@ -59,7 +64,12 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 			nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
-	w.iovecList = iovecList[:0]
+	for i := range iovecList {
+		iovecList[i] = windows.WSABuf{}
+	}
+	if cap(iovecList) > cap(w.iovecList) {
+		w.iovecList = w.iovecList[:0]
+	}
 	if innerErr != nil {
 		err = innerErr
 	}
