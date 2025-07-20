@@ -31,8 +31,8 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		w.iovecList = iovecList[:0]
 	}
 	var innerErr unix.Errno
+	writeIovecList := iovecList
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		writeIovecList := iovecList
 		for {
 			var r0 uintptr
 			//nolint:staticcheck
