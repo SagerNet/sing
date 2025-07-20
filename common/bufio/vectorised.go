@@ -20,23 +20,10 @@ func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
 }
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
-	var rawConn syscall.RawConn
-	switch w := writer.(type) {
-	case N.VectorisedWriter:
-		return w, true
-	case syscall.Conn:
-		var err error
-		rawConn, err = w.SyscallConn()
-		if err != nil {
-			return nil, false
-		}
-	case syscall.RawConn:
-		rawConn = w
-	default:
-		return nil, false
-	}
 	if runtime.GOOS == "windows" {
 		switch conn := writer.(type) {
+		case N.VectorisedWriter:
+			return conn, true
 		case *net.TCPConn:
 			return &NetVectorisedWriterWrapper{conn}, true
 		case *net.UDPConn:
@@ -45,11 +32,22 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 			return &NetVectorisedWriterWrapper{conn}, true
 		case *net.UnixConn:
 			return &NetVectorisedWriterWrapper{conn}, true
-		default:
-			return nil, false
+		}
+	} else {
+		switch conn := writer.(type) {
+		case N.VectorisedWriter:
+			return conn, true
+		case syscall.Conn:
+			rawConn, err := conn.SyscallConn()
+			if err != nil {
+				return nil, false
+			}
+			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
+		case syscall.RawConn:
+			return &SyscallVectorisedWriter{upstream: writer, rawConn: conn}, true
 		}
 	}
-	return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, false
+	return nil, false
 }
 
 func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {
