@@ -20,7 +20,7 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
-		iovecList = append(iovecList, buffer.Iovec())
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	var n uint32
 	var innerErr error
@@ -46,7 +46,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
-		iovecList = append(iovecList, buffer.Iovec())
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	var n uint32
 	var innerErr error
