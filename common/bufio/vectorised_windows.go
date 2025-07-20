@@ -15,7 +15,7 @@ type syscallVectorisedWriterFields struct {
 }
 
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
-	w.access.Lock()
+	/*w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
@@ -28,16 +28,15 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		innerErr = windows.WSASend(windows.Handle(fd), &iovecList[0], uint32(len(iovecList)), &n, 0, nil, nil)
 		return innerErr != windows.WSAEWOULDBLOCK
 	})
-	for i := range iovecList {
-		iovecList[i] = windows.WSABuf{}
-	}
+	common.ClearArray(iovecList)
 	if cap(iovecList) > cap(w.iovecList) {
 		w.iovecList = w.iovecList[:0]
 	}
 	if innerErr != nil {
 		err = innerErr
 	}
-	return err
+	return err*/
+	panic("not implemented")
 }
 
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {

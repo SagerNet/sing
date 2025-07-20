@@ -3,6 +3,7 @@ package bufio
 import (
 	"io"
 	"net"
+	"runtime"
 	"syscall"
 
 	"github.com/sagernet/sing/common"
@@ -19,26 +20,36 @@ func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
 }
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
+	var rawConn syscall.RawConn
 	switch w := writer.(type) {
 	case N.VectorisedWriter:
 		return w, true
-	/*case *net.TCPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.UDPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.IPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.UnixConn:
-		return &NetVectorisedWriterWrapper{w}, true*/
 	case syscall.Conn:
-		rawConn, err := w.SyscallConn()
-		if err == nil {
-			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
+		var err error
+		rawConn, err = w.SyscallConn()
+		if err != nil {
+			return nil, false
 		}
 	case syscall.RawConn:
-		return &SyscallVectorisedWriter{upstream: writer, rawConn: w}, true
+		rawConn = w
+	default:
+		return nil, false
 	}
-	return nil, false
+	if runtime.GOOS == "windows" {
+		switch conn := writer.(type) {
+		case *net.TCPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.UDPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.IPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.UnixConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		default:
+			return nil, false
+		}
+	}
+	return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, false
 }
 
 func CreateVectorisedPacketWriter(writer any) (N.VectorisedPacketWriter, bool) {

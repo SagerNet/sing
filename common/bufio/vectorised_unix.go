@@ -7,6 +7,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 
@@ -28,13 +29,30 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	}
 	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		//nolint:staticcheck
-		_, _, innerErr = unix.Syscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecList[0])), uintptr(len(iovecList)))
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			var r0 uintptr
+			//nolint:staticcheck
+			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecList[0])), uintptr(len(iovecList)))
+			writeN := int(r0)
+			for writeN > 0 {
+				if buffers[0].Len() > writeN {
+					buffers[0].Advance(writeN)
+					iovecList[0] = buffers[0].Iovec(buffers[0].Len())
+					break
+				} else {
+					writeN -= buffers[0].Len()
+					buffers[0].Release()
+					buffers = buffers[1:]
+					iovecList = iovecList[1:]
+				}
+			}
+			if innerErr == unix.EINTR || (innerErr == 0 && len(iovecList) > 0) {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
-	for i := range iovecList {
-		iovecList[i] = unix.Iovec{}
-	}
+	common.ClearArray(iovecList)
 	if cap(iovecList) > cap(w.iovecList) {
 		w.iovecList = iovecList[:0]
 	}
@@ -62,12 +80,15 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 			msg.Iov = &iovecList[0]
 			msg.SetIovlen(len(iovecList))
 		}
-		_, innerErr = sendmsg(int(fd), &msg, 0)
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			_, _, innerErr = unix.RawSyscall(unix.SYS_SENDMSG, fd, uintptr(unsafe.Pointer(&msg)), 0)
+			if innerErr == unix.EINTR {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
-	for i := range iovecList {
-		iovecList[i] = unix.Iovec{}
-	}
+	common.ClearArray(iovecList)
 	if cap(iovecList) > cap(w.iovecList) {
 		w.iovecList = iovecList[:0]
 	}
@@ -76,6 +97,3 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	}
 	return err
 }
-
-//go:linkname sendmsg golang.org/x/sys/unix.sendmsg
-func sendmsg(s int, msg *unix.Msghdr, flags int) (n int, err error)
