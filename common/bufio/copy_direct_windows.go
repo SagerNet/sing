@@ -127,9 +127,12 @@ func (w *vectorisedSyscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOpt
 			}
 			w.iovecList[i] = buffer.Iovec(buffer.Cap())
 		}
-		var readN uint32
+		var (
+			readN uint32
+			flags uint32
+		)
 		//nolint:staticcheck
-		w.readErr = windows.WSARecv(windows.Handle(fd), &w.iovecList[0], uint32(len(w.iovecList)), &readN, nil, nil, nil)
+		w.readErr = windows.WSARecv(windows.Handle(fd), &w.iovecList[0], uint32(len(w.iovecList)), &readN, &flags, nil, nil)
 		if readN > 0 {
 			pendingN := int(readN)
 			for _, buffer := range w.buffers {
