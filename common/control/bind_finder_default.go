@@ -3,6 +3,7 @@ package control
 import (
 	"net"
 	"net/netip"
+	"sync"
 
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -11,6 +12,7 @@ var _ InterfaceFinder = (*DefaultInterfaceFinder)(nil)
 
 type DefaultInterfaceFinder struct {
 	interfaces []Interface
+	access     sync.RWMutex
 }
 
 func NewDefaultInterfaceFinder() *DefaultInterfaceFinder {
@@ -31,7 +33,9 @@ func (f *DefaultInterfaceFinder) Update() error {
 		}
 		interfaces = append(interfaces, iif)
 	}
+	f.access.Lock()
 	f.interfaces = interfaces
+	f.access.Unlock()
 	return nil
 }
 
@@ -61,11 +65,14 @@ func (f *DefaultInterfaceFinder) ByName(name string) (*Interface, error) {
 }
 
 func (f *DefaultInterfaceFinder) ByIndex(index int) (*Interface, error) {
+	f.access.RLock()
 	for _, netInterface := range f.interfaces {
 		if netInterface.Index == index {
 			return &netInterface, nil
 		}
 	}
+	f.access.RUnlock()
+
 	_, err := net.InterfaceByIndex(index)
 	if err == nil {
 		err = f.Update()
