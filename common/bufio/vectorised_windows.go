@@ -45,15 +45,22 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		name, nameLen := ToSockaddr(destination.AddrPort())
+		var bufs *windows.WSABuf
+		if len(iovecList) > 0 {
+			bufs = &iovecList[0]
+		}
 		innerErr = windows.WSASendTo(
 			windows.Handle(fd),
-			&iovecList[0],
+			bufs,
 			uint32(len(iovecList)),
 			&n,
 			0,
