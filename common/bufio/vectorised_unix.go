@@ -25,6 +25,9 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	if cap(iovecList) > cap(w.iovecList) {
@@ -69,6 +72,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	if cap(iovecList) > cap(w.iovecList) {

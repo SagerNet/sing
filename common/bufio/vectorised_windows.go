@@ -45,6 +45,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	var n uint32
