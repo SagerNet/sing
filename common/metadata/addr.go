@@ -42,7 +42,7 @@ func (ap Socksaddr) Unwrap() Socksaddr {
 }
 
 func (ap Socksaddr) IsFqdn() bool {
-	return isDomainName(ap.Fqdn)
+	return IsDomainName(ap.Fqdn)
 }
 
 func (ap Socksaddr) IsValid() bool {
