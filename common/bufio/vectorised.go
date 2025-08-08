@@ -3,6 +3,7 @@ package bufio
 import (
 	"io"
 	"net"
+	"os"
 	"runtime"
 	"syscall"
 
@@ -102,6 +103,9 @@ type NetVectorisedWriterWrapper struct {
 }
 
 func (w *NetVectorisedWriterWrapper) WriteVectorised(buffers []*buf.Buffer) error {
+	if buf.LenMulti(buffers) == 0 {
+		return os.ErrInvalid
+	}
 	defer buf.ReleaseMulti(buffers)
 	netBuffers := net.Buffers(buf.ToSliceMulti(buffers))
 	return common.Error(netBuffers.WriteTo(w.upstream))
