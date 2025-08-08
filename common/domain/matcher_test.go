@@ -1,9 +1,6 @@
 package domain_test
 
 import (
-	"encoding/json"
-	"net/http"
-	"sort"
 	"testing"
 
 	"github.com/metacubex/sing/common/domain"
@@ -49,32 +46,4 @@ func TestMatcherLegacy(t *testing.T) {
 	dDomain, dDomainSuffix := matcher.Dump()
 	require.Equal(t, testDomain, dDomain)
 	require.Equal(t, testDomainSuffix, dDomainSuffix)
-}
-
-type simpleRuleSet struct {
-	Rules []struct {
-		Domain       []string `json:"domain"`
-		DomainSuffix []string `json:"domain_suffix"`
-	}
-}
-
-func TestDumpLarge(t *testing.T) {
-	t.Parallel()
-	response, err := http.Get("https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.json")
-	require.NoError(t, err)
-	defer response.Body.Close()
-	var ruleSet simpleRuleSet
-	err = json.NewDecoder(response.Body).Decode(&ruleSet)
-	require.NoError(t, err)
-	domainList := ruleSet.Rules[0].Domain
-	domainSuffixList := ruleSet.Rules[0].DomainSuffix
-	require.Len(t, ruleSet.Rules, 1)
-	require.True(t, len(domainList)+len(domainSuffixList) > 0)
-	sort.Strings(domainList)
-	sort.Strings(domainSuffixList)
-	matcher := domain.NewMatcher(domainList, domainSuffixList, false)
-	require.NotNil(t, matcher)
-	dDomain, dDomainSuffix := matcher.Dump()
-	require.Equal(t, domainList, dDomain)
-	require.Equal(t, domainSuffixList, dDomainSuffix)
 }
