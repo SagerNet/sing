@@ -1,6 +1,7 @@
 package bufio
 
 import (
+	"os"
 	"sync"
 
 	"github.com/metacubex/sing/common/buf"
@@ -24,10 +25,16 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	}
 	iovecList = iovecList[:0]
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, windows.WSABuf{
 			Buf: &buffer.Bytes()[0],
 			Len: uint32(buffer.Len()),
 		})
+	}
+	if len(iovecList) == 0 {
+		return os.ErrInvalid
 	}
 	if w.iovecList == nil {
 		w.iovecList = new([]windows.WSABuf)
@@ -58,6 +65,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	}
 	iovecList = iovecList[:0]
 	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, windows.WSABuf{
 			Buf: &buffer.Bytes()[0],
 			Len: uint32(buffer.Len()),
@@ -71,9 +81,13 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		name, nameLen := ToSockaddr(destination.AddrPort())
+		var bufs *windows.WSABuf
+		if len(iovecList) > 0 {
+			bufs = &iovecList[0]
+		}
 		innerErr = windows.WSASendTo(
 			windows.Handle(fd),
-			&iovecList[0],
+			bufs,
 			uint32(len(iovecList)),
 			&n,
 			0,

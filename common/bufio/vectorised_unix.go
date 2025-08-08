@@ -28,8 +28,14 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	}
 	iovecList = iovecList[:0]
 	for index, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
 		iovecList[index].SetLen(buffer.Len())
+	}
+	if len(iovecList) == 0 {
+		return os.ErrInvalid
 	}
 	if w.iovecList == nil {
 		w.iovecList = new([]unix.Iovec)
@@ -43,16 +49,13 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 			//nolint:staticcheck
 			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&writeIovecList[0])), uintptr(len(writeIovecList)))
 			writeN := int(r0)
-			for writeN > 0 {
-				if buffers[0].Len() > writeN {
-					buffers[0].Advance(writeN)
-					writeIovecList[0].Base = &buffers[0].Bytes()[0]
-					writeIovecList[0].SetLen(buffers[0].Len())
+			for writeN > 0 && len(writeIovecList) > 0 {
+				if int(writeIovecList[0].Len) > writeN {
+					writeIovecList[0].Base = (*byte)(unsafe.Add(unsafe.Pointer(writeIovecList[0].Base), writeN))
+					writeIovecList[0].SetLen(int(writeIovecList[0].Len) - writeN)
 					break
 				} else {
-					writeN -= buffers[0].Len()
-					buffers[0].Release()
-					buffers = buffers[1:]
+					writeN -= int(writeIovecList[0].Len)
 					writeIovecList = writeIovecList[1:]
 				}
 			}
@@ -81,6 +84,9 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	}
 	iovecList = iovecList[:0]
 	for index, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
 		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
 		iovecList[index].SetLen(buffer.Len())
 	}
