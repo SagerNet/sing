@@ -28,10 +28,7 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		if buffer.IsEmpty() {
 			continue
 		}
-		iovecList = append(iovecList, windows.WSABuf{
-			Buf: &buffer.Bytes()[0],
-			Len: uint32(buffer.Len()),
-		})
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	if len(iovecList) == 0 {
 		return os.ErrInvalid
@@ -68,10 +65,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 		if buffer.IsEmpty() {
 			continue
 		}
-		iovecList = append(iovecList, windows.WSABuf{
-			Buf: &buffer.Bytes()[0],
-			Len: uint32(buffer.Len()),
-		})
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
 	if w.iovecList == nil {
 		w.iovecList = new([]windows.WSABuf)
