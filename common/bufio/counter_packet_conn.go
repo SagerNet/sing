@@ -14,19 +14,27 @@ type CounterPacketConn struct {
 	writeCounter []N.CountFunc
 }
 
-func NewInt64CounterPacketConn(conn N.PacketConn, readCounter []*atomic.Int64, writeCounter []*atomic.Int64) *CounterPacketConn {
+func NewInt64CounterPacketConn(conn N.PacketConn, readCounter []*atomic.Int64, readPacketCounter []*atomic.Int64, writeCounter []*atomic.Int64, writePacketCounter []*atomic.Int64) *CounterPacketConn {
 	return &CounterPacketConn{
 		conn,
-		common.Map(readCounter, func(it *atomic.Int64) N.CountFunc {
+		append(common.Map(readCounter, func(it *atomic.Int64) N.CountFunc {
 			return func(n int64) {
 				it.Add(n)
 			}
-		}),
-		common.Map(writeCounter, func(it *atomic.Int64) N.CountFunc {
+		}), common.Map(readPacketCounter, func(it *atomic.Int64) N.CountFunc {
+			return func(n int64) {
+				it.Add(1)
+			}
+		})...),
+		append(common.Map(writeCounter, func(it *atomic.Int64) N.CountFunc {
 			return func(n int64) {
 				it.Add(n)
 			}
-		}),
+		}), common.Map(writePacketCounter, func(it *atomic.Int64) N.CountFunc {
+			return func(n int64) {
+				it.Add(1)
+			}
+		})...),
 	}
 }
 
