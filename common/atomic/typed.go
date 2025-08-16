@@ -27,3 +27,20 @@ func (t *TypedValue[T]) Swap(new T) T {
 	}
 	return *old
 }
+
+func (t *TypedValue[T]) CompareAndSwap(old, new T) bool {
+	for {
+		currentP := (*atomic.Pointer[T])(t).Load()
+		currentValue := common.DefaultValue[T]()
+		if currentP != nil {
+			currentValue = *currentP
+		}
+		// Compare old and current via runtime equality check.
+		if any(currentValue) != any(old) {
+			return false
+		}
+		if (*atomic.Pointer[T])(t).CompareAndSwap(currentP, &new) {
+			return true
+		}
+	}
+}
