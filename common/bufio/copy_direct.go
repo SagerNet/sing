@@ -57,8 +57,8 @@ func copyWaitWithPool(originSource io.Reader, destination N.ExtendedWriter, sour
 		notFirstTime = true
 		if !options.IncreaseBuffer && increaseBufferAfter > 0 && n >= increaseBufferAfter {
 			options.IncreaseBuffer = true
-			vectorisedReadWaiter, isVectorisedReadWaiter := CreateVectorisedReadWaiter(N.UnwrapReader(source))
-			vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(N.UnwrapWriter(destination))
+			vectorisedReadWaiter, isVectorisedReadWaiter := CreateVectorisedReadWaiter(source)
+			vectorisedWriter, isVectorisedWriter := CreateVectorisedWriter(destination)
 			if !isVectorisedReadWaiter || !isVectorisedWriter {
 				readWaiter.InitializeReadWaiter(options)
 				continue
