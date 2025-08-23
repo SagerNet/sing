@@ -83,7 +83,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		var msg unix.Msghdr
-		name, nameLen := ToSockaddr(destination.AddrPort())
+		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort())
 		msg.Name = (*byte)(name)
 		msg.Namelen = nameLen
 		if len(iovecList) > 0 {

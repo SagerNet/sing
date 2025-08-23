@@ -53,7 +53,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		name, nameLen := ToSockaddr(destination.AddrPort())
+		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort())
 		var bufs *windows.WSABuf
 		if len(iovecList) > 0 {
 			bufs = &iovecList[0]
