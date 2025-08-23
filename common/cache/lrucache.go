@@ -78,6 +78,13 @@ func (c *LruCache[K, V]) Load(key K) (V, bool) {
 }
 
 func (c *LruCache[K, V]) LoadOrStore(key K, constructor func() V) (V, bool) {
+	value, loaded, _ := c.LoadOrStoreEx(key, func() (V, bool) {
+		return constructor(), true
+	})
+	return value, loaded
+}
+
+func (c *LruCache[K, V]) LoadOrStoreEx(key K, constructor func() (V, bool)) (value V, loaded bool, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -93,12 +100,15 @@ func (c *LruCache[K, V]) LoadOrStore(key K, constructor func() V) (V, bool) {
 		if c.maxAge > 0 && c.updateAgeOnGet {
 			entry.expires = time.Now().Unix() + c.maxAge
 		}
-		return entry.value, true
+		return entry.value, true, true
 	}
 
 create:
-	value := constructor()
-	if le, ok := c.cache[key]; ok {
+	value, ok = constructor()
+	if !ok {
+		return
+	}
+	if le, ok = c.cache[key]; ok {
 		c.lru.MoveToBack(le)
 		e := le.Value
 		e.value = value
@@ -109,7 +119,7 @@ create:
 	}
 
 	c.maybeDeleteOldest()
-	return value, false
+	return value, false, true
 }
 
 func (c *LruCache[K, V]) LoadOrStoreWithAge(key K, maxAge int64, constructor func() V) (V, bool) {
