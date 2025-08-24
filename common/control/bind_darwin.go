@@ -23,7 +23,7 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 			}
 		}
 		switch network {
-		case "tcp6", "udp6":
+		case "tcp6", "udp6", "ip6":
 			return unix.SetsockoptInt(int(fd), unix.IPPROTO_IPV6, unix.IPV6_BOUND_IF, interfaceIndex)
 		default:
 			return unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_BOUND_IF, interfaceIndex)
