@@ -12,7 +12,14 @@ import (
 
 type Option[K comparable, V any] func(*LruCache[K, V])
 
+type HealthCheckCallback[K comparable, V any] func(K, V) bool
 type EvictCallback[K comparable, V any] func(key K, value V)
+
+func WithHealthCheck[K comparable, V any](cb HealthCheckCallback[K, V]) Option[K, V] {
+	return func(l *LruCache[K, V]) {
+		l.onHealthCheck = cb
+	}
+}
 
 func WithEvict[K comparable, V any](cb EvictCallback[K, V]) Option[K, V] {
 	return func(l *LruCache[K, V]) {
@@ -53,6 +60,7 @@ type LruCache[K comparable, V any] struct {
 	updateAgeOnGet bool
 	staleReturn    bool
 	onEvict        EvictCallback[K, V]
+	onHealthCheck  HealthCheckCallback[K, V]
 }
 
 func New[K comparable, V any](options ...Option[K, V]) *LruCache[K, V] {
@@ -90,7 +98,7 @@ func (c *LruCache[K, V]) LoadOrStoreEx(key K, constructor func() (V, bool)) (val
 
 	le, ok := c.cache[key]
 	if ok {
-		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() || (c.onHealthCheck != nil && !c.onHealthCheck(key, le.Value.value)) {
 			c.deleteElement(le)
 			goto create
 		}
@@ -132,7 +140,7 @@ func (c *LruCache[K, V]) LoadOrStoreWithAge(key K, maxAge int64, constructor fun
 
 	le, ok := c.cache[key]
 	if ok {
-		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() || (c.onHealthCheck != nil && !c.onHealthCheck(key, le.Value.value)) {
 			c.deleteElement(le)
 			goto create
 		}
@@ -242,7 +250,7 @@ func (c *LruCache[K, V]) get(key K) *entry[K, V] {
 		return nil
 	}
 
-	if !c.staleReturn && c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+	if !c.staleReturn && c.maxAge > 0 && le.Value.expires <= time.Now().Unix() || (c.onHealthCheck != nil && !c.onHealthCheck(key, le.Value.value)) {
 		c.deleteElement(le)
 		c.maybeDeleteOldest()
 
