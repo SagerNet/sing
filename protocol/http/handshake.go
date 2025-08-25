@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -164,7 +163,7 @@ func handleHTTPConnection(
 		return responseWith(request, http.StatusBadRequest).Write(conn)
 	}
 
-	var innerErr atomic.TypedValue[error]
+	var innerErr common.TypedValue[error]
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			DisableCompression: true,

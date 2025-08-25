@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
+	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"

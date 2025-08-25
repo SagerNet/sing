@@ -2,9 +2,9 @@ package deadline
 
 import (
 	"os"
+	"sync/atomic"
 	"time"
 
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 )
 

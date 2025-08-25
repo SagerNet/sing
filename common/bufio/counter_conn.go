@@ -3,9 +3,9 @@ package bufio
 import (
 	"io"
 	"net"
+	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	N "github.com/sagernet/sing/common/network"
 )
