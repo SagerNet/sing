@@ -2,9 +2,9 @@ package deadline
 
 import (
 	"os"
+	"sync/atomic"
 	"time"
 
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/buf"
 )
 

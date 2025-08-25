@@ -1,18 +1,15 @@
-package atomic
+package common
 
 import (
 	"sync/atomic"
-
-	"github.com/metacubex/sing/common"
 )
 
-// Deprecated: moved to common.TypedValue
 type TypedValue[T any] atomic.Pointer[T]
 
 func (t *TypedValue[T]) Load() T {
 	value := (*atomic.Pointer[T])(t).Load()
 	if value == nil {
-		return common.DefaultValue[T]()
+		return DefaultValue[T]()
 	}
 	return *value
 }
@@ -24,7 +21,7 @@ func (t *TypedValue[T]) Store(value T) {
 func (t *TypedValue[T]) Swap(new T) T {
 	old := (*atomic.Pointer[T])(t).Swap(&new)
 	if old == nil {
-		return common.DefaultValue[T]()
+		return DefaultValue[T]()
 	}
 	return *old
 }
@@ -32,7 +29,7 @@ func (t *TypedValue[T]) Swap(new T) T {
 func (t *TypedValue[T]) CompareAndSwap(old, new T) bool {
 	for {
 		currentP := (*atomic.Pointer[T])(t).Load()
-		currentValue := common.DefaultValue[T]()
+		currentValue := DefaultValue[T]()
 		if currentP != nil {
 			currentValue = *currentP
 		}

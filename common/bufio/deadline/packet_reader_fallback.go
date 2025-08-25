@@ -3,9 +3,9 @@ package deadline
 import (
 	"net"
 	"os"
+	"sync/atomic"
 	"time"
 
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/buf"
 	M "github.com/metacubex/sing/common/metadata"
 )

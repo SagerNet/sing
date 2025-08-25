@@ -2,9 +2,9 @@ package control
 
 import (
 	"os"
+	"sync/atomic"
 	"syscall"
 
-	"github.com/metacubex/sing/common/atomic"
 	E "github.com/metacubex/sing/common/exceptions"
 
 	"golang.org/x/sys/unix"
@@ -24,9 +24,6 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 					return err
 				}
 				interfaceIndex = iif.Index
-				if err != nil {
-					return err
-				}
 			}
 			err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_BINDTOIFINDEX, interfaceIndex)
 			if err == nil {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/metacubex/sing/common/atomic"
+	"github.com/metacubex/sing/common"
 	"github.com/metacubex/sing/common/buf"
 	"github.com/metacubex/sing/common/bufio"
 	N "github.com/metacubex/sing/common/network"
@@ -26,7 +26,7 @@ type Reader interface {
 type reader struct {
 	N.ExtendedReader
 	timeoutReader TimeoutReader
-	deadline      atomic.TypedValue[time.Time]
+	deadline      common.TypedValue[time.Time]
 	pipeDeadline  pipeDeadline
 	result        chan *readResult
 	done          chan struct{}

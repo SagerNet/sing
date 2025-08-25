@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/metacubex/sing/common"
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/auth"
 	"github.com/metacubex/sing/common/buf"
 	"github.com/metacubex/sing/common/bufio"
@@ -163,7 +162,7 @@ func handleHTTPConnection(
 		return responseWith(request, http.StatusBadRequest).Write(conn)
 	}
 
-	var innerErr atomic.TypedValue[error]
+	var innerErr common.TypedValue[error]
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			DisableCompression: true,

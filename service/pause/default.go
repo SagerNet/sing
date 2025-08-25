@@ -3,8 +3,8 @@ package pause
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/x/list"
 	"github.com/metacubex/sing/service"
 )

@@ -3,9 +3,9 @@ package bufio
 import (
 	"io"
 	"net"
+	"sync/atomic"
 
 	"github.com/metacubex/sing/common"
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/buf"
 	N "github.com/metacubex/sing/common/network"
 )

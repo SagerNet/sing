@@ -4,9 +4,9 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
+	"sync/atomic"
 
 	"github.com/metacubex/sing/common"
-	"github.com/metacubex/sing/common/atomic"
 	"github.com/metacubex/sing/common/debug"
 	E "github.com/metacubex/sing/common/exceptions"
 	F "github.com/metacubex/sing/common/format"
