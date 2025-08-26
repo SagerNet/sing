@@ -188,12 +188,6 @@ func (c *LruCache[K, V]) StoreWithExpire(key K, value V, expires time.Time) {
 	} else {
 		e := &entry[K, V]{key: key, value: value, expires: expires.Unix()}
 		c.cache[key] = c.lru.PushBack(e)
-
-		if c.maxSize > 0 {
-			if n := c.lru.Len(); n > c.maxSize {
-				c.deleteElement(c.lru.Front())
-			}
-		}
 	}
 
 	c.maybeDeleteOldest()
@@ -271,6 +265,12 @@ func (c *LruCache[K, V]) maybeDeleteOldest() {
 		now := time.Now().Unix()
 		for le := c.lru.Front(); le != nil && le.Value.expires <= now; le = c.lru.Front() {
 			c.deleteElement(le)
+		}
+	}
+
+	if c.maxSize > 0 {
+		if n := c.lru.Len(); n > c.maxSize {
+			c.deleteElement(c.lru.Front())
 		}
 	}
 }
