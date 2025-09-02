@@ -1,6 +1,7 @@
 package control
 
 import (
+	"errors"
 	"os"
 	"syscall"
 
@@ -32,12 +33,18 @@ func DisableUDPFragment() Func {
 			if network == "udp" || network == "udp4" {
 				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_DO)
 				if err != nil {
+					if errors.Is(err, windows.WSAENOPROTOOPT) {
+						return nil
+					}
 					return os.NewSyscallError("SETSOCKOPT IP_MTU_DISCOVER IP_PMTUDISC_DO", err)
 				}
 			}
 			if network == "udp" || network == "udp6" {
 				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IPV6, IPV6_MTU_DISCOVER, IP_PMTUDISC_DO)
 				if err != nil {
+					if errors.Is(err, windows.WSAENOPROTOOPT) {
+						return nil
+					}
 					return os.NewSyscallError("SETSOCKOPT IPV6_MTU_DISCOVER IP_PMTUDISC_DO", err)
 				}
 			}
