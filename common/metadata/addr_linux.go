@@ -8,8 +8,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func AddrPortToRawSockaddr(addrPort netip.AddrPort) (name unsafe.Pointer, nameLen uint32) {
-	if addrPort.Addr().Is4() {
+func AddrPortToRawSockaddr(addrPort netip.AddrPort, forceInet6 bool) (name unsafe.Pointer, nameLen uint32) {
+	if addrPort.Addr().Is4() && !forceInet6 {
 		var sa unix.RawSockaddrInet4
 		sa.Family = unix.AF_INET
 		sa.Addr = addrPort.Addr().As4()
