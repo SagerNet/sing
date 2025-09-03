@@ -1,9 +1,11 @@
 package bufio
 
 import (
+	"net/netip"
 	"sync"
 
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/control"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"golang.org/x/sys/windows"
@@ -12,6 +14,7 @@ import (
 type syscallVectorisedWriterFields struct {
 	access    sync.Mutex
 	iovecList []windows.WSABuf
+	localAddr netip.AddrPort
 }
 
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
@@ -42,6 +45,19 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
 	w.access.Lock()
 	defer w.access.Unlock()
+	if !w.localAddr.IsValid() {
+		err := control.Raw(w.rawConn, func(fd uintptr) error {
+			name, err := windows.Getsockname(windows.Handle(fd))
+			if err != nil {
+				return err
+			}
+			w.localAddr = M.AddrPortFromSockaddr(name)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
@@ -53,7 +69,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	var n uint32
 	var innerErr error
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort())
+		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort(), w.localAddr.Addr().Is6())
 		var bufs *windows.WSABuf
 		if len(iovecList) > 0 {
 			bufs = &iovecList[0]

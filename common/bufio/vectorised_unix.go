@@ -3,12 +3,14 @@
 package bufio
 
 import (
+	"net/netip"
 	"os"
 	"sync"
 	"unsafe"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/control"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"golang.org/x/sys/unix"
@@ -17,6 +19,7 @@ import (
 type syscallVectorisedWriterFields struct {
 	access    sync.Mutex
 	iovecList []unix.Iovec
+	localAddr netip.AddrPort
 }
 
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
@@ -69,6 +72,19 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
 	w.access.Lock()
 	defer w.access.Unlock()
+	if !w.localAddr.IsValid() {
+		err := control.Raw(w.rawConn, func(fd uintptr) error {
+			name, err := unix.Getsockname(int(fd))
+			if err != nil {
+				return err
+			}
+			w.localAddr = M.AddrPortFromSockaddr(name)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 	defer buf.ReleaseMulti(buffers)
 	iovecList := w.iovecList
 	for _, buffer := range buffers {
@@ -83,7 +99,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		var msg unix.Msghdr
-		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort())
+		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort(), w.localAddr.Addr().Is6())
 		msg.Name = (*byte)(name)
 		msg.Namelen = nameLen
 		if len(iovecList) > 0 {

@@ -46,8 +46,8 @@ func AddrPortFromRawSockaddr(sa *windows.RawSockaddr) netip.AddrPort {
 	}
 }
 
-func AddrPortToRawSockaddr(addrPort netip.AddrPort) (name unsafe.Pointer, nameLen int32) {
-	if addrPort.Addr().Is4() {
+func AddrPortToRawSockaddr(addrPort netip.AddrPort, forceInet6 bool) (name unsafe.Pointer, nameLen int32) {
+	if addrPort.Addr().Is4() && !forceInet6 {
 		sa := windows.RawSockaddrInet4{
 			Family: windows.AF_INET,
 			Addr:   addrPort.Addr().As4(),
