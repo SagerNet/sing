@@ -54,6 +54,14 @@ func UDPPipe(t *testing.T) (net.PacketConn, net.PacketConn, M.Socksaddr) {
 	return serverConn, clientConn, M.SocksaddrFromNet(clientConn.LocalAddr())
 }
 
+func UDPPipe6(t *testing.T) (net.PacketConn, net.PacketConn, M.Socksaddr) {
+	serverConn, err := net.ListenPacket("udp", "[::]:0")
+	require.NoError(t, err)
+	clientConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	return serverConn, clientConn, M.SocksaddrFromNet(clientConn.LocalAddr())
+}
+
 func Timeout(t *testing.T) context.CancelFunc {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
