@@ -3,6 +3,7 @@ package bufio
 import (
 	"io"
 	"net"
+	"net/netip"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -22,6 +23,46 @@ func NewPacketConn(conn net.PacketConn) N.NetPacketConn {
 
 type ExtendedUDPConn struct {
 	*net.UDPConn
+}
+
+func (w *ExtendedUDPConn) ReadFromUDP(b []byte) (n int, addr *net.UDPAddr, err error) {
+	n, addr, err = w.UDPConn.ReadFromUDP(b)
+	if err == nil {
+		addr.IP = M.AddrFromNet(addr).Unmap().AsSlice()
+	}
+	return
+}
+
+func (w *ExtendedUDPConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	n, addr, err = w.UDPConn.ReadFrom(b)
+	if err == nil {
+		addr = M.SocksaddrFromNet(addr).Unwrap().UDPAddr()
+	}
+	return
+}
+
+func (w *ExtendedUDPConn) ReadFromUDPAddrPort(b []byte) (n int, addr netip.AddrPort, err error) {
+	n, addr, err = w.UDPConn.ReadFromUDPAddrPort(b)
+	if err == nil {
+		addr = netip.AddrPortFrom(addr.Addr().Unmap(), addr.Port())
+	}
+	return
+}
+
+func (w *ExtendedUDPConn) ReadMsgUDP(b, oob []byte) (n, oobn, flags int, addr *net.UDPAddr, err error) {
+	n, oobn, flags, addr, err = w.UDPConn.ReadMsgUDP(b, oob)
+	if err == nil {
+		addr.IP = M.AddrFromNet(addr).Unmap().AsSlice()
+	}
+	return
+}
+
+func (w *ExtendedUDPConn) ReadMsgUDPAddrPort(b, oob []byte) (n, oobn, flags int, addr netip.AddrPort, err error) {
+	n, oobn, flags, addr, err = w.UDPConn.ReadMsgUDPAddrPort(b, oob)
+	if err == nil {
+		addr = netip.AddrPortFrom(addr.Addr().Unmap(), addr.Port())
+	}
+	return
 }
 
 func (w *ExtendedUDPConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
@@ -44,6 +85,14 @@ func (w *ExtendedUDPConn) Upstream() any {
 
 type ExtendedPacketConn struct {
 	net.PacketConn
+}
+
+func (w *ExtendedPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
+	n, addr, err = w.PacketConn.ReadFrom(b)
+	if err == nil {
+		addr = M.SocksaddrFromNet(addr).Unwrap().UDPAddr()
+	}
+	return
 }
 
 func (w *ExtendedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
