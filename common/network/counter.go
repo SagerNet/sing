@@ -2,6 +2,9 @@ package network
 
 import (
 	"io"
+	"syscall"
+
+	"github.com/sagernet/sing/common"
 )
 
 type CountFunc func(n int64)
@@ -27,11 +30,22 @@ type PacketWriteCounter interface {
 }
 
 func UnwrapCountReader(reader io.Reader, countFunc []CountFunc) (io.Reader, []CountFunc) {
-	reader = UnwrapReader(reader)
 	if counter, isCounter := reader.(ReadCounter); isCounter {
 		upstreamReader, upstreamCountFunc := counter.UnwrapReader()
 		countFunc = append(countFunc, upstreamCountFunc...)
 		return UnwrapCountReader(upstreamReader, countFunc)
+	}
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return reader, countFunc
+	}
+	switch u := reader.(type) {
+	case ReadWaiter, ReadWaitCreator, syscall.Conn:
+		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
+		return reader, countFunc
+	case WithUpstreamReader:
+		return UnwrapCountReader(u.UpstreamReader().(io.Reader), countFunc)
+	case common.WithUpstream:
+		return UnwrapCountReader(u.Upstream().(io.Reader), countFunc)
 	}
 	return reader, countFunc
 }
@@ -47,11 +61,22 @@ func UnwrapCountWriter(writer io.Writer, countFunc []CountFunc) (io.Writer, []Co
 }
 
 func UnwrapCountPacketReader(reader PacketReader, countFunc []CountFunc) (PacketReader, []CountFunc) {
-	reader = UnwrapPacketReader(reader)
 	if counter, isCounter := reader.(PacketReadCounter); isCounter {
 		upstreamReader, upstreamCountFunc := counter.UnwrapPacketReader()
 		countFunc = append(countFunc, upstreamCountFunc...)
 		return UnwrapCountPacketReader(upstreamReader, countFunc)
+	}
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return reader, countFunc
+	}
+	switch u := reader.(type) {
+	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn:
+		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
+		return reader, countFunc
+	case WithUpstreamReader:
+		return UnwrapCountPacketReader(u.UpstreamReader().(PacketReader), countFunc)
+	case common.WithUpstream:
+		return UnwrapCountPacketReader(u.Upstream().(PacketReader), countFunc)
 	}
 	return reader, countFunc
 }
