@@ -58,9 +58,19 @@ func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBuf
 	return CopyWithCounters(destination, source, originSource, readCounters, writeCounters, increaseBufferAfter, batchSize)
 }
 
+type syscallReader interface {
+	io.Reader
+	syscall.Conn
+}
+
+type syscallWriter interface {
+	io.Writer
+	syscall.Conn
+}
+
 func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64, batchSize int) (n int64, err error) {
-	srcSyscallConn, srcIsSyscall := source.(syscall.Conn)
-	dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
+	srcSyscallConn, srcIsSyscall := N.CastReader[syscallReader](source)
+	dstSyscallConn, dstIsSyscall := N.CastWriter[syscallWriter](destination)
 	if srcIsSyscall && dstIsSyscall {
 		var handled bool
 		handled, n, err = copyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
