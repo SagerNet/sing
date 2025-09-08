@@ -114,15 +114,16 @@ type VectorisedPacketReadWaitCreator interface {
 	CreateVectorisedPacketReadWaiter() (VectorisedPacketReadWaiter, bool)
 }
 
-type SyscallReadCreator interface {
-	SyscallConnForRead() syscall.Conn
+type SyscallReader interface {
+	SyscallConnForRead() syscall.RawConn
+	HandleSyscallReadError(inputErr error) ([]byte, error)
 }
 
 func SyscallAvailableForRead(reader io.Reader) bool {
 	if _, ok := reader.(syscall.Conn); ok {
 		return true
 	}
-	if _, ok := reader.(SyscallReadCreator); ok {
+	if _, ok := reader.(SyscallReader); ok {
 		return true
 	}
 	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
@@ -137,15 +138,16 @@ func SyscallAvailableForRead(reader io.Reader) bool {
 	return false
 }
 
-func SyscallConnForRead(reader io.Reader) syscall.Conn {
+func SyscallConnForRead(reader io.Reader) (SyscallReader, syscall.RawConn) {
 	if c, ok := reader.(syscall.Conn); ok {
-		return c
+		conn, _ := c.SyscallConn()
+		return nil, conn
 	}
-	if c, ok := reader.(SyscallReadCreator); ok {
-		return c.SyscallConnForRead()
+	if c, ok := reader.(SyscallReader); ok {
+		return c, c.SyscallConnForRead()
 	}
-	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
-		return nil
+	if u, ok := reader.(ReaderWithUpstream); !ok || u.ReaderReplaceable() {
+		return nil, nil
 	}
 	if u, ok := reader.(WithUpstreamReader); ok {
 		return SyscallConnForRead(u.UpstreamReader().(io.Reader))
@@ -153,18 +155,18 @@ func SyscallConnForRead(reader io.Reader) syscall.Conn {
 	if u, ok := reader.(common.WithUpstream); ok {
 		return SyscallConnForRead(u.Upstream().(io.Reader))
 	}
-	return nil
+	return nil, nil
 }
 
-type SyscallWriteCreator interface {
-	SyscallConnForWrite() syscall.Conn
+type SyscallWriter interface {
+	SyscallConnForWrite() syscall.RawConn
 }
 
 func SyscallAvailableForWrite(writer io.Writer) bool {
 	if _, ok := writer.(syscall.Conn); ok {
 		return true
 	}
-	if _, ok := writer.(SyscallWriteCreator); ok {
+	if _, ok := writer.(SyscallWriter); ok {
 		return true
 	}
 	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
@@ -179,15 +181,16 @@ func SyscallAvailableForWrite(writer io.Writer) bool {
 	return false
 }
 
-func SyscallConnForWrite(writer io.Writer) syscall.Conn {
+func SyscallConnForWrite(writer io.Writer) (SyscallWriter, syscall.RawConn) {
 	if c, ok := writer.(syscall.Conn); ok {
-		return c
+		conn, _ := c.SyscallConn()
+		return nil, conn
 	}
-	if c, ok := writer.(SyscallWriteCreator); ok {
-		return c.SyscallConnForWrite()
+	if c, ok := writer.(SyscallWriter); ok {
+		return c, c.SyscallConnForWrite()
 	}
 	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
-		return nil
+		return nil, nil
 	}
 	if u, ok := writer.(WithUpstreamWriter); ok {
 		return SyscallConnForWrite(u.UpstreamWriter().(io.Writer))
@@ -195,5 +198,5 @@ func SyscallConnForWrite(writer io.Writer) syscall.Conn {
 	if u, ok := writer.(common.WithUpstream); ok {
 		return SyscallConnForWrite(u.Upstream().(io.Writer))
 	}
-	return nil
+	return nil, nil
 }

@@ -13,20 +13,12 @@ func copyDirect(source io.Reader, destination io.Writer, readCounters []N.CountF
 	if !N.SyscallAvailableForRead(source) || !N.SyscallAvailableForWrite(destination) {
 		return
 	}
-	sourceConn := N.SyscallConnForRead(source)
-	destinationConn := N.SyscallConnForWrite(destination)
+	sourceReader, sourceConn := N.SyscallConnForRead(source)
+	destinationWriter, destinationConn := N.SyscallConnForWrite(destination)
 	if sourceConn == nil || destinationConn == nil {
 		return
 	}
-	rawSource, err := sourceConn.SyscallConn()
-	if err != nil {
-		return
-	}
-	rawDestination, err := destinationConn.SyscallConn()
-	if err != nil {
-		return
-	}
-	handed, n, err = splice(rawSource, rawDestination, readCounters, writeCounters)
+	handed, n, err = splice(sourceConn, sourceReader, destinationConn, destinationWriter, readCounters, writeCounters)
 	return
 }
 
