@@ -17,7 +17,7 @@ type Config interface {
 	SetServerName(serverName string)
 	NextProtos() []string
 	SetNextProtos(nextProto []string)
-	Config() (*STDConfig, error)
+	STDConfig() (*STDConfig, error)
 	Client(conn net.Conn) (Conn, error)
 	Clone() Config
 }
