@@ -3,19 +3,26 @@ package bufio
 import (
 	"errors"
 	"io"
-	"syscall"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
 
-func copyDirect(source syscall.Conn, destination syscall.Conn, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handed bool, n int64, err error) {
-	rawSource, err := source.SyscallConn()
+func copyDirect(source io.Reader, destination io.Writer, readCounters []N.CountFunc, writeCounters []N.CountFunc) (handed bool, n int64, err error) {
+	if !N.SyscallAvailableForRead(source) || !N.SyscallAvailableForWrite(destination) {
+		return
+	}
+	sourceConn := N.SyscallConnForRead(source)
+	destinationConn := N.SyscallConnForWrite(destination)
+	if sourceConn == nil || destinationConn == nil {
+		return
+	}
+	rawSource, err := sourceConn.SyscallConn()
 	if err != nil {
 		return
 	}
-	rawDestination, err := destination.SyscallConn()
+	rawDestination, err := destinationConn.SyscallConn()
 	if err != nil {
 		return
 	}
