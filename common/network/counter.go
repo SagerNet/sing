@@ -39,7 +39,7 @@ func UnwrapCountReader(reader io.Reader, countFunc []CountFunc) (io.Reader, []Co
 		return reader, countFunc
 	}
 	switch u := reader.(type) {
-	case ReadWaiter, ReadWaitCreator, syscall.Conn:
+	case ReadWaiter, ReadWaitCreator, syscall.Conn, SyscallReadCreator:
 		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
 		return reader, countFunc
 	case WithUpstreamReader:
@@ -51,11 +51,22 @@ func UnwrapCountReader(reader io.Reader, countFunc []CountFunc) (io.Reader, []Co
 }
 
 func UnwrapCountWriter(writer io.Writer, countFunc []CountFunc) (io.Writer, []CountFunc) {
-	writer = UnwrapWriter(writer)
 	if counter, isCounter := writer.(WriteCounter); isCounter {
 		upstreamWriter, upstreamCountFunc := counter.UnwrapWriter()
 		countFunc = append(countFunc, upstreamCountFunc...)
 		return UnwrapCountWriter(upstreamWriter, countFunc)
+	}
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return writer, countFunc
+	}
+	switch u := writer.(type) {
+	case syscall.Conn, SyscallWriteCreator:
+		// In our use cases, counters is always at the top, so we stop when we encounter syscall conn
+		return writer, countFunc
+	case WithUpstreamWriter:
+		return UnwrapCountWriter(u.UpstreamWriter().(io.Writer), countFunc)
+	case common.WithUpstream:
+		return UnwrapCountWriter(u.Upstream().(io.Writer), countFunc)
 	}
 	return writer, countFunc
 }
@@ -70,7 +81,7 @@ func UnwrapCountPacketReader(reader PacketReader, countFunc []CountFunc) (Packet
 		return reader, countFunc
 	}
 	switch u := reader.(type) {
-	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn:
+	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn, SyscallWriteCreator:
 		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
 		return reader, countFunc
 	case WithUpstreamReader:
@@ -87,6 +98,18 @@ func UnwrapCountPacketWriter(writer PacketWriter, countFunc []CountFunc) (Packet
 		upstreamWriter, upstreamCountFunc := counter.UnwrapPacketWriter()
 		countFunc = append(countFunc, upstreamCountFunc...)
 		return UnwrapCountPacketWriter(upstreamWriter, countFunc)
+	}
+	if u, ok := writer.(WriterWithUpstream); !ok || !u.WriterReplaceable() {
+		return writer, countFunc
+	}
+	switch u := writer.(type) {
+	case syscall.Conn, SyscallWriteCreator:
+		// In our use cases, counters is always at the top, so we stop when we encounter syscall conn
+		return writer, countFunc
+	case WithUpstreamWriter:
+		return UnwrapCountPacketWriter(u.UpstreamWriter().(PacketWriter), countFunc)
+	case common.WithUpstream:
+		return UnwrapCountPacketWriter(u.Upstream().(PacketWriter), countFunc)
 	}
 	return writer, countFunc
 }
