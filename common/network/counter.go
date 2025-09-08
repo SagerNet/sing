@@ -39,7 +39,7 @@ func UnwrapCountReader(reader io.Reader, countFunc []CountFunc) (io.Reader, []Co
 		return reader, countFunc
 	}
 	switch u := reader.(type) {
-	case ReadWaiter, ReadWaitCreator, syscall.Conn, SyscallReadCreator:
+	case ReadWaiter, ReadWaitCreator, syscall.Conn, SyscallReader:
 		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
 		return reader, countFunc
 	case WithUpstreamReader:
@@ -60,7 +60,7 @@ func UnwrapCountWriter(writer io.Writer, countFunc []CountFunc) (io.Writer, []Co
 		return writer, countFunc
 	}
 	switch u := writer.(type) {
-	case syscall.Conn, SyscallWriteCreator:
+	case syscall.Conn, SyscallWriter:
 		// In our use cases, counters is always at the top, so we stop when we encounter syscall conn
 		return writer, countFunc
 	case WithUpstreamWriter:
@@ -81,7 +81,7 @@ func UnwrapCountPacketReader(reader PacketReader, countFunc []CountFunc) (Packet
 		return reader, countFunc
 	}
 	switch u := reader.(type) {
-	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn, SyscallWriteCreator:
+	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn:
 		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
 		return reader, countFunc
 	case WithUpstreamReader:
@@ -103,7 +103,7 @@ func UnwrapCountPacketWriter(writer PacketWriter, countFunc []CountFunc) (Packet
 		return writer, countFunc
 	}
 	switch u := writer.(type) {
-	case syscall.Conn, SyscallWriteCreator:
+	case syscall.Conn:
 		// In our use cases, counters is always at the top, so we stop when we encounter syscall conn
 		return writer, countFunc
 	case WithUpstreamWriter:
