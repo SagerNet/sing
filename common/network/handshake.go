@@ -38,11 +38,9 @@ func CloseOnHandshakeFailure(reporter io.Closer, onClose CloseHandlerFunc, err e
 		if handshakeConn, isHandshakeConn := common.Cast[HandshakeFailure](reporter); isHandshakeConn {
 			hErr := handshakeConn.HandshakeFailure(err)
 			err = E.Append(err, hErr, func(err error) error {
-				if closer, isCloser := reporter.(io.Closer); isCloser {
-					err = E.Append(err, closer.Close(), func(err error) error {
-						return E.Cause(err, "close")
-					})
-				}
+				err = E.Append(err, reporter.Close(), func(err error) error {
+					return E.Cause(err, "close")
+				})
 				return E.Cause(err, "write handshake failure")
 			})
 		} else {
