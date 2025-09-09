@@ -190,40 +190,40 @@ type ExtendedConnWrapper struct {
 	writer N.ExtendedWriter
 }
 
-func (w *ExtendedConnWrapper) ReadBuffer(buffer *buf.Buffer) error {
-	return w.reader.ReadBuffer(buffer)
+func (c *ExtendedConnWrapper) ReadBuffer(buffer *buf.Buffer) error {
+	return c.reader.ReadBuffer(buffer)
 }
 
-func (w *ExtendedConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
-	return w.writer.WriteBuffer(buffer)
+func (c *ExtendedConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
+	return c.writer.WriteBuffer(buffer)
 }
 
-func (w *ExtendedConnWrapper) ReadFrom(r io.Reader) (n int64, err error) {
-	return Copy(w.writer, r)
+func (c *ExtendedConnWrapper) ReadFrom(r io.Reader) (n int64, err error) {
+	return Copy(c.writer, r)
 }
 
-func (r *ExtendedConnWrapper) WriteTo(w io.Writer) (n int64, err error) {
-	return Copy(w, r.reader)
+func (c *ExtendedConnWrapper) WriteTo(w io.Writer) (n int64, err error) {
+	return Copy(w, c.reader)
 }
 
-func (w *ExtendedConnWrapper) UpstreamReader() any {
-	return w.reader
+func (c *ExtendedConnWrapper) UpstreamReader() any {
+	return c.reader
 }
 
-func (w *ExtendedConnWrapper) ReaderReplaceable() bool {
+func (c *ExtendedConnWrapper) ReaderReplaceable() bool {
 	return true
 }
 
-func (w *ExtendedConnWrapper) UpstreamWriter() any {
-	return w.writer
+func (c *ExtendedConnWrapper) UpstreamWriter() any {
+	return c.writer
 }
 
-func (w *ExtendedConnWrapper) WriterReplaceable() bool {
+func (c *ExtendedConnWrapper) WriterReplaceable() bool {
 	return true
 }
 
-func (w *ExtendedConnWrapper) Upstream() any {
-	return w.Conn
+func (c *ExtendedConnWrapper) Upstream() any {
+	return c.Conn
 }
 
 func NewExtendedConn(conn net.Conn) N.ExtendedConn {

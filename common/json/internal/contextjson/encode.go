@@ -307,6 +307,7 @@ func (e *encodeState) error(err error) {
 	panic(jsonError{err})
 }
 
+//nolint:staticcheck
 func isEmptyValue(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
