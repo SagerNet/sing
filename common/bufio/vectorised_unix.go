@@ -119,6 +119,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 			msg.SetIovlen(len(iovecList))
 		}
 		for {
+			//nolint:staticcheck
 			_, _, innerErr = unix.RawSyscall(unix.SYS_SENDMSG, fd, uintptr(unsafe.Pointer(&msg)), 0)
 			if innerErr == unix.EINTR {
 				continue

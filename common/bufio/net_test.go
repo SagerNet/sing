@@ -91,11 +91,7 @@ func newLargeDataPair() (chan hashPair, chan hashPair, func(t *testing.T) error)
 		var serverPair hashPair
 		var clientPair hashPair
 
-		for {
-			if pingOpen && pongOpen {
-				break
-			}
-
+		for !(pingOpen && pongOpen) {
 			select {
 			case serverPair, pingOpen = <-pingCh:
 				assert.True(t, pingOpen)

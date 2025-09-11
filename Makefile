@@ -15,7 +15,7 @@ lint:
 	GOOS=freebsd golangci-lint run
 
 lint_install:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install -v github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 test:
 	go test ./...
