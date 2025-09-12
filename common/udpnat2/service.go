@@ -70,11 +70,11 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	if !ok {
 		return
 	}
+	conn.handlerAccess.RLock()
 	buffer := conn.readWaitOptions.NewPacketBuffer()
 	for _, bufferSlice := range bufferSlices {
 		buffer.Write(bufferSlice)
 	}
-	conn.handlerAccess.RLock()
 	handler := conn.handler
 	conn.handlerAccess.RUnlock()
 	if handler != nil {
