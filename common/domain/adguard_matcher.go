@@ -84,7 +84,17 @@ func (m *AdGuardMatcher) Match(domain string) bool {
 }
 
 func (m *AdGuardMatcher) has(key []byte, nodeId, bmIdx int) bool {
-	for i := 0; i < len(key); i++ {
+	return m.hasWithDepth(key, nodeId, bmIdx, 0)
+}
+
+func (m *AdGuardMatcher) hasWithDepth(key []byte, nodeId, bmIdx int, depth int) bool {
+	const maxDepth = 100
+	if depth > maxDepth {
+		return false
+	}
+
+	keyLen := len(key)
+	for i := 0; i < keyLen; i++ {
 		currentChar := key[i]
 		for ; ; bmIdx++ {
 			if getBit(m.set.labelBitmap, bmIdx) != 0 {
@@ -104,21 +114,16 @@ func (m *AdGuardMatcher) has(key []byte, nodeId, bmIdx int) bool {
 			if nextLabel == currentChar {
 				break
 			}
-			if nextLabel == anyLabel {
+			if nextLabel == anyLabel || nextLabel == suffixLabel {
 				nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
 				nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
 
-				for j := i; j <= len(key); j++ {
-					if m.has(key[j:], nextNodeId, nextBmIdx) {
-						return true
-					}
+				if m.hasWithDepth(key[i:], nextNodeId, nextBmIdx, depth+1) {
+					return true
 				}
-			}
-			if nextLabel == suffixLabel {
-				nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
-				nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
-				for j := i; j <= len(key); j++ {
-					if m.has(key[j:], nextNodeId, nextBmIdx) {
+
+				for j := i + 1; j <= keyLen; j++ {
+					if m.hasWithDepth(key[j:], nextNodeId, nextBmIdx, depth+1) {
 						return true
 					}
 				}
@@ -135,16 +140,13 @@ func (m *AdGuardMatcher) has(key []byte, nodeId, bmIdx int) bool {
 			return false
 		}
 		nextLabel := m.set.labels[bmIdx-nodeId]
-		if nextLabel == prefixLabel || nextLabel == rootLabel {
-			return true
-		}
-		if nextLabel == suffixLabel {
+		if nextLabel == prefixLabel || nextLabel == rootLabel || nextLabel == suffixLabel {
 			return true
 		}
 		if nextLabel == anyLabel {
 			nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
 			nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
-			return m.has([]byte{}, nextNodeId, nextBmIdx)
+			return m.hasWithDepth([]byte{}, nextNodeId, nextBmIdx, depth+1)
 		}
 	}
 }
