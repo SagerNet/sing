@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"bytes"
 	"sort"
 	"strings"
 
@@ -106,17 +105,22 @@ func (m *AdGuardMatcher) has(key []byte, nodeId, bmIdx int) bool {
 				break
 			}
 			if nextLabel == anyLabel {
-				idx := bytes.IndexRune(key[i:], '.')
 				nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
-				if idx == -1 {
-					if getBit(m.set.leaves, nextNodeId) != 0 {
+				nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
+
+				for j := i; j <= len(key); j++ {
+					if m.has(key[j:], nextNodeId, nextBmIdx) {
 						return true
 					}
-					idx = 0
 				}
+			}
+			if nextLabel == suffixLabel {
+				nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
 				nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
-				if m.has(key[i+idx:], nextNodeId, nextBmIdx) {
-					return true
+				for j := i; j <= len(key); j++ {
+					if m.has(key[j:], nextNodeId, nextBmIdx) {
+						return true
+					}
 				}
 			}
 		}
@@ -133,6 +137,14 @@ func (m *AdGuardMatcher) has(key []byte, nodeId, bmIdx int) bool {
 		nextLabel := m.set.labels[bmIdx-nodeId]
 		if nextLabel == prefixLabel || nextLabel == rootLabel {
 			return true
+		}
+		if nextLabel == suffixLabel {
+			return true
+		}
+		if nextLabel == anyLabel {
+			nextNodeId := countZeros(m.set.labelBitmap, m.set.ranks, bmIdx+1)
+			nextBmIdx := selectIthOne(m.set.labelBitmap, m.set.ranks, m.set.selects, nextNodeId-1) + 1
+			return m.has([]byte{}, nextNodeId, nextBmIdx)
 		}
 	}
 }
