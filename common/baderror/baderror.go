@@ -53,6 +53,9 @@ func WrapQUIC(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
 	if Contains(err,
 		"canceled by remote with error code 0",
 		"canceled by local with error code 0",
