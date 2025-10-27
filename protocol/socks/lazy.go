@@ -35,12 +35,12 @@ func (c *LazyConn) ConnHandshakeSuccess(conn net.Conn) error {
 	case socks4.Version:
 		return socks4.WriteResponse(c.Conn, socks4.Response{
 			ReplyCode:   socks4.ReplyCodeGranted,
-			Destination: M.SocksaddrFromNet(conn.LocalAddr()),
+			Destination: M.SocksaddrFromNet(conn.LocalAddr()).Unwrap(),
 		})
 	case socks5.Version:
 		return socks5.WriteResponse(c.Conn, socks5.Response{
 			ReplyCode: socks5.ReplyCodeSuccess,
-			Bind:      M.SocksaddrFromNet(conn.LocalAddr()),
+			Bind:      M.SocksaddrFromNet(conn.LocalAddr()).Unwrap(),
 		})
 	default:
 		panic("unknown socks version")
@@ -124,7 +124,7 @@ func (c *LazyAssociatePacketConn) HandshakeSuccess() error {
 	}()
 	return socks5.WriteResponse(c.underlying, socks5.Response{
 		ReplyCode: socks5.ReplyCodeSuccess,
-		Bind:      M.SocksaddrFromNet(c.conn.LocalAddr()),
+		Bind:      M.SocksaddrFromNet(c.conn.LocalAddr()).Unwrap(),
 	})
 }
 

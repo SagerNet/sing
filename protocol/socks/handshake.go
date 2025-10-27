@@ -239,7 +239,7 @@ func HandleConnectionEx(
 			}
 			err = socks5.WriteResponse(conn, socks5.Response{
 				ReplyCode: socks5.ReplyCodeSuccess,
-				Bind:      M.SocksaddrFromNet(udpConn.LocalAddr()),
+				Bind:      M.SocksaddrFromNet(udpConn.LocalAddr()).Unwrap(),
 			})
 			if err != nil {
 				return E.Cause(err, "socks5: write response")
