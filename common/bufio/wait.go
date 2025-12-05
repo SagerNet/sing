@@ -20,6 +20,20 @@ func CreateReadWaiter(reader io.Reader) (N.ReadWaiter, bool) {
 	return nil, false
 }
 
+func CreateVectorisedReadWaiter(reader io.Reader) (N.VectorisedReadWaiter, bool) {
+	reader = N.UnwrapReader(reader)
+	if vectorisedReadWaiter, isVectorised := reader.(N.VectorisedReadWaiter); isVectorised {
+		return vectorisedReadWaiter, true
+	}
+	if readWaitCreator, isCreator := reader.(N.VectorisedReadWaitCreator); isCreator {
+		return readWaitCreator.CreateVectorisedReadWaiter()
+	}
+	if vectorisedReadWaiter, created := createVectorisedSyscallReadWaiter(reader); created {
+		return vectorisedReadWaiter, true
+	}
+	return nil, false
+}
+
 func CreatePacketReadWaiter(reader N.PacketReader) (N.PacketReadWaiter, bool) {
 	reader = N.UnwrapPacketReader(reader)
 	if readWaiter, isReadWaiter := reader.(N.PacketReadWaiter); isReadWaiter {
@@ -32,4 +46,8 @@ func CreatePacketReadWaiter(reader N.PacketReader) (N.PacketReadWaiter, bool) {
 		return readWaiter, true
 	}
 	return nil, false
+}
+
+func CreatePacketVectorisedReadWaiter(reader N.PacketReader) (N.VectorisedPacketReadWaiter, bool) {
+	panic("TODO")
 }

@@ -3,6 +3,8 @@ package bufio
 import (
 	"io"
 	"net"
+	"os"
+	"runtime"
 	"syscall"
 
 	"github.com/sagernet/sing/common"
@@ -12,31 +14,39 @@ import (
 )
 
 func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
-	if vectorisedWriter, ok := CreateVectorisedWriter(N.UnwrapWriter(writer)); ok {
+	if vectorisedWriter, ok := CreateVectorisedWriter(writer); ok {
 		return vectorisedWriter
 	}
 	return &BufferedVectorisedWriter{upstream: writer}
 }
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
-	switch w := writer.(type) {
-	case N.VectorisedWriter:
-		return w, true
-	case *net.TCPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.UDPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.IPConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case *net.UnixConn:
-		return &NetVectorisedWriterWrapper{w}, true
-	case syscall.Conn:
-		rawConn, err := w.SyscallConn()
-		if err == nil {
-			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
+	if runtime.GOOS == "windows" {
+		switch conn := writer.(type) {
+		case N.VectorisedWriter:
+			return conn, true
+		case *net.TCPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.UDPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.IPConn:
+			return &NetVectorisedWriterWrapper{conn}, true
+		case *net.UnixConn:
+			return &NetVectorisedWriterWrapper{conn}, true
 		}
-	case syscall.RawConn:
-		return &SyscallVectorisedWriter{upstream: writer, rawConn: w}, true
+	} else {
+		switch conn := writer.(type) {
+		case N.VectorisedWriter:
+			return conn, true
+		case syscall.Conn:
+			rawConn, err := conn.SyscallConn()
+			if err != nil {
+				return nil, false
+			}
+			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
+		case syscall.RawConn:
+			return &SyscallVectorisedWriter{upstream: writer, rawConn: conn}, true
+		}
 	}
 	return nil, false
 }
@@ -93,6 +103,9 @@ type NetVectorisedWriterWrapper struct {
 }
 
 func (w *NetVectorisedWriterWrapper) WriteVectorised(buffers []*buf.Buffer) error {
+	if buf.LenMulti(buffers) == 0 {
+		return os.ErrInvalid
+	}
 	defer buf.ReleaseMulti(buffers)
 	netBuffers := net.Buffers(buf.ToSliceMulti(buffers))
 	return common.Error(netBuffers.WriteTo(w.upstream))

@@ -3,8 +3,8 @@ package pause
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/x/list"
 	"github.com/sagernet/sing/service"
 )

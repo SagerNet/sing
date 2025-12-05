@@ -3,11 +3,14 @@
 package bufio
 
 import (
+	"net/netip"
 	"os"
 	"sync"
 	"unsafe"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/control"
 	M "github.com/sagernet/sing/common/metadata"
 
 	"golang.org/x/sys/unix"
@@ -15,37 +18,53 @@ import (
 
 type syscallVectorisedWriterFields struct {
 	access    sync.Mutex
-	iovecList *[]unix.Iovec
+	iovecList []unix.Iovec
+	localAddr netip.AddrPort
 }
 
 func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	var iovecList []unix.Iovec
-	if w.iovecList != nil {
-		iovecList = *w.iovecList
+	iovecList := w.iovecList
+	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
-	iovecList = iovecList[:0]
-	for index, buffer := range buffers {
-		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
-		iovecList[index].SetLen(buffer.Len())
+	if len(iovecList) == 0 {
+		return os.ErrInvalid
+	} else if cap(iovecList) > cap(w.iovecList) {
+		w.iovecList = iovecList[:0]
 	}
-	if w.iovecList == nil {
-		w.iovecList = new([]unix.Iovec)
-	}
-	*w.iovecList = iovecList // cache
 	var innerErr unix.Errno
+	writeIovecList := iovecList
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		//nolint:staticcheck
-		_, _, innerErr = unix.Syscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecList[0])), uintptr(len(iovecList)))
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			var r0 uintptr
+			//nolint:staticcheck
+			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&writeIovecList[0])), uintptr(len(writeIovecList)))
+			writeN := int(r0)
+			for writeN > 0 && len(writeIovecList) > 0 {
+				if int(writeIovecList[0].Len) > writeN {
+					writeIovecList[0].Base = (*byte)(unsafe.Add(unsafe.Pointer(writeIovecList[0].Base), writeN))
+					writeIovecList[0].SetLen(int(writeIovecList[0].Len) - writeN)
+					break
+				} else {
+					writeN -= int(writeIovecList[0].Len)
+					writeIovecList = writeIovecList[1:]
+				}
+			}
+			if innerErr == unix.EINTR || (innerErr == 0 && len(writeIovecList) > 0) {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
+	common.ClearArray(iovecList)
 	if innerErr != 0 {
 		err = os.NewSyscallError("SYS_WRITEV", innerErr)
-	}
-	for index := range iovecList {
-		iovecList[index] = unix.Iovec{}
 	}
 	return err
 }
@@ -53,41 +72,52 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
 	w.access.Lock()
 	defer w.access.Unlock()
+	if !w.localAddr.IsValid() {
+		err := control.Raw(w.rawConn, func(fd uintptr) error {
+			name, err := unix.Getsockname(int(fd))
+			if err != nil {
+				return err
+			}
+			w.localAddr = M.AddrPortFromSockaddr(name)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
 	defer buf.ReleaseMulti(buffers)
-	var iovecList []unix.Iovec
-	if w.iovecList != nil {
-		iovecList = *w.iovecList
+	iovecList := w.iovecList
+	for _, buffer := range buffers {
+		if buffer.IsEmpty() {
+			continue
+		}
+		iovecList = append(iovecList, buffer.Iovec(buffer.Len()))
 	}
-	iovecList = iovecList[:0]
-	for index, buffer := range buffers {
-		iovecList = append(iovecList, unix.Iovec{Base: &buffer.Bytes()[0]})
-		iovecList[index].SetLen(buffer.Len())
+	if cap(iovecList) > cap(w.iovecList) {
+		w.iovecList = iovecList[:0]
 	}
-	if w.iovecList == nil {
-		w.iovecList = new([]unix.Iovec)
-	}
-	*w.iovecList = iovecList // cache
-	var innerErr error
+	var innerErr unix.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		var msg unix.Msghdr
-		name, nameLen := ToSockaddr(destination.AddrPort())
+		name, nameLen := M.AddrPortToRawSockaddr(destination.AddrPort(), w.localAddr.Addr().Is6())
 		msg.Name = (*byte)(name)
 		msg.Namelen = nameLen
 		if len(iovecList) > 0 {
 			msg.Iov = &iovecList[0]
 			msg.SetIovlen(len(iovecList))
 		}
-		_, innerErr = sendmsg(int(fd), &msg, 0)
-		return innerErr != unix.EAGAIN && innerErr != unix.EWOULDBLOCK
+		for {
+			//nolint:staticcheck
+			_, _, innerErr = unix.RawSyscall(unix.SYS_SENDMSG, fd, uintptr(unsafe.Pointer(&msg)), 0)
+			if innerErr == unix.EINTR {
+				continue
+			}
+			return innerErr != unix.EAGAIN
+		}
 	})
-	if innerErr != nil {
-		err = innerErr
-	}
-	for index := range iovecList {
-		iovecList[index] = unix.Iovec{}
+	common.ClearArray(iovecList)
+	if innerErr != 0 {
+		err = os.NewSyscallError("SYS_SENDMSG", innerErr)
 	}
 	return err
 }
-
-//go:linkname sendmsg golang.org/x/sys/unix.sendmsg
-func sendmsg(s int, msg *unix.Msghdr, flags int) (n int, err error)

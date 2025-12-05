@@ -2,9 +2,9 @@ package control
 
 import (
 	"os"
+	"sync/atomic"
 	"syscall"
 
-	"github.com/sagernet/sing/common/atomic"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	"golang.org/x/sys/unix"

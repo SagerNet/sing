@@ -164,11 +164,11 @@ type MemoryBytes struct {
 	rawBytes
 }
 
-func (b *MemoryBytes) Value() uint64 {
-	if b == nil {
+func (m *MemoryBytes) Value() uint64 {
+	if m == nil {
 		return 0
 	}
-	return b.value
+	return m.value
 }
 
 func (m *MemoryBytes) UnmarshalJSON(bytes []byte) error {

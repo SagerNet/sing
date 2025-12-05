@@ -70,13 +70,14 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	if !ok {
 		return
 	}
-	buffer := conn.readWaitOptions.NewPacketBuffer()
+	conn.handlerAccess.RLock()
+	readWaitOptions := conn.readWaitOptions
+	handler := conn.handler
+	conn.handlerAccess.RUnlock()
+	buffer := readWaitOptions.NewPacketBuffer()
 	for _, bufferSlice := range bufferSlices {
 		buffer.Write(bufferSlice)
 	}
-	conn.handlerAccess.RLock()
-	handler := conn.handler
-	conn.handlerAccess.RUnlock()
 	if handler != nil {
 		handler.NewPacketEx(buffer, destination)
 		return

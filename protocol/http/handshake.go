@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/auth"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -78,7 +77,7 @@ func HandleConnectionEx(
 		}
 
 		if request.Method == "CONNECT" {
-			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), request.URL.Port())
+			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), request.URL.Port()).Unwrap()
 			if destination.Port == 0 {
 				switch request.URL.Scheme {
 				case "https", "wss":
@@ -105,7 +104,7 @@ func HandleConnectionEx(
 			handler.NewConnectionEx(ctx, requestConn, source, destination, onClose)
 			return nil
 		} else if strings.ToLower(request.Header.Get("Connection")) == "upgrade" {
-			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), request.URL.Port())
+			destination := M.ParseSocksaddrHostPortStr(request.URL.Hostname(), request.URL.Port()).Unwrap()
 			if destination.Port == 0 {
 				switch request.URL.Scheme {
 				case "https", "wss":
@@ -164,13 +163,13 @@ func handleHTTPConnection(
 		return responseWith(request, http.StatusBadRequest).Write(conn)
 	}
 
-	var innerErr atomic.TypedValue[error]
+	var innerErr common.TypedValue[error]
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			DisableCompression: true,
 			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 				input, output := pipe.Pipe()
-				go handler.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address), func(it error) {
+				go handler.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address).Unwrap(), func(it error) {
 					innerErr.Store(it)
 					common.Close(input, output)
 				})
