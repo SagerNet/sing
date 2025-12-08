@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"net/netip"
 
 	"github.com/sagernet/sing/common"
@@ -64,9 +65,17 @@ func ReadRequest0(reader varbin.Reader) (request Request, err error) {
 		request.Destination.Addr = netip.AddrFrom4(dstIP)
 	}
 	request.Username, err = readString(reader)
+	if err != nil {
+		err = E.Cause(err, "reading username")
+		return
+	}
 	if readHostName {
 		request.Destination.Fqdn, err = readString(reader)
-		request.Destination = M.ParseSocksaddrHostPort(request.Destination.Fqdn, request.Destination.Port)
+		if err != nil {
+			err = E.Cause(err, "reading hostname")
+			return
+		}
+		request.Destination = M.ParseSocksaddrHostPort(request.Destination.Fqdn, request.Destination.Port).Unwrap()
 	}
 	return
 }
@@ -101,11 +110,18 @@ func WriteRequest(writer io.Writer, request Request) error {
 		common.Must(buffer.WriteByte(1))
 	}
 	if request.Username != "" {
+		if len(request.Username) > math.MaxUint8 {
+			return E.New("username too long")
+		}
 		common.Must1(buffer.WriteString(request.Username))
 	}
 	common.Must(buffer.WriteZero())
 	if !request.Destination.IsIPv4() {
-		common.Must1(buffer.WriteString(request.Destination.AddrString()))
+		destinationString := request.Destination.AddrString()
+		if len(destinationString) > math.MaxUint8 {
+			return E.New("destination hostname too long")
+		}
+		common.Must1(buffer.WriteString(destinationString))
 		common.Must(buffer.WriteZero())
 	}
 	return common.Error(writer.Write(buffer.Bytes()))
@@ -165,6 +181,9 @@ func readString(reader varbin.Reader) (string, error) {
 			break
 		}
 		buffer.WriteByte(b)
+		if buffer.Len() > math.MaxUint8 {
+			return "", E.New("string too long")
+		}
 	}
 	return buffer.String(), nil
 }

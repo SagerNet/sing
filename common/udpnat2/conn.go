@@ -58,6 +58,8 @@ func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error
 }
 
 func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	c.handlerAccess.Lock()
+	defer c.handlerAccess.Unlock()
 	c.readWaitOptions = options
 	return false
 }

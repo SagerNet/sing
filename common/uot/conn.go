@@ -32,7 +32,7 @@ func NewConn(conn net.Conn, request Request) *Conn {
 		isConnect:   request.IsConnect,
 		destination: request.Destination,
 	}
-	uConn.writer, _ = bufio.CreateVectorisedWriter(conn)
+	uConn.writer, _ = bufio.CreateVectorisedWriter(N.UnwrapWriter(conn))
 	return uConn
 }
 

@@ -75,3 +75,39 @@ func (r *packetReadWaitWrapper) ReadFrom(p []byte) (n int, addr net.Addr, err er
 	addr = destination.UDPAddr()
 	return
 }
+
+func TestCopyVectorisedWaitTCP(t *testing.T) {
+	t.Parallel()
+	inputConn, outputConn := TCPPipe(t)
+	readWaiter, created := CreateVectorisedReadWaiter(outputConn)
+	require.True(t, created)
+	require.NotNil(t, readWaiter)
+	readWaiter.InitializeReadWaiter(N.ReadWaitOptions{BatchSize: DefaultBatchSize})
+	require.NoError(t, TCPTest(t, inputConn, &vectorisedReadWaitWrapper{
+		Conn:       outputConn,
+		readWaiter: readWaiter,
+	}))
+}
+
+type vectorisedReadWaitWrapper struct {
+	net.Conn
+	readWaiter N.VectorisedReadWaiter
+	buffers    []*buf.Buffer
+}
+
+func (r *vectorisedReadWaitWrapper) Read(p []byte) (n int, err error) {
+	for len(r.buffers) > 0 {
+		if r.buffers[0].Len() > 0 {
+			return r.buffers[0].Read(p)
+		} else {
+			r.buffers[0].Release()
+			r.buffers = r.buffers[1:]
+		}
+	}
+	buffers, err := r.readWaiter.WaitReadBuffers()
+	if err != nil {
+		return
+	}
+	r.buffers = buffers
+	return r.buffers[0].Read(p)
+}

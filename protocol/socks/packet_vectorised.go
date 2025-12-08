@@ -29,7 +29,7 @@ func NewVectorisedAssociateConn(conn net.Conn, writer N.VectorisedWriter, remote
 	}
 }
 
-func (v *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
+func (c *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buffer, destination M.Socksaddr) error {
 	header := buf.NewSize(3 + M.SocksaddrSerializer.AddrPortLen(destination))
 	defer header.Release()
 	common.Must(header.WriteZeroN(3))
@@ -37,7 +37,7 @@ func (v *VectorisedAssociatePacketConn) WriteVectorisedPacket(buffers []*buf.Buf
 	if err != nil {
 		return err
 	}
-	return v.VectorisedPacketWriter.WriteVectorisedPacket(append([]*buf.Buffer{header}, buffers...), destination)
+	return c.VectorisedPacketWriter.WriteVectorisedPacket(append([]*buf.Buffer{header}, buffers...), destination)
 }
 
 func (c *VectorisedAssociatePacketConn) FrontHeadroom() int {

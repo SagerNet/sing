@@ -10,9 +10,11 @@ type ReadWaitable interface {
 }
 
 type ReadWaitOptions struct {
-	FrontHeadroom int
-	RearHeadroom  int
-	MTU           int
+	FrontHeadroom  int
+	RearHeadroom   int
+	MTU            int
+	IncreaseBuffer bool
+	BatchSize      int
 }
 
 func NewReadWaitOptions(source any, destination any) ReadWaitOptions {
@@ -49,7 +51,9 @@ func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
 
 func (o ReadWaitOptions) newBuffer(defaultBufferSize int, reserve bool) *buf.Buffer {
 	var bufferSize int
-	if o.MTU > 0 {
+	if o.IncreaseBuffer {
+		bufferSize = 65535
+	} else if o.MTU > 0 {
 		bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
 	} else {
 		bufferSize = defaultBufferSize
@@ -79,6 +83,15 @@ type ReadWaitCreator interface {
 	CreateReadWaiter() (ReadWaiter, bool)
 }
 
+type VectorisedReadWaiter interface {
+	ReadWaitable
+	WaitReadBuffers() (buffers []*buf.Buffer, err error)
+}
+
+type VectorisedReadWaitCreator interface {
+	CreateVectorisedReadWaiter() (VectorisedReadWaiter, bool)
+}
+
 type PacketReadWaiter interface {
 	ReadWaitable
 	WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error)
@@ -86,4 +99,13 @@ type PacketReadWaiter interface {
 
 type PacketReadWaitCreator interface {
 	CreateReadWaiter() (PacketReadWaiter, bool)
+}
+
+type VectorisedPacketReadWaiter interface {
+	ReadWaitable
+	WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error)
+}
+
+type VectorisedPacketReadWaitCreator interface {
+	CreateVectorisedPacketReadWaiter() (VectorisedPacketReadWaiter, bool)
 }
