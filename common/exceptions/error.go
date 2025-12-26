@@ -65,5 +65,5 @@ func IsClosed(err error) bool {
 }
 
 func IsCanceled(err error) bool {
-	return IsMulti(err, context.Canceled, context.DeadlineExceeded)
+	return IsMulti(err, context.Canceled, context.DeadlineExceeded) || isCanceledQuic(err)
 }
