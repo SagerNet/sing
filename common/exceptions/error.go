@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"syscall"
 	_ "unsafe"
 
@@ -65,5 +66,14 @@ func IsClosed(err error) bool {
 }
 
 func IsCanceled(err error) bool {
-	return IsMulti(err, context.Canceled, context.DeadlineExceeded)
+	return IsMulti(err, context.Canceled, context.DeadlineExceeded) || isCanceledQuicLike(err)
+}
+
+func isCanceledQuicLike(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "canceled by remote with error code 0") ||
+		strings.Contains(s, "canceled by local with error code 0")
 }
