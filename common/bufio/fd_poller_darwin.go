@@ -6,25 +6,29 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
 type fdDemuxEntry struct {
-	fd      int
-	handler FDHandler
+	fd             int
+	registrationID uint64
+	handler        FDHandler
 }
 
 type FDPoller struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	kqueueFD int
-	mutex    sync.Mutex
-	entries  map[int]*fdDemuxEntry
-	running  bool
-	closed   atomic.Bool
-	wg       sync.WaitGroup
-	pipeFDs  [2]int
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	kqueueFD            int
+	mutex               sync.Mutex
+	entries             map[int]*fdDemuxEntry
+	registrationCounter uint64
+	registrationToFD    map[uint64]int
+	running             bool
+	closed              atomic.Bool
+	wg                  sync.WaitGroup
+	pipeFDs             [2]int
 }
 
 func NewFDPoller(ctx context.Context) (*FDPoller, error) {
@@ -69,11 +73,12 @@ func NewFDPoller(ctx context.Context) (*FDPoller, error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	poller := &FDPoller{
-		ctx:      ctx,
-		cancel:   cancel,
-		kqueueFD: kqueueFD,
-		entries:  make(map[int]*fdDemuxEntry),
-		pipeFDs:  pipeFDs,
+		ctx:              ctx,
+		cancel:           cancel,
+		kqueueFD:         kqueueFD,
+		entries:          make(map[int]*fdDemuxEntry),
+		registrationToFD: make(map[uint64]int),
+		pipeFDs:          pipeFDs,
 	}
 	return poller, nil
 }
@@ -86,20 +91,26 @@ func (p *FDPoller) Add(handler FDHandler, fd int) error {
 		return unix.EINVAL
 	}
 
+	p.registrationCounter++
+	registrationID := p.registrationCounter
+
 	_, err := unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
 		Ident:  uint64(fd),
 		Filter: unix.EVFILT_READ,
-		Flags:  unix.EV_ADD,
+		Flags:  unix.EV_ADD | unix.EV_ONESHOT,
+		Udata:  (*byte)(unsafe.Pointer(uintptr(registrationID))),
 	}}, nil, nil)
 	if err != nil {
 		return err
 	}
 
 	entry := &fdDemuxEntry{
-		fd:      fd,
-		handler: handler,
+		fd:             fd,
+		registrationID: registrationID,
+		handler:        handler,
 	}
 	p.entries[fd] = entry
+	p.registrationToFD[registrationID] = fd
 
 	if !p.running {
 		p.running = true
@@ -114,7 +125,7 @@ func (p *FDPoller) Remove(fd int) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	_, ok := p.entries[fd]
+	entry, ok := p.entries[fd]
 	if !ok {
 		return
 	}
@@ -124,6 +135,7 @@ func (p *FDPoller) Remove(fd int) {
 		Filter: unix.EVFILT_READ,
 		Flags:  unix.EV_DELETE,
 	}}, nil, nil)
+	delete(p.registrationToFD, entry.registrationID)
 	delete(p.entries, fd)
 }
 
@@ -196,18 +208,22 @@ func (p *FDPoller) run() {
 				continue
 			}
 
+			registrationID := uint64(uintptr(unsafe.Pointer(event.Udata)))
+
 			p.mutex.Lock()
-			entry, ok := p.entries[fd]
-			if !ok {
+			mappedFD, ok := p.registrationToFD[registrationID]
+			if !ok || mappedFD != fd {
 				p.mutex.Unlock()
 				continue
 			}
 
-			unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
-				Ident:  uint64(fd),
-				Filter: unix.EVFILT_READ,
-				Flags:  unix.EV_DELETE,
-			}}, nil, nil)
+			entry := p.entries[fd]
+			if entry == nil || entry.registrationID != registrationID {
+				p.mutex.Unlock()
+				continue
+			}
+
+			delete(p.registrationToFD, registrationID)
 			delete(p.entries, fd)
 			p.mutex.Unlock()
 

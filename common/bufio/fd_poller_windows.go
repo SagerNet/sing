@@ -22,6 +22,7 @@ type fdDemuxEntry struct {
 	baseHandle     windows.Handle
 	registrationID uint64
 	cancelled      bool
+	unpinned       bool
 	pinner         wepoll.Pinner
 }
 
@@ -138,7 +139,10 @@ func (p *FDPoller) Close() error {
 	defer p.mutex.Unlock()
 
 	for fd, entry := range p.entries {
-		entry.pinner.Unpin()
+		if !entry.unpinned {
+			entry.unpinned = true
+			entry.pinner.Unpin()
+		}
 		delete(p.entries, fd)
 	}
 
@@ -153,6 +157,32 @@ func (p *FDPoller) Close() error {
 	return nil
 }
 
+func (p *FDPoller) drainCompletions(completions []wepoll.OverlappedEntry) {
+	for {
+		var numRemoved uint32
+		err := wepoll.GetQueuedCompletionStatusEx(p.iocp, &completions[0], uint32(len(completions)), &numRemoved, 0, false)
+		if err != nil || numRemoved == 0 {
+			break
+		}
+
+		for i := uint32(0); i < numRemoved; i++ {
+			event := completions[i]
+			if event.Overlapped == nil {
+				continue
+			}
+
+			entry := (*fdDemuxEntry)(unsafe.Pointer(event.Overlapped))
+			p.mutex.Lock()
+			if p.entries[entry.fd] == entry && !entry.unpinned {
+				entry.unpinned = true
+				entry.pinner.Unpin()
+			}
+			delete(p.entries, entry.fd)
+			p.mutex.Unlock()
+		}
+	}
+}
+
 func (p *FDPoller) run() {
 	defer p.wg.Done()
 
@@ -161,6 +191,7 @@ func (p *FDPoller) run() {
 	for {
 		select {
 		case <-p.ctx.Done():
+			p.drainCompletions(completions)
 			p.mutex.Lock()
 			p.running = false
 			p.mutex.Unlock()
@@ -193,7 +224,10 @@ func (p *FDPoller) run() {
 				continue
 			}
 
-			entry.pinner.Unpin()
+			if !entry.unpinned {
+				entry.unpinned = true
+				entry.pinner.Unpin()
+			}
 			delete(p.entries, entry.fd)
 
 			if entry.cancelled {

@@ -331,9 +331,13 @@ func (d *streamDirection) handleEOFOrError(err error) {
 
 		// Try half-close on destination
 		if d.isUpload {
-			N.CloseWrite(d.connection.download.originSource)
+			if d.connection.download != nil {
+				N.CloseWrite(d.connection.download.originSource)
+			}
 		} else {
-			N.CloseWrite(d.connection.upload.originSource)
+			if d.connection.upload != nil {
+				N.CloseWrite(d.connection.upload.originSource)
+			}
 		}
 
 		d.connection.checkBothClosed()
