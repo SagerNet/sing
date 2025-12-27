@@ -103,10 +103,6 @@ func (p *testPacketPipe) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (p *testPacketPipe) PacketChannel() <-chan *N.PacketBuffer {
-	return p.inChan
-}
-
 func (p *testPacketPipe) send(data []byte, destination M.Socksaddr) {
 	packet := N.NewPacketBuffer()
 	newBuf := buf.NewSize(len(data))
@@ -253,10 +249,6 @@ func (c *channelPacketConn) SetReadDeadline(t time.Time) error {
 	c.deadlineChan = make(chan struct{})
 	c.deadlineLock.Unlock()
 	return nil
-}
-
-func (c *channelPacketConn) PacketChannel() <-chan *N.PacketBuffer {
-	return c.packetChan
 }
 
 func (c *channelPacketConn) Close() error {
@@ -551,7 +543,7 @@ func TestBatchCopy_FDPoller_DataIntegrity(t *testing.T) {
 	assert.Equal(t, serverPair.sendHash, clientPair.recvHash, "server->client mismatch")
 }
 
-func TestBatchCopy_ChannelPoller_DataIntegrity(t *testing.T) {
+func TestBatchCopy_LegacyChannel_DataIntegrity(t *testing.T) {
 	t.Parallel()
 
 	clientConn, err := net.ListenPacket("udp", "127.0.0.1:0")

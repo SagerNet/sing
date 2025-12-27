@@ -8,7 +8,6 @@ import (
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/pipe"
 	"github.com/sagernet/sing/contrab/freelru"
 	"github.com/sagernet/sing/contrab/maphash"
 )
@@ -57,12 +56,10 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 			return nil, false
 		}
 		newConn := &natConn{
-			cache:        s.cache,
-			writer:       writer,
-			localAddr:    source,
-			packetChan:   make(chan *N.PacketBuffer, 64),
-			doneChan:     make(chan struct{}),
-			readDeadline: pipe.MakeDeadline(),
+			cache:     s.cache,
+			writer:    writer,
+			localAddr: source,
+			doneChan:  make(chan struct{}),
 		}
 		go s.handler.NewPacketConnectionEx(ctx, newConn, source, destination, onClose)
 		return newConn, true
@@ -87,12 +84,7 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 		Buffer:      buffer,
 		Destination: destination,
 	}
-	select {
-	case conn.packetChan <- packet:
-	default:
-		packet.Buffer.Release()
-		N.PutPacketBuffer(packet)
-	}
+	conn.PushPacket(packet)
 }
 
 func (s *Service) Purge() {

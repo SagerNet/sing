@@ -1,20 +1,19 @@
 package network
 
-type PacketPollMode int
+// PacketPushable represents a packet source that receives pushed data
+// from external code and notifies reactor via callback.
+type PacketPushable interface {
+	SetOnDataReady(callback func())
+	HasPendingData() bool
+}
 
-const (
-	PacketPollModeChannel PacketPollMode = iota
-	PacketPollModeFD
-)
-
-// PacketPollable provides polling support for packet connections
+// PacketPollable provides FD-based polling for packet connections.
+// Mirrors StreamPollable for consistency.
 type PacketPollable interface {
-	PollMode() PacketPollMode
-	PacketChannel() <-chan *PacketBuffer
 	FD() int
 }
 
-// PacketPollableCreator creates a PacketPollable dynamically
+// PacketPollableCreator creates a PacketPollable dynamically.
 type PacketPollableCreator interface {
 	CreatePacketPollable() (PacketPollable, bool)
 }

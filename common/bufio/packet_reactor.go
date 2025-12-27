@@ -24,20 +24,18 @@ const (
 )
 
 type PacketReactor struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	channelPoller *ChannelPoller
-	fdPoller      *FDPoller
-	fdPollerOnce  sync.Once
-	fdPollerErr   error
+	ctx          context.Context
+	cancel       context.CancelFunc
+	fdPoller     *FDPoller
+	fdPollerOnce sync.Once
+	fdPollerErr  error
 }
 
 func NewPacketReactor(ctx context.Context) *PacketReactor {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PacketReactor{
-		ctx:           ctx,
-		cancel:        cancel,
-		channelPoller: NewChannelPoller(ctx),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
 
@@ -50,14 +48,10 @@ func (r *PacketReactor) getFDPoller() (*FDPoller, error) {
 
 func (r *PacketReactor) Close() error {
 	r.cancel()
-	var errs []error
-	if r.channelPoller != nil {
-		errs = append(errs, r.channelPoller.Close())
-	}
 	if r.fdPoller != nil {
-		errs = append(errs, r.fdPoller.Close())
+		return r.fdPoller.Close()
 	}
-	return E.Errors(errs...)
+	return nil
 }
 
 type reactorConnection struct {
@@ -80,6 +74,7 @@ type reactorStream struct {
 	destination  N.PacketWriter
 	originSource N.PacketReader
 
+	pushable      N.PacketPushable
 	pollable      N.PacketPollable
 	options       N.ReadWaitOptions
 	readWaiter    N.PacketReadWaiter
@@ -159,7 +154,9 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 		stream.readWaiter.InitializeReadWaiter(stream.options)
 	}
 
-	if pollable, ok := source.(N.PacketPollable); ok {
+	if pushable, ok := source.(N.PacketPushable); ok {
+		stream.pushable = pushable
+	} else if pollable, ok := source.(N.PacketPollable); ok {
 		stream.pollable = pollable
 	} else if creator, ok := source.(N.PacketPollableCreator); ok {
 		stream.pollable, _ = creator.CreatePacketPollable()
@@ -169,25 +166,32 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 }
 
 func (r *PacketReactor) registerStream(stream *reactorStream) {
+	if stream.pushable != nil {
+		stream.pushable.SetOnDataReady(func() {
+			if stream.state.CompareAndSwap(stateIdle, stateActive) {
+				go stream.runActiveLoop(nil)
+			}
+		})
+		if stream.pushable.HasPendingData() {
+			if stream.state.CompareAndSwap(stateIdle, stateActive) {
+				go stream.runActiveLoop(nil)
+			}
+		}
+		return
+	}
+
 	if stream.pollable == nil {
 		go stream.runLegacyCopy()
 		return
 	}
 
-	switch stream.pollable.PollMode() {
-	case N.PacketPollModeChannel:
-		r.channelPoller.Add(stream, stream.pollable.PacketChannel())
-	case N.PacketPollModeFD:
-		fdPoller, err := r.getFDPoller()
-		if err != nil {
-			go stream.runLegacyCopy()
-			return
-		}
-		err = fdPoller.Add(stream, stream.pollable.FD())
-		if err != nil {
-			go stream.runLegacyCopy()
-		}
-	default:
+	fdPoller, err := r.getFDPoller()
+	if err != nil {
+		go stream.runLegacyCopy()
+		return
+	}
+	err = fdPoller.Add(stream, stream.pollable.FD())
+	if err != nil {
 		go stream.runLegacyCopy()
 	}
 }
@@ -259,9 +263,18 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 				if setter, ok := s.source.(interface{ SetReadDeadline(time.Time) error }); ok {
 					setter.SetReadDeadline(time.Time{})
 				}
-				if s.state.CompareAndSwap(stateActive, stateIdle) {
-					s.returnToPool()
+				if !s.state.CompareAndSwap(stateActive, stateIdle) {
+					return
 				}
+				if s.pushable != nil {
+					if s.pushable.HasPendingData() {
+						if s.state.CompareAndSwap(stateIdle, stateActive) {
+							continue
+						}
+					}
+					return
+				}
+				s.returnToPool()
 				return
 			}
 			if !notFirstTime {
@@ -310,30 +323,18 @@ func (s *reactorStream) returnToPool() {
 		return
 	}
 
-	if s.pollable == nil {
+	if s.pollable == nil || s.connection.reactor.fdPoller == nil {
 		return
 	}
 
-	switch s.pollable.PollMode() {
-	case N.PacketPollModeChannel:
-		channel := s.pollable.PacketChannel()
-		s.connection.reactor.channelPoller.Add(s, channel)
-		if s.state.Load() != stateIdle {
-			s.connection.reactor.channelPoller.Remove(channel)
-		}
-	case N.PacketPollModeFD:
-		if s.connection.reactor.fdPoller == nil {
-			return
-		}
-		fd := s.pollable.FD()
-		err := s.connection.reactor.fdPoller.Add(s, fd)
-		if err != nil {
-			s.closeWithError(err)
-			return
-		}
-		if s.state.Load() != stateIdle {
-			s.connection.reactor.fdPoller.Remove(fd)
-		}
+	fd := s.pollable.FD()
+	err := s.connection.reactor.fdPoller.Add(s, fd)
+	if err != nil {
+		s.closeWithError(err)
+		return
+	}
+	if s.state.Load() != stateIdle {
+		s.connection.reactor.fdPoller.Remove(fd)
 	}
 }
 
@@ -385,15 +386,8 @@ func (c *reactorConnection) removeFromPollers() {
 }
 
 func (c *reactorConnection) removeStreamFromPoller(stream *reactorStream) {
-	if stream == nil || stream.pollable == nil {
+	if stream == nil || stream.pollable == nil || c.reactor.fdPoller == nil {
 		return
 	}
-	switch stream.pollable.PollMode() {
-	case N.PacketPollModeChannel:
-		c.reactor.channelPoller.Remove(stream.pollable.PacketChannel())
-	case N.PacketPollModeFD:
-		if c.reactor.fdPoller != nil {
-			c.reactor.fdPoller.Remove(stream.pollable.FD())
-		}
-	}
+	c.reactor.fdPoller.Remove(stream.pollable.FD())
 }
