@@ -30,7 +30,7 @@ func ReportHandshakeFailure(reporter any, err error) error {
 			return E.Cause(err, "write handshake failure")
 		})
 	}
-	return nil
+	return err
 }
 
 func CloseOnHandshakeFailure(reporter io.Closer, onClose CloseHandlerFunc, err error) error {

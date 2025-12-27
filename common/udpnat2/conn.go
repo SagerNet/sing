@@ -161,6 +161,14 @@ func (c *natConn) SetTimeout(timeout time.Duration) bool {
 func (c *natConn) Close() error {
 	c.closeOnce.Do(func() {
 		close(c.doneChan)
+
+		c.queueMutex.Lock()
+		pending := c.dataQueue
+		c.dataQueue = nil
+		c.onDataReady = nil
+		c.queueMutex.Unlock()
+
+		N.ReleaseMultiPacketBuffer(pending)
 		common.Close(c.handler)
 	})
 	return nil

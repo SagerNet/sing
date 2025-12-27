@@ -120,6 +120,12 @@ func (p *FDPoller) Remove(fd int) {
 	if p.afd != nil {
 		p.afd.Cancel(&entry.ioStatusBlock)
 	}
+
+	if !entry.unpinned {
+		entry.unpinned = true
+		entry.pinner.Unpin()
+	}
+	delete(p.entries, fd)
 }
 
 func (p *FDPoller) wakeup() {

@@ -55,12 +55,13 @@ func (r *PacketReactor) Close() error {
 }
 
 type reactorConnection struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	reactor  *PacketReactor
-	onClose  N.CloseHandlerFunc
-	upload   *reactorStream
-	download *reactorStream
+	ctx              context.Context
+	cancel           context.CancelFunc
+	reactor          *PacketReactor
+	onClose          N.CloseHandlerFunc
+	upload           *reactorStream
+	download         *reactorStream
+	stopReactorWatch func() bool
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -93,6 +94,9 @@ func (r *PacketReactor) Copy(ctx context.Context, source N.PacketConn, destinati
 		onClose: onClose,
 		done:    make(chan struct{}),
 	}
+	conn.stopReactorWatch = common.ContextAfterFunc(r.ctx, func() {
+		conn.closeWithError(r.ctx.Err())
+	})
 
 	conn.upload = r.prepareStream(conn, source, destination)
 	select {
@@ -126,10 +130,12 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 		if cachedReader, isCached := source.(N.CachedPacketReader); isCached {
 			packet := cachedReader.ReadCachedPacket()
 			if packet != nil {
-				dataLen := packet.Buffer.Len()
-				err := destination.WritePacket(packet.Buffer, packet.Destination)
+				buffer := packet.Buffer
+				dataLen := buffer.Len()
+				err := destination.WritePacket(buffer, packet.Destination)
 				N.PutPacketBuffer(packet)
 				if err != nil {
+					buffer.Leak()
 					conn.closeWithError(err)
 					return stream
 				}
@@ -151,7 +157,10 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 
 	stream.readWaiter, _ = CreatePacketReadWaiter(source)
 	if stream.readWaiter != nil {
-		stream.readWaiter.InitializeReadWaiter(stream.options)
+		needCopy := stream.readWaiter.InitializeReadWaiter(stream.options)
+		if needCopy {
+			stream.readWaiter = nil
+		}
 	}
 
 	if pushable, ok := source.(N.PacketPushable); ok {
@@ -343,7 +352,7 @@ func (s *reactorStream) HandleFDEvent() {
 }
 
 func (s *reactorStream) runLegacyCopy() {
-	_, err := CopyPacket(s.destination, s.source)
+	_, err := CopyPacketWithCounters(s.destination, s.source, s.originSource, s.readCounters, s.writeCounters)
 	s.closeWithError(err)
 }
 
@@ -353,6 +362,12 @@ func (s *reactorStream) closeWithError(err error) {
 
 func (c *reactorConnection) closeWithError(err error) {
 	c.closeOnce.Do(func() {
+		defer close(c.done)
+
+		if c.stopReactorWatch != nil {
+			c.stopReactorWatch()
+		}
+
 		c.err = err
 		c.cancel()
 
@@ -375,8 +390,6 @@ func (c *reactorConnection) closeWithError(err error) {
 		if c.onClose != nil {
 			c.onClose(c.err)
 		}
-
-		close(c.done)
 	})
 }
 

@@ -50,12 +50,13 @@ func (r *StreamReactor) Close() error {
 }
 
 type streamConnection struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	reactor  *StreamReactor
-	onClose  N.CloseHandlerFunc
-	upload   *streamDirection
-	download *streamDirection
+	ctx              context.Context
+	cancel           context.CancelFunc
+	reactor          *StreamReactor
+	onClose          N.CloseHandlerFunc
+	upload           *streamDirection
+	download         *streamDirection
+	stopReactorWatch func() bool
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -96,6 +97,9 @@ func (r *StreamReactor) Copy(ctx context.Context, source net.Conn, destination n
 		onClose: onClose,
 		done:    make(chan struct{}),
 	}
+	conn.stopReactorWatch = common.ContextAfterFunc(r.ctx, func() {
+		conn.closeWithError(r.ctx.Err())
+	})
 
 	conn.upload = r.prepareDirection(conn, source, destination, source, true)
 	select {
@@ -171,7 +175,10 @@ func (r *StreamReactor) prepareDirection(conn *streamConnection, source io.Reade
 
 	direction.readWaiter, _ = CreateReadWaiter(source)
 	if direction.readWaiter != nil {
-		direction.readWaiter.InitializeReadWaiter(direction.options)
+		needCopy := direction.readWaiter.InitializeReadWaiter(direction.options)
+		if needCopy {
+			direction.readWaiter = nil
+		}
 	}
 
 	// Try to get stream pollable for FD-based idle detection
@@ -320,7 +327,7 @@ func (d *streamDirection) HandleFDEvent() {
 }
 
 func (d *streamDirection) runLegacyCopy() {
-	_, err := Copy(d.destination, d.source)
+	_, err := CopyWithCounters(d.destination, d.source, d.originSource, d.readCounters, d.writeCounters, DefaultIncreaseBufferAfter, DefaultBatchSize)
 	d.handleEOFOrError(err)
 }
 
@@ -358,6 +365,12 @@ func (c *streamConnection) checkBothClosed() {
 
 	if uploadClosed && downloadClosed {
 		c.closeOnce.Do(func() {
+			defer close(c.done)
+
+			if c.stopReactorWatch != nil {
+				c.stopReactorWatch()
+			}
+
 			c.cancel()
 			c.removeFromPoller()
 
@@ -367,14 +380,18 @@ func (c *streamConnection) checkBothClosed() {
 			if c.onClose != nil {
 				c.onClose(nil)
 			}
-
-			close(c.done)
 		})
 	}
 }
 
 func (c *streamConnection) closeWithError(err error) {
 	c.closeOnce.Do(func() {
+		defer close(c.done)
+
+		if c.stopReactorWatch != nil {
+			c.stopReactorWatch()
+		}
+
 		c.err = err
 		c.cancel()
 
@@ -397,8 +414,6 @@ func (c *streamConnection) closeWithError(err error) {
 		if c.onClose != nil {
 			c.onClose(c.err)
 		}
-
-		close(c.done)
 	})
 }
 
