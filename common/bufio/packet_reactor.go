@@ -23,6 +23,49 @@ const (
 	stateClosed int32 = 2
 )
 
+func CreatePacketPushable(reader N.PacketReader) (N.PacketPushable, bool) {
+	if pushable, ok := reader.(N.PacketPushable); ok {
+		return pushable, true
+	}
+	if u, ok := reader.(N.ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return nil, false
+	}
+	if u, ok := reader.(N.WithUpstreamReader); ok {
+		if upstream, ok := u.UpstreamReader().(N.PacketReader); ok {
+			return CreatePacketPushable(upstream)
+		}
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		if upstream, ok := u.Upstream().(N.PacketReader); ok {
+			return CreatePacketPushable(upstream)
+		}
+	}
+	return nil, false
+}
+
+func CreatePacketPollable(reader N.PacketReader) (N.PacketPollable, bool) {
+	if pollable, ok := reader.(N.PacketPollable); ok {
+		return pollable, true
+	}
+	if creator, ok := reader.(N.PacketPollableCreator); ok {
+		return creator.CreatePacketPollable()
+	}
+	if u, ok := reader.(N.ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return nil, false
+	}
+	if u, ok := reader.(N.WithUpstreamReader); ok {
+		if upstream, ok := u.UpstreamReader().(N.PacketReader); ok {
+			return CreatePacketPollable(upstream)
+		}
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		if upstream, ok := u.Upstream().(N.PacketReader); ok {
+			return CreatePacketPollable(upstream)
+		}
+	}
+	return nil, false
+}
+
 type PacketReactor struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -163,12 +206,9 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 		}
 	}
 
-	if pushable, ok := source.(N.PacketPushable); ok {
-		stream.pushable = pushable
-	} else if pollable, ok := source.(N.PacketPollable); ok {
-		stream.pollable = pollable
-	} else if creator, ok := source.(N.PacketPollableCreator); ok {
-		stream.pollable, _ = creator.CreatePacketPollable()
+	stream.pushable, _ = CreatePacketPushable(source)
+	if stream.pushable == nil {
+		stream.pollable, _ = CreatePacketPollable(source)
 	}
 
 	return stream

@@ -18,6 +18,25 @@ const (
 	streamBatchReadTimeout = 250 * time.Millisecond
 )
 
+func CreateStreamPollable(reader io.Reader) (N.StreamPollable, bool) {
+	if pollable, ok := reader.(N.StreamPollable); ok {
+		return pollable, true
+	}
+	if creator, ok := reader.(N.StreamPollableCreator); ok {
+		return creator.CreateStreamPollable()
+	}
+	if u, ok := reader.(N.ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
+		return nil, false
+	}
+	if u, ok := reader.(N.WithUpstreamReader); ok {
+		return CreateStreamPollable(u.UpstreamReader().(io.Reader))
+	}
+	if u, ok := reader.(common.WithUpstream); ok {
+		return CreateStreamPollable(u.Upstream().(io.Reader))
+	}
+	return nil, false
+}
+
 type StreamReactor struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -182,11 +201,7 @@ func (r *StreamReactor) prepareDirection(conn *streamConnection, source io.Reade
 	}
 
 	// Try to get stream pollable for FD-based idle detection
-	if pollable, ok := source.(N.StreamPollable); ok {
-		direction.pollable = pollable
-	} else if creator, ok := source.(N.StreamPollableCreator); ok {
-		direction.pollable, _ = creator.CreateStreamPollable()
-	}
+	direction.pollable, _ = CreateStreamPollable(source)
 
 	return direction
 }
