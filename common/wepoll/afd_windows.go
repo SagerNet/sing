@@ -75,6 +75,7 @@ func (a *AFD) Poll(baseSocket windows.Handle, events uint32, iosb *windows.IO_ST
 	pollInfo.Handles[0].Events = events
 	pollInfo.Handles[0].Status = 0
 
+	iosb.Status = windows.NTStatus(STATUS_PENDING)
 	size := uint32(unsafe.Sizeof(*pollInfo))
 
 	err := NtDeviceIoControlFile(

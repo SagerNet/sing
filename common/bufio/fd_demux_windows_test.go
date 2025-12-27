@@ -28,7 +28,7 @@ func getSocketFD(t *testing.T, conn net.PacketConn) int {
 func TestFDDemultiplexer_Create(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 
 	err = demux.Close()
@@ -38,11 +38,11 @@ func TestFDDemultiplexer_Create(t *testing.T) {
 func TestFDDemultiplexer_CreateMultiple(t *testing.T) {
 	t.Parallel()
 
-	demux1, err := NewFDDemultiplexer(context.Background())
+	demux1, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux1.Close()
 
-	demux2, err := NewFDDemultiplexer(context.Background())
+	demux2, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux2.Close()
 }
@@ -50,7 +50,7 @@ func TestFDDemultiplexer_CreateMultiple(t *testing.T) {
 func TestFDDemultiplexer_AddRemove(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -71,7 +71,7 @@ func TestFDDemultiplexer_AddRemove(t *testing.T) {
 func TestFDDemultiplexer_RapidAddRemove(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -95,7 +95,7 @@ func TestFDDemultiplexer_RapidAddRemove(t *testing.T) {
 func TestFDDemultiplexer_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -136,7 +136,7 @@ func TestFDDemultiplexer_ReceiveEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	demux, err := NewFDDemultiplexer(ctx)
+	demux, err := NewFDPoller(ctx)
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -182,7 +182,7 @@ func TestFDDemultiplexer_ReceiveEvent(t *testing.T) {
 func TestFDDemultiplexer_CloseWhilePolling(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
@@ -213,7 +213,7 @@ func TestFDDemultiplexer_CloseWhilePolling(t *testing.T) {
 func TestFDDemultiplexer_RemoveNonExistent(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -223,7 +223,7 @@ func TestFDDemultiplexer_RemoveNonExistent(t *testing.T) {
 func TestFDDemultiplexer_AddAfterClose(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 
 	err = demux.Close()
@@ -243,7 +243,7 @@ func TestFDDemultiplexer_AddAfterClose(t *testing.T) {
 func TestFDDemultiplexer_MultipleSocketsSimultaneous(t *testing.T) {
 	t.Parallel()
 
-	demux, err := NewFDDemultiplexer(context.Background())
+	demux, err := NewFDPoller(context.Background())
 	require.NoError(t, err)
 	defer demux.Close()
 
@@ -274,7 +274,7 @@ func TestFDDemultiplexer_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	demux, err := NewFDDemultiplexer(ctx)
+	demux, err := NewFDPoller(ctx)
 	require.NoError(t, err)
 
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
