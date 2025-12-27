@@ -16,7 +16,7 @@ import (
 type fdDemuxEntry struct {
 	ioStatusBlock  windows.IO_STATUS_BLOCK
 	pollInfo       wepoll.AFDPollInfo
-	stream         *reactorStream
+	handler        FDHandler
 	fd             int
 	handle         windows.Handle
 	baseHandle     windows.Handle
@@ -25,7 +25,7 @@ type fdDemuxEntry struct {
 	pinner         wepoll.Pinner
 }
 
-type FDDemultiplexer struct {
+type FDPoller struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	iocp                windows.Handle
@@ -38,7 +38,7 @@ type FDDemultiplexer struct {
 	wg                  sync.WaitGroup
 }
 
-func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
+func NewFDPoller(ctx context.Context) (*FDPoller, error) {
 	iocp, err := windows.CreateIoCompletionPort(windows.InvalidHandle, 0, 0, 0)
 	if err != nil {
 		return nil, err
@@ -51,21 +51,21 @@ func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	demux := &FDDemultiplexer{
+	poller := &FDPoller{
 		ctx:     ctx,
 		cancel:  cancel,
 		iocp:    iocp,
 		afd:     afd,
 		entries: make(map[int]*fdDemuxEntry),
 	}
-	return demux, nil
+	return poller, nil
 }
 
-func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Add(handler FDHandler, fd int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	if d.closed.Load() {
+	if p.closed.Load() {
 		return windows.ERROR_INVALID_HANDLE
 	}
 
@@ -75,11 +75,11 @@ func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
 		return err
 	}
 
-	d.registrationCounter++
-	registrationID := d.registrationCounter
+	p.registrationCounter++
+	registrationID := p.registrationCounter
 
 	entry := &fdDemuxEntry{
-		stream:         stream,
+		handler:        handler,
 		fd:             fd,
 		handle:         handle,
 		baseHandle:     baseHandle,
@@ -89,91 +89,91 @@ func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
 	entry.pinner.Pin(entry)
 
 	events := uint32(wepoll.AFD_POLL_RECEIVE | wepoll.AFD_POLL_DISCONNECT | wepoll.AFD_POLL_ABORT | wepoll.AFD_POLL_LOCAL_CLOSE)
-	err = d.afd.Poll(baseHandle, events, &entry.ioStatusBlock, &entry.pollInfo)
+	err = p.afd.Poll(baseHandle, events, &entry.ioStatusBlock, &entry.pollInfo)
 	if err != nil {
 		entry.pinner.Unpin()
 		return err
 	}
 
-	d.entries[fd] = entry
+	p.entries[fd] = entry
 
-	if !d.running {
-		d.running = true
-		d.wg.Add(1)
-		go d.run()
+	if !p.running {
+		p.running = true
+		p.wg.Add(1)
+		go p.run()
 	}
 
 	return nil
 }
 
-func (d *FDDemultiplexer) Remove(fd int) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Remove(fd int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	entry, ok := d.entries[fd]
+	entry, ok := p.entries[fd]
 	if !ok {
 		return
 	}
 
 	entry.cancelled = true
-	if d.afd != nil {
-		d.afd.Cancel(&entry.ioStatusBlock)
+	if p.afd != nil {
+		p.afd.Cancel(&entry.ioStatusBlock)
 	}
 }
 
-func (d *FDDemultiplexer) wakeup() {
-	windows.PostQueuedCompletionStatus(d.iocp, 0, 0, nil)
+func (p *FDPoller) wakeup() {
+	windows.PostQueuedCompletionStatus(p.iocp, 0, 0, nil)
 }
 
-func (d *FDDemultiplexer) Close() error {
-	d.mutex.Lock()
-	d.closed.Store(true)
-	d.mutex.Unlock()
+func (p *FDPoller) Close() error {
+	p.mutex.Lock()
+	p.closed.Store(true)
+	p.mutex.Unlock()
 
-	d.cancel()
-	d.wakeup()
-	d.wg.Wait()
+	p.cancel()
+	p.wakeup()
+	p.wg.Wait()
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	for fd, entry := range d.entries {
+	for fd, entry := range p.entries {
 		entry.pinner.Unpin()
-		delete(d.entries, fd)
+		delete(p.entries, fd)
 	}
 
-	if d.afd != nil {
-		d.afd.Close()
-		d.afd = nil
+	if p.afd != nil {
+		p.afd.Close()
+		p.afd = nil
 	}
-	if d.iocp != 0 {
-		windows.CloseHandle(d.iocp)
-		d.iocp = 0
+	if p.iocp != 0 {
+		windows.CloseHandle(p.iocp)
+		p.iocp = 0
 	}
 	return nil
 }
 
-func (d *FDDemultiplexer) run() {
-	defer d.wg.Done()
+func (p *FDPoller) run() {
+	defer p.wg.Done()
 
 	completions := make([]wepoll.OverlappedEntry, 64)
 
 	for {
 		select {
-		case <-d.ctx.Done():
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+		case <-p.ctx.Done():
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		default:
 		}
 
 		var numRemoved uint32
-		err := wepoll.GetQueuedCompletionStatusEx(d.iocp, &completions[0], 64, &numRemoved, windows.INFINITE, false)
+		err := wepoll.GetQueuedCompletionStatusEx(p.iocp, &completions[0], 64, &numRemoved, windows.INFINITE, false)
 		if err != nil {
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
 
@@ -186,42 +186,42 @@ func (d *FDDemultiplexer) run() {
 
 			entry := (*fdDemuxEntry)(unsafe.Pointer(event.Overlapped))
 
-			d.mutex.Lock()
+			p.mutex.Lock()
 
-			if d.entries[entry.fd] != entry {
-				d.mutex.Unlock()
+			if p.entries[entry.fd] != entry {
+				p.mutex.Unlock()
 				continue
 			}
 
 			entry.pinner.Unpin()
-			delete(d.entries, entry.fd)
+			delete(p.entries, entry.fd)
 
 			if entry.cancelled {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
 			if uint32(entry.ioStatusBlock.Status) == wepoll.STATUS_CANCELLED {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
 			events := entry.pollInfo.Handles[0].Events
 			if events&(wepoll.AFD_POLL_RECEIVE|wepoll.AFD_POLL_DISCONNECT|wepoll.AFD_POLL_ABORT|wepoll.AFD_POLL_LOCAL_CLOSE) == 0 {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
-			d.mutex.Unlock()
-			go entry.stream.runActiveLoop(nil)
+			p.mutex.Unlock()
+			go entry.handler.HandleFDEvent()
 		}
 
-		d.mutex.Lock()
-		if len(d.entries) == 0 {
-			d.running = false
-			d.mutex.Unlock()
+		p.mutex.Lock()
+		if len(p.entries) == 0 {
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
-		d.mutex.Unlock()
+		p.mutex.Unlock()
 	}
 }

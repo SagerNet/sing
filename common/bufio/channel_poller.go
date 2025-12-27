@@ -14,7 +14,7 @@ type channelDemuxEntry struct {
 	stream  *reactorStream
 }
 
-type ChannelDemultiplexer struct {
+type ChannelPoller struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	mutex      sync.Mutex
@@ -25,22 +25,22 @@ type ChannelDemultiplexer struct {
 	wg         sync.WaitGroup
 }
 
-func NewChannelDemultiplexer(ctx context.Context) *ChannelDemultiplexer {
+func NewChannelPoller(ctx context.Context) *ChannelPoller {
 	ctx, cancel := context.WithCancel(ctx)
-	demux := &ChannelDemultiplexer{
+	poller := &ChannelPoller{
 		ctx:        ctx,
 		cancel:     cancel,
 		entries:    make(map[<-chan *N.PacketBuffer]*channelDemuxEntry),
 		updateChan: make(chan struct{}, 1),
 	}
-	return demux
+	return poller
 }
 
-func (d *ChannelDemultiplexer) Add(stream *reactorStream, channel <-chan *N.PacketBuffer) {
-	d.mutex.Lock()
+func (p *ChannelPoller) Add(stream *reactorStream, channel <-chan *N.PacketBuffer) {
+	p.mutex.Lock()
 
-	if d.closed.Load() {
-		d.mutex.Unlock()
+	if p.closed.Load() {
+		p.mutex.Unlock()
 		return
 	}
 
@@ -48,89 +48,89 @@ func (d *ChannelDemultiplexer) Add(stream *reactorStream, channel <-chan *N.Pack
 		channel: channel,
 		stream:  stream,
 	}
-	d.entries[channel] = entry
-	if !d.running {
-		d.running = true
-		d.wg.Add(1)
-		go d.run()
+	p.entries[channel] = entry
+	if !p.running {
+		p.running = true
+		p.wg.Add(1)
+		go p.run()
 	}
-	d.mutex.Unlock()
-	d.signalUpdate()
+	p.mutex.Unlock()
+	p.signalUpdate()
 }
 
-func (d *ChannelDemultiplexer) Remove(channel <-chan *N.PacketBuffer) {
-	d.mutex.Lock()
-	delete(d.entries, channel)
-	d.mutex.Unlock()
-	d.signalUpdate()
+func (p *ChannelPoller) Remove(channel <-chan *N.PacketBuffer) {
+	p.mutex.Lock()
+	delete(p.entries, channel)
+	p.mutex.Unlock()
+	p.signalUpdate()
 }
 
-func (d *ChannelDemultiplexer) signalUpdate() {
+func (p *ChannelPoller) signalUpdate() {
 	select {
-	case d.updateChan <- struct{}{}:
+	case p.updateChan <- struct{}{}:
 	default:
 	}
 }
 
-func (d *ChannelDemultiplexer) Close() error {
-	d.mutex.Lock()
-	d.closed.Store(true)
-	d.mutex.Unlock()
+func (p *ChannelPoller) Close() error {
+	p.mutex.Lock()
+	p.closed.Store(true)
+	p.mutex.Unlock()
 
-	d.cancel()
-	d.signalUpdate()
-	d.wg.Wait()
+	p.cancel()
+	p.signalUpdate()
+	p.wg.Wait()
 	return nil
 }
 
-func (d *ChannelDemultiplexer) run() {
-	defer d.wg.Done()
+func (p *ChannelPoller) run() {
+	defer p.wg.Done()
 
 	for {
-		d.mutex.Lock()
-		if len(d.entries) == 0 {
-			d.running = false
-			d.mutex.Unlock()
+		p.mutex.Lock()
+		if len(p.entries) == 0 {
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
 
-		cases := make([]reflect.SelectCase, 0, len(d.entries)+2)
+		cases := make([]reflect.SelectCase, 0, len(p.entries)+2)
 
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(d.ctx.Done()),
+			Chan: reflect.ValueOf(p.ctx.Done()),
 		})
 
 		cases = append(cases, reflect.SelectCase{
 			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(d.updateChan),
+			Chan: reflect.ValueOf(p.updateChan),
 		})
 
-		entryList := make([]*channelDemuxEntry, 0, len(d.entries))
-		for _, entry := range d.entries {
+		entryList := make([]*channelDemuxEntry, 0, len(p.entries))
+		for _, entry := range p.entries {
 			cases = append(cases, reflect.SelectCase{
 				Dir:  reflect.SelectRecv,
 				Chan: reflect.ValueOf(entry.channel),
 			})
 			entryList = append(entryList, entry)
 		}
-		d.mutex.Unlock()
+		p.mutex.Unlock()
 
 		chosen, recv, recvOK := reflect.Select(cases)
 
 		switch chosen {
 		case 0:
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		case 1:
 			continue
 		default:
 			entry := entryList[chosen-2]
-			d.mutex.Lock()
-			delete(d.entries, entry.channel)
-			d.mutex.Unlock()
+			p.mutex.Lock()
+			delete(p.entries, entry.channel)
+			p.mutex.Unlock()
 
 			if recvOK {
 				packet := recv.Interface().(*N.PacketBuffer)

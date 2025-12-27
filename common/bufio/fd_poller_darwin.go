@@ -11,11 +11,11 @@ import (
 )
 
 type fdDemuxEntry struct {
-	fd     int
-	stream *reactorStream
+	fd      int
+	handler FDHandler
 }
 
-type FDDemultiplexer struct {
+type FDPoller struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	kqueueFD int
@@ -27,7 +27,7 @@ type FDDemultiplexer struct {
 	pipeFDs  [2]int
 }
 
-func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
+func NewFDPoller(ctx context.Context) (*FDPoller, error) {
 	kqueueFD, err := unix.Kqueue()
 	if err != nil {
 		return nil, err
@@ -68,25 +68,25 @@ func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	demux := &FDDemultiplexer{
+	poller := &FDPoller{
 		ctx:      ctx,
 		cancel:   cancel,
 		kqueueFD: kqueueFD,
 		entries:  make(map[int]*fdDemuxEntry),
 		pipeFDs:  pipeFDs,
 	}
-	return demux, nil
+	return poller, nil
 }
 
-func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Add(handler FDHandler, fd int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	if d.closed.Load() {
+	if p.closed.Load() {
 		return unix.EINVAL
 	}
 
-	_, err := unix.Kevent(d.kqueueFD, []unix.Kevent_t{{
+	_, err := unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
 		Ident:  uint64(fd),
 		Filter: unix.EVFILT_READ,
 		Flags:  unix.EV_ADD,
@@ -96,90 +96,90 @@ func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
 	}
 
 	entry := &fdDemuxEntry{
-		fd:     fd,
-		stream: stream,
+		fd:      fd,
+		handler: handler,
 	}
-	d.entries[fd] = entry
+	p.entries[fd] = entry
 
-	if !d.running {
-		d.running = true
-		d.wg.Add(1)
-		go d.run()
+	if !p.running {
+		p.running = true
+		p.wg.Add(1)
+		go p.run()
 	}
 
 	return nil
 }
 
-func (d *FDDemultiplexer) Remove(fd int) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Remove(fd int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	_, ok := d.entries[fd]
+	_, ok := p.entries[fd]
 	if !ok {
 		return
 	}
 
-	unix.Kevent(d.kqueueFD, []unix.Kevent_t{{
+	unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
 		Ident:  uint64(fd),
 		Filter: unix.EVFILT_READ,
 		Flags:  unix.EV_DELETE,
 	}}, nil, nil)
-	delete(d.entries, fd)
+	delete(p.entries, fd)
 }
 
-func (d *FDDemultiplexer) wakeup() {
-	unix.Write(d.pipeFDs[1], []byte{0})
+func (p *FDPoller) wakeup() {
+	unix.Write(p.pipeFDs[1], []byte{0})
 }
 
-func (d *FDDemultiplexer) Close() error {
-	d.mutex.Lock()
-	d.closed.Store(true)
-	d.mutex.Unlock()
+func (p *FDPoller) Close() error {
+	p.mutex.Lock()
+	p.closed.Store(true)
+	p.mutex.Unlock()
 
-	d.cancel()
-	d.wakeup()
-	d.wg.Wait()
+	p.cancel()
+	p.wakeup()
+	p.wg.Wait()
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	if d.kqueueFD != -1 {
-		unix.Close(d.kqueueFD)
-		d.kqueueFD = -1
+	if p.kqueueFD != -1 {
+		unix.Close(p.kqueueFD)
+		p.kqueueFD = -1
 	}
-	if d.pipeFDs[0] != -1 {
-		unix.Close(d.pipeFDs[0])
-		unix.Close(d.pipeFDs[1])
-		d.pipeFDs[0] = -1
-		d.pipeFDs[1] = -1
+	if p.pipeFDs[0] != -1 {
+		unix.Close(p.pipeFDs[0])
+		unix.Close(p.pipeFDs[1])
+		p.pipeFDs[0] = -1
+		p.pipeFDs[1] = -1
 	}
 	return nil
 }
 
-func (d *FDDemultiplexer) run() {
-	defer d.wg.Done()
+func (p *FDPoller) run() {
+	defer p.wg.Done()
 
 	events := make([]unix.Kevent_t, 64)
 	var buffer [1]byte
 
 	for {
 		select {
-		case <-d.ctx.Done():
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+		case <-p.ctx.Done():
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		default:
 		}
 
-		n, err := unix.Kevent(d.kqueueFD, nil, events, nil)
+		n, err := unix.Kevent(p.kqueueFD, nil, events, nil)
 		if err != nil {
 			if err == unix.EINTR {
 				continue
 			}
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
 
@@ -187,8 +187,8 @@ func (d *FDDemultiplexer) run() {
 			event := events[i]
 			fd := int(event.Ident)
 
-			if fd == d.pipeFDs[0] {
-				unix.Read(d.pipeFDs[0], buffer[:])
+			if fd == p.pipeFDs[0] {
+				unix.Read(p.pipeFDs[0], buffer[:])
 				continue
 			}
 
@@ -196,30 +196,30 @@ func (d *FDDemultiplexer) run() {
 				continue
 			}
 
-			d.mutex.Lock()
-			entry, ok := d.entries[fd]
+			p.mutex.Lock()
+			entry, ok := p.entries[fd]
 			if !ok {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
-			unix.Kevent(d.kqueueFD, []unix.Kevent_t{{
+			unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
 				Ident:  uint64(fd),
 				Filter: unix.EVFILT_READ,
 				Flags:  unix.EV_DELETE,
 			}}, nil, nil)
-			delete(d.entries, fd)
-			d.mutex.Unlock()
+			delete(p.entries, fd)
+			p.mutex.Unlock()
 
-			go entry.stream.runActiveLoop(nil)
+			go entry.handler.HandleFDEvent()
 		}
 
-		d.mutex.Lock()
-		if len(d.entries) == 0 {
-			d.running = false
-			d.mutex.Unlock()
+		p.mutex.Lock()
+		if len(p.entries) == 0 {
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
-		d.mutex.Unlock()
+		p.mutex.Unlock()
 	}
 }

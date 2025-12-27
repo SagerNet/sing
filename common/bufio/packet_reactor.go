@@ -24,38 +24,38 @@ const (
 )
 
 type PacketReactor struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	channelDemux *ChannelDemultiplexer
-	fdDemux      *FDDemultiplexer
-	fdDemuxOnce  sync.Once
-	fdDemuxErr   error
+	ctx           context.Context
+	cancel        context.CancelFunc
+	channelPoller *ChannelPoller
+	fdPoller      *FDPoller
+	fdPollerOnce  sync.Once
+	fdPollerErr   error
 }
 
 func NewPacketReactor(ctx context.Context) *PacketReactor {
 	ctx, cancel := context.WithCancel(ctx)
 	return &PacketReactor{
-		ctx:          ctx,
-		cancel:       cancel,
-		channelDemux: NewChannelDemultiplexer(ctx),
+		ctx:           ctx,
+		cancel:        cancel,
+		channelPoller: NewChannelPoller(ctx),
 	}
 }
 
-func (r *PacketReactor) getFDDemultiplexer() (*FDDemultiplexer, error) {
-	r.fdDemuxOnce.Do(func() {
-		r.fdDemux, r.fdDemuxErr = NewFDDemultiplexer(r.ctx)
+func (r *PacketReactor) getFDPoller() (*FDPoller, error) {
+	r.fdPollerOnce.Do(func() {
+		r.fdPoller, r.fdPollerErr = NewFDPoller(r.ctx)
 	})
-	return r.fdDemux, r.fdDemuxErr
+	return r.fdPoller, r.fdPollerErr
 }
 
 func (r *PacketReactor) Close() error {
 	r.cancel()
 	var errs []error
-	if r.channelDemux != nil {
-		errs = append(errs, r.channelDemux.Close())
+	if r.channelPoller != nil {
+		errs = append(errs, r.channelPoller.Close())
 	}
-	if r.fdDemux != nil {
-		errs = append(errs, r.fdDemux.Close())
+	if r.fdPoller != nil {
+		errs = append(errs, r.fdPoller.Close())
 	}
 	return E.Errors(errs...)
 }
@@ -80,7 +80,7 @@ type reactorStream struct {
 	destination  N.PacketWriter
 	originSource N.PacketReader
 
-	notifier      N.ReadNotifier
+	pollable      N.PacketPollable
 	options       N.ReadWaitOptions
 	readWaiter    N.PacketReadWaiter
 	readCounters  []N.CountFunc
@@ -159,29 +159,31 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 		stream.readWaiter.InitializeReadWaiter(stream.options)
 	}
 
-	if notifierSource, ok := source.(N.ReadNotifierSource); ok {
-		stream.notifier = notifierSource.CreateReadNotifier()
+	if pollable, ok := source.(N.PacketPollable); ok {
+		stream.pollable = pollable
+	} else if creator, ok := source.(N.PacketPollableCreator); ok {
+		stream.pollable, _ = creator.CreatePacketPollable()
 	}
 
 	return stream
 }
 
 func (r *PacketReactor) registerStream(stream *reactorStream) {
-	if stream.notifier == nil {
+	if stream.pollable == nil {
 		go stream.runLegacyCopy()
 		return
 	}
 
-	switch notifier := stream.notifier.(type) {
-	case *N.ChannelNotifier:
-		r.channelDemux.Add(stream, notifier.Channel)
-	case *N.FileDescriptorNotifier:
-		fdDemux, err := r.getFDDemultiplexer()
+	switch stream.pollable.PollMode() {
+	case N.PacketPollModeChannel:
+		r.channelPoller.Add(stream, stream.pollable.PacketChannel())
+	case N.PacketPollModeFD:
+		fdPoller, err := r.getFDPoller()
 		if err != nil {
 			go stream.runLegacyCopy()
 			return
 		}
-		err = fdDemux.Add(stream, notifier.FD)
+		err = fdPoller.Add(stream, stream.pollable.FD())
 		if err != nil {
 			go stream.runLegacyCopy()
 		}
@@ -308,24 +310,35 @@ func (s *reactorStream) returnToPool() {
 		return
 	}
 
-	switch notifier := s.notifier.(type) {
-	case *N.ChannelNotifier:
-		s.connection.reactor.channelDemux.Add(s, notifier.Channel)
+	if s.pollable == nil {
+		return
+	}
+
+	switch s.pollable.PollMode() {
+	case N.PacketPollModeChannel:
+		channel := s.pollable.PacketChannel()
+		s.connection.reactor.channelPoller.Add(s, channel)
 		if s.state.Load() != stateIdle {
-			s.connection.reactor.channelDemux.Remove(notifier.Channel)
+			s.connection.reactor.channelPoller.Remove(channel)
 		}
-	case *N.FileDescriptorNotifier:
-		if s.connection.reactor.fdDemux != nil {
-			err := s.connection.reactor.fdDemux.Add(s, notifier.FD)
-			if err != nil {
-				s.closeWithError(err)
-				return
-			}
-			if s.state.Load() != stateIdle {
-				s.connection.reactor.fdDemux.Remove(notifier.FD)
-			}
+	case N.PacketPollModeFD:
+		if s.connection.reactor.fdPoller == nil {
+			return
+		}
+		fd := s.pollable.FD()
+		err := s.connection.reactor.fdPoller.Add(s, fd)
+		if err != nil {
+			s.closeWithError(err)
+			return
+		}
+		if s.state.Load() != stateIdle {
+			s.connection.reactor.fdPoller.Remove(fd)
 		}
 	}
+}
+
+func (s *reactorStream) HandleFDEvent() {
+	s.runActiveLoop(nil)
 }
 
 func (s *reactorStream) runLegacyCopy() {
@@ -349,7 +362,7 @@ func (c *reactorConnection) closeWithError(err error) {
 			c.download.state.Store(stateClosed)
 		}
 
-		c.removeFromDemultiplexers()
+		c.removeFromPollers()
 
 		if c.upload != nil {
 			common.Close(c.upload.originSource)
@@ -366,25 +379,21 @@ func (c *reactorConnection) closeWithError(err error) {
 	})
 }
 
-func (c *reactorConnection) removeFromDemultiplexers() {
-	if c.upload != nil && c.upload.notifier != nil {
-		switch notifier := c.upload.notifier.(type) {
-		case *N.ChannelNotifier:
-			c.reactor.channelDemux.Remove(notifier.Channel)
-		case *N.FileDescriptorNotifier:
-			if c.reactor.fdDemux != nil {
-				c.reactor.fdDemux.Remove(notifier.FD)
-			}
-		}
+func (c *reactorConnection) removeFromPollers() {
+	c.removeStreamFromPoller(c.upload)
+	c.removeStreamFromPoller(c.download)
+}
+
+func (c *reactorConnection) removeStreamFromPoller(stream *reactorStream) {
+	if stream == nil || stream.pollable == nil {
+		return
 	}
-	if c.download != nil && c.download.notifier != nil {
-		switch notifier := c.download.notifier.(type) {
-		case *N.ChannelNotifier:
-			c.reactor.channelDemux.Remove(notifier.Channel)
-		case *N.FileDescriptorNotifier:
-			if c.reactor.fdDemux != nil {
-				c.reactor.fdDemux.Remove(notifier.FD)
-			}
+	switch stream.pollable.PollMode() {
+	case N.PacketPollModeChannel:
+		c.reactor.channelPoller.Remove(stream.pollable.PacketChannel())
+	case N.PacketPollModeFD:
+		if c.reactor.fdPoller != nil {
+			c.reactor.fdPoller.Remove(stream.pollable.FD())
 		}
 	}
 }

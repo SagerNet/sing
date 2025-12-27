@@ -14,10 +14,10 @@ import (
 type fdDemuxEntry struct {
 	fd             int
 	registrationID uint64
-	stream         *reactorStream
+	handler        FDHandler
 }
 
-type FDDemultiplexer struct {
+type FDPoller struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
 	epollFD             int
@@ -31,7 +31,7 @@ type FDDemultiplexer struct {
 	pipeFDs             [2]int
 }
 
-func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
+func NewFDPoller(ctx context.Context) (*FDPoller, error) {
 	epollFD, err := unix.EpollCreate1(unix.EPOLL_CLOEXEC)
 	if err != nil {
 		return nil, err
@@ -55,7 +55,7 @@ func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	demux := &FDDemultiplexer{
+	poller := &FDPoller{
 		ctx:              ctx,
 		cancel:           cancel,
 		epollFD:          epollFD,
@@ -63,24 +63,24 @@ func NewFDDemultiplexer(ctx context.Context) (*FDDemultiplexer, error) {
 		registrationToFD: make(map[uint64]int),
 		pipeFDs:          pipeFDs,
 	}
-	return demux, nil
+	return poller, nil
 }
 
-func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Add(handler FDHandler, fd int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	if d.closed.Load() {
+	if p.closed.Load() {
 		return unix.EINVAL
 	}
 
-	d.registrationCounter++
-	registrationID := d.registrationCounter
+	p.registrationCounter++
+	registrationID := p.registrationCounter
 
 	event := &unix.EpollEvent{Events: unix.EPOLLIN | unix.EPOLLRDHUP}
 	*(*uint64)(unsafe.Pointer(&event.Fd)) = registrationID
 
-	err := unix.EpollCtl(d.epollFD, unix.EPOLL_CTL_ADD, fd, event)
+	err := unix.EpollCtl(p.epollFD, unix.EPOLL_CTL_ADD, fd, event)
 	if err != nil {
 		return err
 	}
@@ -88,87 +88,87 @@ func (d *FDDemultiplexer) Add(stream *reactorStream, fd int) error {
 	entry := &fdDemuxEntry{
 		fd:             fd,
 		registrationID: registrationID,
-		stream:         stream,
+		handler:        handler,
 	}
-	d.entries[fd] = entry
-	d.registrationToFD[registrationID] = fd
+	p.entries[fd] = entry
+	p.registrationToFD[registrationID] = fd
 
-	if !d.running {
-		d.running = true
-		d.wg.Add(1)
-		go d.run()
+	if !p.running {
+		p.running = true
+		p.wg.Add(1)
+		go p.run()
 	}
 
 	return nil
 }
 
-func (d *FDDemultiplexer) Remove(fd int) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+func (p *FDPoller) Remove(fd int) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	entry, ok := d.entries[fd]
+	entry, ok := p.entries[fd]
 	if !ok {
 		return
 	}
 
-	unix.EpollCtl(d.epollFD, unix.EPOLL_CTL_DEL, fd, nil)
-	delete(d.registrationToFD, entry.registrationID)
-	delete(d.entries, fd)
+	unix.EpollCtl(p.epollFD, unix.EPOLL_CTL_DEL, fd, nil)
+	delete(p.registrationToFD, entry.registrationID)
+	delete(p.entries, fd)
 }
 
-func (d *FDDemultiplexer) wakeup() {
-	unix.Write(d.pipeFDs[1], []byte{0})
+func (p *FDPoller) wakeup() {
+	unix.Write(p.pipeFDs[1], []byte{0})
 }
 
-func (d *FDDemultiplexer) Close() error {
-	d.mutex.Lock()
-	d.closed.Store(true)
-	d.mutex.Unlock()
+func (p *FDPoller) Close() error {
+	p.mutex.Lock()
+	p.closed.Store(true)
+	p.mutex.Unlock()
 
-	d.cancel()
-	d.wakeup()
-	d.wg.Wait()
+	p.cancel()
+	p.wakeup()
+	p.wg.Wait()
 
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
-	if d.epollFD != -1 {
-		unix.Close(d.epollFD)
-		d.epollFD = -1
+	if p.epollFD != -1 {
+		unix.Close(p.epollFD)
+		p.epollFD = -1
 	}
-	if d.pipeFDs[0] != -1 {
-		unix.Close(d.pipeFDs[0])
-		unix.Close(d.pipeFDs[1])
-		d.pipeFDs[0] = -1
-		d.pipeFDs[1] = -1
+	if p.pipeFDs[0] != -1 {
+		unix.Close(p.pipeFDs[0])
+		unix.Close(p.pipeFDs[1])
+		p.pipeFDs[0] = -1
+		p.pipeFDs[1] = -1
 	}
 	return nil
 }
 
-func (d *FDDemultiplexer) run() {
-	defer d.wg.Done()
+func (p *FDPoller) run() {
+	defer p.wg.Done()
 
 	events := make([]unix.EpollEvent, 64)
 	var buffer [1]byte
 
 	for {
 		select {
-		case <-d.ctx.Done():
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+		case <-p.ctx.Done():
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		default:
 		}
 
-		n, err := unix.EpollWait(d.epollFD, events, -1)
+		n, err := unix.EpollWait(p.epollFD, events, -1)
 		if err != nil {
 			if err == unix.EINTR {
 				continue
 			}
-			d.mutex.Lock()
-			d.running = false
-			d.mutex.Unlock()
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
 
@@ -177,7 +177,7 @@ func (d *FDDemultiplexer) run() {
 			registrationID := *(*uint64)(unsafe.Pointer(&event.Fd))
 
 			if registrationID == 0 {
-				unix.Read(d.pipeFDs[0], buffer[:])
+				unix.Read(p.pipeFDs[0], buffer[:])
 				continue
 			}
 
@@ -185,33 +185,33 @@ func (d *FDDemultiplexer) run() {
 				continue
 			}
 
-			d.mutex.Lock()
-			fd, ok := d.registrationToFD[registrationID]
+			p.mutex.Lock()
+			fd, ok := p.registrationToFD[registrationID]
 			if !ok {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
-			entry := d.entries[fd]
+			entry := p.entries[fd]
 			if entry == nil || entry.registrationID != registrationID {
-				d.mutex.Unlock()
+				p.mutex.Unlock()
 				continue
 			}
 
-			unix.EpollCtl(d.epollFD, unix.EPOLL_CTL_DEL, fd, nil)
-			delete(d.registrationToFD, registrationID)
-			delete(d.entries, fd)
-			d.mutex.Unlock()
+			unix.EpollCtl(p.epollFD, unix.EPOLL_CTL_DEL, fd, nil)
+			delete(p.registrationToFD, registrationID)
+			delete(p.entries, fd)
+			p.mutex.Unlock()
 
-			go entry.stream.runActiveLoop(nil)
+			go entry.handler.HandleFDEvent()
 		}
 
-		d.mutex.Lock()
-		if len(d.entries) == 0 {
-			d.running = false
-			d.mutex.Unlock()
+		p.mutex.Lock()
+		if len(p.entries) == 0 {
+			p.running = false
+			p.mutex.Unlock()
 			return
 		}
-		d.mutex.Unlock()
+		p.mutex.Unlock()
 	}
 }

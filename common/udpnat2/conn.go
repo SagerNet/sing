@@ -141,6 +141,14 @@ func (c *natConn) Upstream() any {
 	return c.writer
 }
 
-func (c *natConn) CreateReadNotifier() N.ReadNotifier {
-	return &N.ChannelNotifier{Channel: c.packetChan}
+func (c *natConn) PollMode() N.PacketPollMode {
+	return N.PacketPollModeChannel
+}
+
+func (c *natConn) PacketChannel() <-chan *N.PacketBuffer {
+	return c.packetChan
+}
+
+func (c *natConn) FD() int {
+	return -1
 }

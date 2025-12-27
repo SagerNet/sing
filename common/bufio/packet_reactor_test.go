@@ -103,8 +103,8 @@ func (p *testPacketPipe) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func (p *testPacketPipe) CreateReadNotifier() N.ReadNotifier {
-	return &N.ChannelNotifier{Channel: p.inChan}
+func (p *testPacketPipe) PacketChannel() <-chan *N.PacketBuffer {
+	return p.inChan
 }
 
 func (p *testPacketPipe) send(data []byte, destination M.Socksaddr) {
@@ -154,8 +154,8 @@ func (c *fdPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, 
 	return c.targetAddr, nil
 }
 
-func (c *fdPacketConn) CreateReadNotifier() N.ReadNotifier {
-	return &N.FileDescriptorNotifier{FD: c.fd}
+func (c *fdPacketConn) FD() int {
+	return c.fd
 }
 
 type channelPacketConn struct {
@@ -255,8 +255,8 @@ func (c *channelPacketConn) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (c *channelPacketConn) CreateReadNotifier() N.ReadNotifier {
-	return &N.ChannelNotifier{Channel: c.packetChan}
+func (c *channelPacketConn) PacketChannel() <-chan *N.PacketBuffer {
+	return c.packetChan
 }
 
 func (c *channelPacketConn) Close() error {
