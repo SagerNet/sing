@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -69,16 +70,21 @@ func CreatePacketPollable(reader N.PacketReader) (N.PacketPollable, bool) {
 type PacketReactor struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
+	logger       logger.Logger
 	fdPoller     *FDPoller
 	fdPollerOnce sync.Once
 	fdPollerErr  error
 }
 
-func NewPacketReactor(ctx context.Context) *PacketReactor {
+func NewPacketReactor(ctx context.Context, l logger.Logger) *PacketReactor {
 	ctx, cancel := context.WithCancel(ctx)
+	if l == nil {
+		l = logger.NOP()
+	}
 	return &PacketReactor{
 		ctx:    ctx,
 		cancel: cancel,
+		logger: l,
 	}
 }
 
@@ -129,6 +135,7 @@ type reactorStream struct {
 }
 
 func (r *PacketReactor) Copy(ctx context.Context, source N.PacketConn, destination N.PacketConn, onClose N.CloseHandlerFunc) {
+	r.logger.Trace("packet copy: starting")
 	ctx, cancel := context.WithCancel(ctx)
 	conn := &reactorConnection{
 		ctx:     ctx,
@@ -216,6 +223,7 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 
 func (r *PacketReactor) registerStream(stream *reactorStream) {
 	if stream.pushable != nil {
+		r.logger.Trace("packet stream: using pushable mode")
 		stream.pushable.SetOnDataReady(func() {
 			go stream.runActiveLoop(nil)
 		})
@@ -226,18 +234,23 @@ func (r *PacketReactor) registerStream(stream *reactorStream) {
 	}
 
 	if stream.pollable == nil {
+		r.logger.Trace("packet stream: using legacy copy")
 		go stream.runLegacyCopy()
 		return
 	}
 
 	fdPoller, err := r.getFDPoller()
 	if err != nil {
+		r.logger.Trace("packet stream: FD poller unavailable, using legacy copy")
 		go stream.runLegacyCopy()
 		return
 	}
 	err = fdPoller.Add(stream, stream.pollable.FD())
 	if err != nil {
+		r.logger.Trace("packet stream: failed to add to FD poller, using legacy copy")
 		go stream.runLegacyCopy()
+	} else {
+		r.logger.Trace("packet stream: registered with FD poller")
 	}
 }
 
@@ -311,6 +324,7 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 				if !s.state.CompareAndSwap(stateActive, stateIdle) {
 					return
 				}
+				s.connection.reactor.logger.Trace("packet stream: timeout, returning to idle pool")
 				if s.pushable != nil {
 					if s.pushable.HasPendingData() {
 						if s.state.CompareAndSwap(stateIdle, stateActive) {
@@ -325,6 +339,7 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 			if !notFirstTime {
 				err = N.ReportHandshakeFailure(s.originSource, err)
 			}
+			s.connection.reactor.logger.Trace("packet stream: error occurred: ", err)
 			s.closeWithError(err)
 			return
 		}
@@ -399,6 +414,7 @@ func (s *reactorStream) closeWithError(err error) {
 func (c *reactorConnection) closeWithError(err error) {
 	c.closeOnce.Do(func() {
 		defer close(c.done)
+		c.reactor.logger.Trace("packet connection: closing with error: ", err)
 
 		if c.stopReactorWatch != nil {
 			c.stopReactorWatch()

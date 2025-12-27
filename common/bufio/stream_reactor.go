@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	N "github.com/sagernet/sing/common/network"
 )
 
@@ -40,16 +41,21 @@ func CreateStreamPollable(reader io.Reader) (N.StreamPollable, bool) {
 type StreamReactor struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
+	logger       logger.Logger
 	fdPoller     *FDPoller
 	fdPollerOnce sync.Once
 	fdPollerErr  error
 }
 
-func NewStreamReactor(ctx context.Context) *StreamReactor {
+func NewStreamReactor(ctx context.Context, l logger.Logger) *StreamReactor {
 	ctx, cancel := context.WithCancel(ctx)
+	if l == nil {
+		l = logger.NOP()
+	}
 	return &StreamReactor{
 		ctx:    ctx,
 		cancel: cancel,
+		logger: l,
 	}
 }
 
@@ -104,10 +110,12 @@ type streamDirection struct {
 func (r *StreamReactor) Copy(ctx context.Context, source net.Conn, destination net.Conn, onClose N.CloseHandlerFunc) {
 	// Try splice first (zero-copy optimization)
 	if r.trySplice(ctx, source, destination, onClose) {
+		r.logger.Trace("stream copy: using splice for zero-copy")
 		return
 	}
 
 	// Fall back to reactor mode
+	r.logger.Trace("stream copy: using reactor mode")
 	ctx, cancel := context.WithCancel(ctx)
 	conn := &streamConnection{
 		ctx:     ctx,
@@ -209,6 +217,7 @@ func (r *StreamReactor) prepareDirection(conn *streamConnection, source io.Reade
 func (r *StreamReactor) registerDirection(direction *streamDirection) {
 	// Check if there's buffered data that needs processing first
 	if direction.pollable != nil && direction.pollable.Buffered() > 0 {
+		r.logger.Trace("stream direction: has buffered data, starting active loop")
 		go direction.runActiveLoop()
 		return
 	}
@@ -219,12 +228,14 @@ func (r *StreamReactor) registerDirection(direction *streamDirection) {
 		if err == nil {
 			err = fdPoller.Add(direction, direction.pollable.FD())
 			if err == nil {
+				r.logger.Trace("stream direction: registered with FD poller")
 				return
 			}
 		}
 	}
 
 	// Fall back to legacy goroutine copy
+	r.logger.Trace("stream direction: using legacy copy")
 	go direction.runLegacyCopy()
 }
 
@@ -271,6 +282,7 @@ func (d *streamDirection) runActiveLoop() {
 					setter.SetReadDeadline(time.Time{})
 				}
 				if d.state.CompareAndSwap(stateActive, stateIdle) {
+					d.connection.reactor.logger.Trace("stream direction: timeout, returning to idle pool")
 					d.returnToPool()
 				}
 				return
@@ -349,6 +361,7 @@ func (d *streamDirection) runLegacyCopy() {
 func (d *streamDirection) handleEOFOrError(err error) {
 	if err == nil || err == io.EOF {
 		// Graceful EOF: close write direction only (half-close)
+		d.connection.reactor.logger.Trace("stream direction: graceful EOF, half-closing")
 		d.state.Store(stateClosed)
 
 		// Try half-close on destination
@@ -367,6 +380,7 @@ func (d *streamDirection) handleEOFOrError(err error) {
 	}
 
 	// Error: close entire connection
+	d.connection.reactor.logger.Trace("stream direction: error occurred: ", err)
 	d.closeWithError(err)
 }
 
@@ -381,6 +395,7 @@ func (c *streamConnection) checkBothClosed() {
 	if uploadClosed && downloadClosed {
 		c.closeOnce.Do(func() {
 			defer close(c.done)
+			c.reactor.logger.Trace("stream connection: both directions closed gracefully")
 
 			if c.stopReactorWatch != nil {
 				c.stopReactorWatch()
@@ -402,6 +417,7 @@ func (c *streamConnection) checkBothClosed() {
 func (c *streamConnection) closeWithError(err error) {
 	c.closeOnce.Do(func() {
 		defer close(c.done)
+		c.reactor.logger.Trace("stream connection: closing with error: ", err)
 
 		if c.stopReactorWatch != nil {
 			c.stopReactorWatch()

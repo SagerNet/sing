@@ -103,7 +103,7 @@ func TestStreamReactor_Basic(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	// Create a pair of connected TCP connections
@@ -194,7 +194,7 @@ func TestStreamReactor_FDNotifier(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	// Create TCP connection pairs
@@ -241,7 +241,7 @@ func TestStreamReactor_BufferedReader(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -287,7 +287,7 @@ func TestStreamReactor_HalfClose(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -345,7 +345,7 @@ func TestStreamReactor_MultipleConnections(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	const numConnections = 10
@@ -402,7 +402,7 @@ func TestStreamReactor_ReactorClose(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 
 	server1, client1 := createTCPPair(t)
 	defer server1.Close()
@@ -520,7 +520,7 @@ func TestStreamReactor_WriteError(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -571,7 +571,7 @@ func TestStreamReactor_ReadError(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -607,7 +607,7 @@ func TestStreamReactor_Counters(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -672,7 +672,7 @@ func TestStreamReactor_CachedReader(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -731,7 +731,7 @@ func TestStreamReactor_LargeData(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)
@@ -846,7 +846,7 @@ func TestStreamReactor_BufferedAtRegistration(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	reactor := NewStreamReactor(ctx)
+	reactor := NewStreamReactor(ctx, nil)
 	defer reactor.Close()
 
 	server1, client1 := createTCPPair(t)

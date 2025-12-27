@@ -274,7 +274,7 @@ func TestBatchCopy_Pipe_DataIntegrity(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -335,7 +335,7 @@ func TestBatchCopy_Pipe_Bidirectional(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -447,7 +447,7 @@ func TestBatchCopy_FDPoller_DataIntegrity(t *testing.T) {
 	proxyA := newFDPacketConn(t, proxyAConn, serverAddr)
 	proxyB := newFDPacketConn(t, proxyBConn, clientAddr)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -568,7 +568,7 @@ func TestBatchCopy_LegacyChannel_DataIntegrity(t *testing.T) {
 	proxyA := newChannelPacketConn(proxyAConn, serverAddr)
 	proxyB := newChannelPacketConn(proxyBConn, clientAddr)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -689,7 +689,7 @@ func TestBatchCopy_MixedMode_DataIntegrity(t *testing.T) {
 	proxyA := newFDPacketConn(t, proxyAConn, serverAddr)
 	proxyB := newChannelPacketConn(proxyBConn, clientAddr)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -790,7 +790,7 @@ func TestBatchCopy_MultipleConnections_DataIntegrity(t *testing.T) {
 
 	const numConnections = 5
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	var wg sync.WaitGroup
@@ -881,7 +881,7 @@ func TestBatchCopy_TimeoutAndResume_DataIntegrity(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -945,7 +945,7 @@ func TestBatchCopy_CloseWhileTransferring(t *testing.T) {
 	pipeA := newTestPacketPipe(addr1)
 	pipeB := newTestPacketPipe(addr2)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 
 	copyDone := make(chan struct{})
 	go func() {
@@ -995,7 +995,7 @@ func TestBatchCopy_HighThroughput(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -1080,7 +1080,7 @@ func TestBatchCopy_LegacyFallback_DataIntegrity(t *testing.T) {
 	proxyA := &legacyPacketConn{NetPacketConn: NewPacketConn(proxyAConn), targetAddr: serverAddr}
 	proxyB := &legacyPacketConn{NetPacketConn: NewPacketConn(proxyBConn), targetAddr: clientAddr}
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -1195,7 +1195,7 @@ func TestBatchCopy_ReactorClose(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 
 	copyDone := make(chan struct{})
 	go func() {
@@ -1243,7 +1243,7 @@ func TestBatchCopy_SmallPackets(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -1297,7 +1297,7 @@ func TestBatchCopy_VaryingPacketSizes(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	go func() {
@@ -1365,7 +1365,7 @@ func TestBatchCopy_OnCloseCallback(t *testing.T) {
 	pipeA := newTestPacketPipe(addr1)
 	pipeB := newTestPacketPipe(addr2)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	callbackCalled := make(chan error, 1)
@@ -1409,7 +1409,7 @@ func TestBatchCopy_SourceClose(t *testing.T) {
 	pipeA := newTestPacketPipe(addr1)
 	pipeB := newTestPacketPipe(addr2)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	var capturedErr error
@@ -1667,7 +1667,7 @@ func TestPacketReactor_Pushable_Basic(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	copyDone := make(chan struct{})
@@ -1750,7 +1750,7 @@ func TestPacketReactor_Pushable_HasPendingData(t *testing.T) {
 		pipeA.send(data, addr2)
 	}
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	copyDone := make(chan struct{})
@@ -1799,7 +1799,7 @@ func TestPacketReactor_Pushable_TimeoutResume(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	copyDone := make(chan struct{})
@@ -1874,7 +1874,7 @@ func TestPacketReactor_WriteError(t *testing.T) {
 	// Wrap destination with failing writer that fails after 3 packets
 	failingDest := &failingPacketWriter{PacketConn: pipeB, failAfter: 3}
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	var capturedErr error
@@ -1929,7 +1929,7 @@ func TestPacketReactor_ReadError(t *testing.T) {
 	readErr := errors.New("simulated packet read error")
 	errorSrc := &errorPacketReader{PacketConn: pipeA, readError: readErr}
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	var capturedErr error
@@ -1981,7 +1981,7 @@ func TestPacketReactor_StateMachine_ConcurrentWakeup(t *testing.T) {
 	proxyA := newFDPacketConn(t, proxyAConn, serverAddr)
 	proxyB := newFDPacketConn(t, proxyBConn, clientAddr)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	copyDone := make(chan struct{})
@@ -2034,7 +2034,7 @@ func TestPacketReactor_StateMachine_CloseWhileActive(t *testing.T) {
 	pipeA := newTestPacketPipe(addr1)
 	pipeB := newTestPacketPipe(addr2)
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 
 	copyDone := make(chan struct{})
 	go func() {
@@ -2088,7 +2088,7 @@ func TestPacketReactor_Counters(t *testing.T) {
 	defer pipeA.Close()
 	defer pipeB.Close()
 
-	copier := NewPacketReactor(context.Background())
+	copier := NewPacketReactor(context.Background(), nil)
 	defer copier.Close()
 
 	copyDone := make(chan struct{})
