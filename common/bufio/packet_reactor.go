@@ -217,14 +217,10 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 func (r *PacketReactor) registerStream(stream *reactorStream) {
 	if stream.pushable != nil {
 		stream.pushable.SetOnDataReady(func() {
-			if stream.state.CompareAndSwap(stateIdle, stateActive) {
-				go stream.runActiveLoop(nil)
-			}
+			go stream.runActiveLoop(nil)
 		})
 		if stream.pushable.HasPendingData() {
-			if stream.state.CompareAndSwap(stateIdle, stateActive) {
-				go stream.runActiveLoop(nil)
-			}
+			go stream.runActiveLoop(nil)
 		}
 		return
 	}
