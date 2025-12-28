@@ -94,21 +94,22 @@ func (p *FDPoller) Add(handler FDHandler, fd int) error {
 	p.registrationCounter++
 	registrationID := p.registrationCounter
 
-	_, err := unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
-		Ident:  uint64(fd),
-		Filter: unix.EVFILT_READ,
-		Flags:  unix.EV_ADD | unix.EV_ONESHOT,
-		Udata:  (*byte)(unsafe.Pointer(uintptr(registrationID))),
-	}}, nil, nil)
-	if err != nil {
-		return err
-	}
-
 	entry := &fdDemuxEntry{
 		fd:             fd,
 		registrationID: registrationID,
 		handler:        handler,
 	}
+
+	_, err := unix.Kevent(p.kqueueFD, []unix.Kevent_t{{
+		Ident:  uint64(fd),
+		Filter: unix.EVFILT_READ,
+		Flags:  unix.EV_ADD | unix.EV_ONESHOT,
+		Udata:  (*byte)(unsafe.Pointer(entry)),
+	}}, nil, nil)
+	if err != nil {
+		return err
+	}
+
 	p.entries[fd] = entry
 	p.registrationToFD[registrationID] = fd
 
@@ -208,26 +209,20 @@ func (p *FDPoller) run() {
 				continue
 			}
 
-			registrationID := uint64(uintptr(unsafe.Pointer(event.Udata)))
+			eventEntry := (*fdDemuxEntry)(unsafe.Pointer(event.Udata))
 
 			p.mutex.Lock()
-			mappedFD, ok := p.registrationToFD[registrationID]
-			if !ok || mappedFD != fd {
+			currentEntry := p.entries[fd]
+			if currentEntry != eventEntry {
 				p.mutex.Unlock()
 				continue
 			}
 
-			entry := p.entries[fd]
-			if entry == nil || entry.registrationID != registrationID {
-				p.mutex.Unlock()
-				continue
-			}
-
-			delete(p.registrationToFD, registrationID)
+			delete(p.registrationToFD, currentEntry.registrationID)
 			delete(p.entries, fd)
 			p.mutex.Unlock()
 
-			go entry.handler.HandleFDEvent()
+			go currentEntry.handler.HandleFDEvent()
 		}
 
 		p.mutex.Lock()
