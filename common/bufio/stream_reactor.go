@@ -215,6 +215,12 @@ func (r *StreamReactor) prepareDirection(conn *streamConnection, source io.Reade
 }
 
 func (r *StreamReactor) registerDirection(direction *streamDirection) {
+	if needAdditionalReadDeadline(direction.source) {
+		r.logger.Trace("stream direction: needs additional deadline handling, using legacy copy")
+		go direction.runLegacyCopy()
+		return
+	}
+
 	// Check if there's buffered data that needs processing first
 	if direction.pollable != nil && direction.pollable.Buffered() > 0 {
 		r.logger.Trace("stream direction: has buffered data, starting active loop")

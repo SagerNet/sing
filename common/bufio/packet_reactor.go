@@ -24,6 +24,23 @@ const (
 	stateClosed int32 = 2
 )
 
+type withoutReadDeadline interface {
+	NeedAdditionalReadDeadline() bool
+}
+
+func needAdditionalReadDeadline(rawReader any) bool {
+	if deadlineReader, loaded := rawReader.(withoutReadDeadline); loaded {
+		return deadlineReader.NeedAdditionalReadDeadline()
+	}
+	if upstream, hasUpstream := rawReader.(N.WithUpstreamReader); hasUpstream {
+		return needAdditionalReadDeadline(upstream.UpstreamReader())
+	}
+	if upstream, hasUpstream := rawReader.(common.WithUpstream); hasUpstream {
+		return needAdditionalReadDeadline(upstream.Upstream())
+	}
+	return false
+}
+
 func CreatePacketPushable(reader N.PacketReader) (N.PacketPushable, bool) {
 	if pushable, ok := reader.(N.PacketPushable); ok {
 		return pushable, true
@@ -222,6 +239,12 @@ func (r *PacketReactor) prepareStream(conn *reactorConnection, source N.PacketRe
 }
 
 func (r *PacketReactor) registerStream(stream *reactorStream) {
+	if needAdditionalReadDeadline(stream.source) {
+		r.logger.Trace("packet stream: needs additional deadline handling, using legacy copy")
+		go stream.runLegacyCopy()
+		return
+	}
+
 	if stream.pushable != nil {
 		r.logger.Trace("packet stream: using pushable mode")
 		stream.pushable.SetOnDataReady(func() {
