@@ -40,31 +40,45 @@ type natConn struct {
 	queueMutex  sync.Mutex
 	onDataReady func()
 
+	deadlineMutex sync.Mutex
+	deadlineTimer *time.Timer
+	deadlineChan  chan struct{}
+	dataSignal    chan struct{}
+
 	closeOnce sync.Once
 	doneChan  chan struct{}
 }
 
-func (c *natConn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
-	select {
-	case <-c.doneChan:
-		return M.Socksaddr{}, io.ErrClosedPipe
-	default:
-	}
+func (c *natConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
+	for {
+		select {
+		case <-c.doneChan:
+			return M.Socksaddr{}, io.ErrClosedPipe
+		default:
+		}
 
-	c.queueMutex.Lock()
-	if len(c.dataQueue) == 0 {
+		c.queueMutex.Lock()
+		if len(c.dataQueue) > 0 {
+			packet := c.dataQueue[0]
+			c.dataQueue = c.dataQueue[1:]
+			c.queueMutex.Unlock()
+			_, err = buffer.ReadOnceFrom(packet.Buffer)
+			destination = packet.Destination
+			packet.Buffer.Release()
+			N.PutPacketBuffer(packet)
+			return
+		}
 		c.queueMutex.Unlock()
-		return M.Socksaddr{}, os.ErrDeadlineExceeded
-	}
-	packet := c.dataQueue[0]
-	c.dataQueue = c.dataQueue[1:]
-	c.queueMutex.Unlock()
 
-	_, err = buffer.ReadOnceFrom(packet.Buffer)
-	destination := packet.Destination
-	packet.Buffer.Release()
-	N.PutPacketBuffer(packet)
-	return destination, err
+		select {
+		case <-c.doneChan:
+			return M.Socksaddr{}, io.ErrClosedPipe
+		case <-c.waitDeadline():
+			return M.Socksaddr{}, os.ErrDeadlineExceeded
+		case <-c.dataSignal:
+			continue
+		}
+	}
 }
 
 func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
@@ -79,25 +93,34 @@ func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool
 }
 
 func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
-	select {
-	case <-c.doneChan:
-		return nil, M.Socksaddr{}, io.ErrClosedPipe
-	default:
-	}
+	for {
+		select {
+		case <-c.doneChan:
+			return nil, M.Socksaddr{}, io.ErrClosedPipe
+		default:
+		}
 
-	c.queueMutex.Lock()
-	if len(c.dataQueue) == 0 {
+		c.queueMutex.Lock()
+		if len(c.dataQueue) > 0 {
+			packet := c.dataQueue[0]
+			c.dataQueue = c.dataQueue[1:]
+			c.queueMutex.Unlock()
+			buffer = c.readWaitOptions.Copy(packet.Buffer)
+			destination = packet.Destination
+			N.PutPacketBuffer(packet)
+			return
+		}
 		c.queueMutex.Unlock()
-		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
-	}
-	packet := c.dataQueue[0]
-	c.dataQueue = c.dataQueue[1:]
-	c.queueMutex.Unlock()
 
-	buffer = c.readWaitOptions.Copy(packet.Buffer)
-	destination = packet.Destination
-	N.PutPacketBuffer(packet)
-	return
+		select {
+		case <-c.doneChan:
+			return nil, M.Socksaddr{}, io.ErrClosedPipe
+		case <-c.waitDeadline():
+			return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
+		case <-c.dataSignal:
+			continue
+		}
+	}
 }
 
 func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
@@ -140,6 +163,11 @@ func (c *natConn) PushPacket(packet *N.PacketBuffer) {
 	c.dataQueue = append(c.dataQueue, packet)
 	callback := c.onDataReady
 	c.queueMutex.Unlock()
+
+	select {
+	case c.dataSignal <- struct{}{}:
+	default:
+	}
 
 	if callback != nil {
 		callback()
@@ -187,7 +215,50 @@ func (c *natConn) SetDeadline(t time.Time) error {
 }
 
 func (c *natConn) SetReadDeadline(t time.Time) error {
+	c.deadlineMutex.Lock()
+	defer c.deadlineMutex.Unlock()
+
+	if c.deadlineTimer != nil && !c.deadlineTimer.Stop() {
+		<-c.deadlineChan
+	}
+	c.deadlineTimer = nil
+
+	if t.IsZero() {
+		if isClosedChan(c.deadlineChan) {
+			c.deadlineChan = make(chan struct{})
+		}
+		return nil
+	}
+
+	if duration := time.Until(t); duration > 0 {
+		if isClosedChan(c.deadlineChan) {
+			c.deadlineChan = make(chan struct{})
+		}
+		c.deadlineTimer = time.AfterFunc(duration, func() {
+			close(c.deadlineChan)
+		})
+		return nil
+	}
+
+	if !isClosedChan(c.deadlineChan) {
+		close(c.deadlineChan)
+	}
 	return nil
+}
+
+func (c *natConn) waitDeadline() chan struct{} {
+	c.deadlineMutex.Lock()
+	defer c.deadlineMutex.Unlock()
+	return c.deadlineChan
+}
+
+func isClosedChan(channel <-chan struct{}) bool {
+	select {
+	case <-channel:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *natConn) SetWriteDeadline(t time.Time) error {

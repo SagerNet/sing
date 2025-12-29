@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	batchReadTimeout = 250 * time.Millisecond
+	batchReadTimeout = 5 *time.Second
 )
 
 const (
@@ -141,12 +141,14 @@ type reactorStream struct {
 	destination  N.PacketWriter
 	originSource N.PacketReader
 
-	pushable      N.PacketPushable
-	pollable      N.PacketPollable
-	options       N.ReadWaitOptions
-	readWaiter    N.PacketReadWaiter
-	readCounters  []N.CountFunc
-	writeCounters []N.CountFunc
+	pushable         N.PacketPushable
+	pushableCallback func()
+	pollable         N.PacketPollable
+	deadlineSetter   deadlineSetter
+	options          N.ReadWaitOptions
+	readWaiter       N.PacketReadWaiter
+	readCounters     []N.CountFunc
+	writeCounters    []N.CountFunc
 
 	state atomic.Int32
 }
@@ -245,11 +247,27 @@ func (r *PacketReactor) registerStream(stream *reactorStream) {
 		return
 	}
 
+	// Check if deadline setter is available and functional
+	if setter, ok := stream.source.(deadlineSetter); ok {
+		err := setter.SetReadDeadline(time.Time{})
+		if err != nil {
+			r.logger.Trace("packet stream: SetReadDeadline not supported, using legacy copy")
+			go stream.runLegacyCopy()
+			return
+		}
+		stream.deadlineSetter = setter
+	} else {
+		r.logger.Trace("packet stream: no deadline setter, using legacy copy")
+		go stream.runLegacyCopy()
+		return
+	}
+
 	if stream.pushable != nil {
 		r.logger.Trace("packet stream: using pushable mode")
-		stream.pushable.SetOnDataReady(func() {
+		stream.pushableCallback = func() {
 			go stream.runActiveLoop(nil)
-		})
+		}
+		stream.pushable.SetOnDataReady(stream.pushableCallback)
 		if stream.pushable.HasPendingData() {
 			go stream.runActiveLoop(nil)
 		}
@@ -293,6 +311,10 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 		return
 	}
 
+	if s.pushable != nil {
+		s.pushable.SetOnDataReady(nil)
+	}
+
 	notFirstTime := false
 
 	if firstPacket != nil {
@@ -309,8 +331,12 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 			return
 		}
 
-		if setter, ok := s.source.(interface{ SetReadDeadline(time.Time) error }); ok {
-			setter.SetReadDeadline(time.Now().Add(batchReadTimeout))
+		deadlineErr := s.deadlineSetter.SetReadDeadline(time.Now().Add(batchReadTimeout))
+		if deadlineErr != nil {
+			s.connection.reactor.logger.Trace("packet stream: SetReadDeadline failed, switching to legacy copy")
+			s.state.Store(stateIdle)
+			go s.runLegacyCopy()
+			return
 		}
 
 		var (
@@ -341,16 +367,16 @@ func (s *reactorStream) runActiveLoop(firstPacket *N.PacketBuffer) {
 
 		if err != nil {
 			if E.IsTimeout(err) {
-				if setter, ok := s.source.(interface{ SetReadDeadline(time.Time) error }); ok {
-					setter.SetReadDeadline(time.Time{})
-				}
+				s.deadlineSetter.SetReadDeadline(time.Time{})
 				if !s.state.CompareAndSwap(stateActive, stateIdle) {
 					return
 				}
 				s.connection.reactor.logger.Trace("packet stream: timeout, returning to idle pool")
 				if s.pushable != nil {
+					s.pushable.SetOnDataReady(s.pushableCallback)
 					if s.pushable.HasPendingData() {
 						if s.state.CompareAndSwap(stateIdle, stateActive) {
+							s.pushable.SetOnDataReady(nil)
 							continue
 						}
 					}

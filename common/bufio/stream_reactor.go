@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	streamBatchReadTimeout = 250 * time.Millisecond
+	streamBatchReadTimeout = 5*time.Second
 )
 
 func CreateStreamPollable(reader io.Reader) (N.StreamPollable, bool) {
@@ -88,6 +88,10 @@ type streamConnection struct {
 	err       error
 }
 
+type deadlineSetter interface {
+	SetReadDeadline(time.Time) error
+}
+
 type streamDirection struct {
 	connection *streamConnection
 
@@ -95,11 +99,12 @@ type streamDirection struct {
 	destination  io.Writer
 	originSource net.Conn
 
-	pollable      N.StreamPollable
-	options       N.ReadWaitOptions
-	readWaiter    N.ReadWaiter
-	readCounters  []N.CountFunc
-	writeCounters []N.CountFunc
+	pollable       N.StreamPollable
+	deadlineSetter deadlineSetter
+	options        N.ReadWaitOptions
+	readWaiter     N.ReadWaiter
+	readCounters   []N.CountFunc
+	writeCounters  []N.CountFunc
 
 	isUpload bool
 	state    atomic.Int32
@@ -221,6 +226,21 @@ func (r *StreamReactor) registerDirection(direction *streamDirection) {
 		return
 	}
 
+	// Check if deadline setter is available and functional
+	if setter, ok := direction.originSource.(deadlineSetter); ok {
+		err := setter.SetReadDeadline(time.Time{})
+		if err != nil {
+			r.logger.Trace("stream direction: SetReadDeadline not supported, using legacy copy")
+			go direction.runLegacyCopy()
+			return
+		}
+		direction.deadlineSetter = setter
+	} else {
+		r.logger.Trace("stream direction: no deadline setter, using legacy copy")
+		go direction.runLegacyCopy()
+		return
+	}
+
 	// Check if there's buffered data that needs processing first
 	if direction.pollable != nil && direction.pollable.Buffered() > 0 {
 		r.logger.Trace("stream direction: has buffered data, starting active loop")
@@ -261,8 +281,12 @@ func (d *streamDirection) runActiveLoop() {
 		}
 
 		// Set batch read timeout
-		if setter, ok := d.originSource.(interface{ SetReadDeadline(time.Time) error }); ok {
-			setter.SetReadDeadline(time.Now().Add(streamBatchReadTimeout))
+		deadlineErr := d.deadlineSetter.SetReadDeadline(time.Now().Add(streamBatchReadTimeout))
+		if deadlineErr != nil {
+			d.connection.reactor.logger.Trace("stream direction: SetReadDeadline failed, switching to legacy copy")
+			d.state.Store(stateIdle)
+			go d.runLegacyCopy()
+			return
 		}
 
 		var (
@@ -284,9 +308,7 @@ func (d *streamDirection) runActiveLoop() {
 		if err != nil {
 			if E.IsTimeout(err) {
 				// Timeout: check buffer and return to pool
-				if setter, ok := d.originSource.(interface{ SetReadDeadline(time.Time) error }); ok {
-					setter.SetReadDeadline(time.Time{})
-				}
+				d.deadlineSetter.SetReadDeadline(time.Time{})
 				if d.state.CompareAndSwap(stateActive, stateIdle) {
 					d.connection.reactor.logger.Trace("stream direction: timeout, returning to idle pool")
 					d.returnToPool()

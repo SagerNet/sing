@@ -56,10 +56,12 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 			return nil, false
 		}
 		newConn := &natConn{
-			cache:     s.cache,
-			writer:    writer,
-			localAddr: source,
-			doneChan:  make(chan struct{}),
+			cache:        s.cache,
+			writer:       writer,
+			localAddr:    source,
+			deadlineChan: make(chan struct{}),
+			dataSignal:   make(chan struct{}, 1),
+			doneChan:     make(chan struct{}),
 		}
 		go s.handler.NewPacketConnectionEx(ctx, newConn, source, destination, onClose)
 		return newConn, true
