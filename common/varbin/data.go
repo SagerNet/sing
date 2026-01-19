@@ -106,7 +106,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue 
 		}
 	case reflect.Array:
 		arrayLen := data.Len()
-		itemSize := data.Type().Elem().Len()
+		itemSize := int(data.Type().Elem().Size())
 		if itemSize > 0 {
 			buf := make([]byte, itemSize*arrayLen)
 			_, err := io.ReadFull(r, buf)
