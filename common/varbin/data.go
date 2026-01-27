@@ -181,7 +181,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue 
 		for i := 0; i < fieldLen; i++ {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
-			if field.CanSet() || fieldName != "_" {
+			if field.CanSet() {
 				err := read(r, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
@@ -364,7 +364,7 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value, isArrayOrM
 		for i := 0; i < fieldLen; i++ {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
-			if field.CanSet() || fieldName != "_" {
+			if field.CanSet() {
 				err := write(writer, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
