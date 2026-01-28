@@ -12,6 +12,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
+// Deprecated: not well-designed. Use manual serialization or JSON/gRPC instead.
 func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
 	reader := StubReader(r)
 	switch data := rawData.(type) {
@@ -45,6 +46,7 @@ func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
 	return read(reader, order, reflect.Indirect(reflect.ValueOf(rawData)), false)
 }
 
+// Deprecated: not well-designed. Use manual serialization or JSON/gRPC instead.
 func ReadValue[T any](r io.Reader, order binary.ByteOrder) (T, error) {
 	var value T
 	err := Read(r, order, &value)
