@@ -49,6 +49,7 @@ func WrapGRPC(err error) error {
 	return err
 }
 
+// Deprecated: use qtls.WrapError
 func WrapQUIC(err error) error {
 	if err == nil {
 		return nil

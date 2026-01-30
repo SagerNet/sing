@@ -12,6 +12,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
+// Deprecated: not well-designed. Use manual serialization or JSON/gRPC instead.
 func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
 	reader := StubReader(r)
 	switch data := rawData.(type) {
@@ -45,6 +46,7 @@ func Read(r io.Reader, order binary.ByteOrder, rawData any) error {
 	return read(reader, order, reflect.Indirect(reflect.ValueOf(rawData)), false)
 }
 
+// Deprecated: not well-designed. Use manual serialization or JSON/gRPC instead.
 func ReadValue[T any](r io.Reader, order binary.ByteOrder) (T, error) {
 	var value T
 	err := Read(r, order, &value)
@@ -106,7 +108,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue 
 		}
 	case reflect.Array:
 		arrayLen := data.Len()
-		itemSize := data.Type().Elem().Len()
+		itemSize := int(data.Type().Elem().Size())
 		if itemSize > 0 {
 			buf := make([]byte, itemSize*arrayLen)
 			_, err := io.ReadFull(r, buf)
@@ -181,7 +183,7 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue 
 		for i := 0; i < fieldLen; i++ {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
-			if field.CanSet() || fieldName != "_" {
+			if field.CanSet() {
 				err := read(r, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
@@ -364,7 +366,7 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value, isArrayOrM
 		for i := 0; i < fieldLen; i++ {
 			field := data.Field(i)
 			fieldName := fieldType.Field(i).Name
-			if field.CanSet() || fieldName != "_" {
+			if field.CanSet() {
 				err := write(writer, order, field, false)
 				if err != nil {
 					return E.Cause(err, fieldName)
@@ -393,7 +395,7 @@ func intItemBaseDataSize(data reflect.Value) int {
 		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		return itemType.Len()
+		return int(itemType.Size())
 	default:
 		return -1
 	}

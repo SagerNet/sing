@@ -23,8 +23,10 @@ const (
 )
 
 type CommentFilter struct {
-	br    *bufio.Reader
-	state commentFilterState
+	br       *bufio.Reader
+	state    commentFilterState
+	pending  [2]byte
+	pendingN int
 }
 
 func NewCommentFilter(reader io.Reader) io.Reader {
@@ -32,24 +34,73 @@ func NewCommentFilter(reader io.Reader) io.Reader {
 }
 
 func (v *CommentFilter) Read(b []byte) (int, error) {
-	p := b[:0]
-	for len(p) < len(b)-2 {
+	if len(b) == 0 {
+		return 0, nil
+	}
+
+	n := 0
+	if v.pendingN > 0 {
+		copied := copy(b, v.pending[:v.pendingN])
+		n += copied
+		if copied < v.pendingN {
+			copy(v.pending[:], v.pending[copied:v.pendingN])
+			v.pendingN -= copied
+			return n, nil
+		}
+		v.pendingN = 0
+	}
+
+	emit := func(bs ...byte) bool {
+		remaining := len(b) - n
+		if remaining <= 0 {
+			copy(v.pending[:], bs)
+			v.pendingN = len(bs)
+			return false
+		}
+		if len(bs) <= remaining {
+			copy(b[n:], bs)
+			n += len(bs)
+			return true
+		}
+		copy(b[n:], bs[:remaining])
+		n += remaining
+		bs = bs[remaining:]
+		copy(v.pending[:], bs)
+		v.pendingN = len(bs)
+		return false
+	}
+
+	emitWithState := func(next commentFilterState, bs ...byte) bool {
+		v.state = next
+		return emit(bs...)
+	}
+
+	for n < len(b) {
 		x, err := v.br.ReadByte()
 		if err != nil {
-			if len(p) == 0 {
+			// Handle pending slash at EOF
+			if v.state == commentFilterStateSlash {
+				v.state = commentFilterStateContent
+				if !emit('/') {
+					return n, nil
+				}
+			}
+			if n == 0 {
 				return 0, err
 			}
-			return len(p), nil
+			return n, nil
 		}
 		switch v.state {
 		case commentFilterStateContent:
 			switch x {
 			case '"':
-				v.state = commentFilterStateDoubleQuote
-				p = append(p, x)
+				if !emitWithState(commentFilterStateDoubleQuote, x) {
+					return n, nil
+				}
 			case '\'':
-				v.state = commentFilterStateSingleQuote
-				p = append(p, x)
+				if !emitWithState(commentFilterStateSingleQuote, x) {
+					return n, nil
+				}
 			case '\\':
 				v.state = commentFilterStateEscape
 			case '#':
@@ -57,41 +108,53 @@ func (v *CommentFilter) Read(b []byte) (int, error) {
 			case '/':
 				v.state = commentFilterStateSlash
 			default:
-				p = append(p, x)
+				if !emit(x) {
+					return n, nil
+				}
 			}
 		case commentFilterStateEscape:
-			p = append(p, '\\', x)
-			v.state = commentFilterStateContent
+			if !emitWithState(commentFilterStateContent, '\\', x) {
+				return n, nil
+			}
 		case commentFilterStateDoubleQuote:
 			switch x {
 			case '"':
-				v.state = commentFilterStateContent
-				p = append(p, x)
+				if !emitWithState(commentFilterStateContent, x) {
+					return n, nil
+				}
 			case '\\':
 				v.state = commentFilterStateDoubleQuoteEscape
 			default:
-				p = append(p, x)
+				if !emit(x) {
+					return n, nil
+				}
 			}
 		case commentFilterStateDoubleQuoteEscape:
-			p = append(p, '\\', x)
-			v.state = commentFilterStateDoubleQuote
+			if !emitWithState(commentFilterStateDoubleQuote, '\\', x) {
+				return n, nil
+			}
 		case commentFilterStateSingleQuote:
 			switch x {
 			case '\'':
-				v.state = commentFilterStateContent
-				p = append(p, x)
+				if !emitWithState(commentFilterStateContent, x) {
+					return n, nil
+				}
 			case '\\':
 				v.state = commentFilterStateSingleQuoteEscape
 			default:
-				p = append(p, x)
+				if !emit(x) {
+					return n, nil
+				}
 			}
 		case commentFilterStateSingleQuoteEscape:
-			p = append(p, '\\', x)
-			v.state = commentFilterStateSingleQuote
+			if !emitWithState(commentFilterStateSingleQuote, '\\', x) {
+				return n, nil
+			}
 		case commentFilterStateComment:
 			if x == '\n' {
-				v.state = commentFilterStateContent
-				p = append(p, '\n')
+				if !emitWithState(commentFilterStateContent, '\n') {
+					return n, nil
+				}
 			}
 		case commentFilterStateSlash:
 			switch x {
@@ -100,23 +163,29 @@ func (v *CommentFilter) Read(b []byte) (int, error) {
 			case '*':
 				v.state = commentFilterStateMultilineComment
 			default:
-				p = append(p, '/', x)
+				if !emitWithState(commentFilterStateContent, '/', x) {
+					return n, nil
+				}
 			}
 		case commentFilterStateMultilineComment:
 			switch x {
 			case '*':
 				v.state = commentFilterStateMultilineCommentStar
 			case '\n':
-				p = append(p, '\n')
+				if !emit('\n') {
+					return n, nil
+				}
 			}
 		case commentFilterStateMultilineCommentStar:
 			switch x {
 			case '/':
 				v.state = commentFilterStateContent
 			case '*':
-				// Stay
+				// Stay in star state
 			case '\n':
-				p = append(p, '\n')
+				if !emitWithState(commentFilterStateMultilineComment, '\n') {
+					return n, nil
+				}
 			default:
 				v.state = commentFilterStateMultilineComment
 			}
@@ -124,5 +193,5 @@ func (v *CommentFilter) Read(b []byte) (int, error) {
 			panic("Unknown state.")
 		}
 	}
-	return len(p), nil
+	return n, nil
 }

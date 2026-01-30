@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"syscall"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -59,14 +58,10 @@ func CopyWithIncreateBuffer(destination io.Writer, source io.Reader, increaseBuf
 }
 
 func CopyWithCounters(destination io.Writer, source io.Reader, originSource io.Reader, readCounters []N.CountFunc, writeCounters []N.CountFunc, increaseBufferAfter int64, batchSize int) (n int64, err error) {
-	srcSyscallConn, srcIsSyscall := source.(syscall.Conn)
-	dstSyscallConn, dstIsSyscall := destination.(syscall.Conn)
-	if srcIsSyscall && dstIsSyscall {
-		var handled bool
-		handled, n, err = copyDirect(srcSyscallConn, dstSyscallConn, readCounters, writeCounters)
-		if handled {
-			return
-		}
+	var handled bool
+	handled, n, err = copyDirect(source, destination, readCounters, writeCounters)
+	if handled {
+		return
 	}
 	return CopyExtended(originSource, NewExtendedWriter(destination), NewExtendedReader(source), readCounters, writeCounters, increaseBufferAfter, batchSize)
 }
