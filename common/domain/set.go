@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/binary"
+	"io"
 	"math/bits"
 
 	"github.com/sagernet/sing/common/varbin"
@@ -71,33 +72,101 @@ func (ss *succinctSet) keys() []string {
 	return result
 }
 
-type succinctSetData struct {
-	Reserved    uint8
-	Leaves      []uint64
-	LabelBitmap []uint64
-	Labels      []byte
-}
-
 func readSuccinctSet(reader varbin.Reader) (*succinctSet, error) {
-	matcher, err := varbin.ReadValue[succinctSetData](reader, binary.BigEndian)
+	_, err := reader.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	leaves, err := readUint64Slice(reader)
+	if err != nil {
+		return nil, err
+	}
+	labelBitmap, err := readUint64Slice(reader)
+	if err != nil {
+		return nil, err
+	}
+	labels, err := readByteSlice(reader)
 	if err != nil {
 		return nil, err
 	}
 	set := &succinctSet{
-		leaves:      matcher.Leaves,
-		labelBitmap: matcher.LabelBitmap,
-		labels:      matcher.Labels,
+		leaves:      leaves,
+		labelBitmap: labelBitmap,
+		labels:      labels,
 	}
 	set.init()
 	return set, nil
 }
 
 func (ss *succinctSet) Write(writer varbin.Writer) error {
-	return varbin.Write(writer, binary.BigEndian, succinctSetData{
-		Leaves:      ss.leaves,
-		LabelBitmap: ss.labelBitmap,
-		Labels:      ss.labels,
-	})
+	err := writer.WriteByte(0)
+	if err != nil {
+		return err
+	}
+	err = writeUint64Slice(writer, ss.leaves)
+	if err != nil {
+		return err
+	}
+	err = writeUint64Slice(writer, ss.labelBitmap)
+	if err != nil {
+		return err
+	}
+	return writeByteSlice(writer, ss.labels)
+}
+
+func readUint64Slice(reader varbin.Reader) ([]uint64, error) {
+	length, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	result := make([]uint64, length)
+	err = binary.Read(reader, binary.BigEndian, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func writeUint64Slice(writer varbin.Writer, value []uint64) error {
+	_, err := varbin.WriteUvarint(writer, uint64(len(value)))
+	if err != nil {
+		return err
+	}
+	if len(value) == 0 {
+		return nil
+	}
+	return binary.Write(writer, binary.BigEndian, value)
+}
+
+func readByteSlice(reader varbin.Reader) ([]byte, error) {
+	length, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	result := make([]byte, length)
+	_, err = io.ReadFull(reader, result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func writeByteSlice(writer varbin.Writer, value []byte) error {
+	_, err := varbin.WriteUvarint(writer, uint64(len(value)))
+	if err != nil {
+		return err
+	}
+	if len(value) == 0 {
+		return nil
+	}
+	_, err = writer.Write(value)
+	return err
 }
 
 func setBit(bm *[]uint64, i int, v int) {
