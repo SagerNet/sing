@@ -179,20 +179,13 @@ func read(r Reader, order binary.ByteOrder, data reflect.Value, isArrayMapValue 
 		fieldType := data.Type()
 		fieldLen := data.NumField()
 		for i := 0; i < fieldLen; i++ {
-			fieldName := fieldType.Field(i).Name
-			if fieldName == "_" {
-				continue
-			}
-			if fieldType.Field(i).PkgPath != "" {
-				return E.New("unsupported unexported field: ", fieldName)
-			}
 			field := data.Field(i)
-			if !field.CanSet() {
-				return E.New("field not settable: ", fieldName)
-			}
-			err := read(r, order, field, false)
-			if err != nil {
-				return E.Cause(err, fieldName)
+			fieldName := fieldType.Field(i).Name
+			if field.CanSet() {
+				err := read(r, order, field, false)
+				if err != nil {
+					return E.Cause(err, fieldName)
+				}
 			}
 		}
 	default:
@@ -369,17 +362,13 @@ func write(writer Writer, order binary.ByteOrder, data reflect.Value, isArrayOrM
 		fieldType := data.Type()
 		fieldLen := data.NumField()
 		for i := 0; i < fieldLen; i++ {
-			fieldName := fieldType.Field(i).Name
-			if fieldName == "_" {
-				continue
-			}
-			if fieldType.Field(i).PkgPath != "" {
-				continue
-			}
 			field := data.Field(i)
-			err := write(writer, order, field, false)
-			if err != nil {
-				return E.Cause(err, fieldName)
+			fieldName := fieldType.Field(i).Name
+			if field.CanSet() {
+				err := write(writer, order, field, false)
+				if err != nil {
+					return E.Cause(err, fieldName)
+				}
 			}
 		}
 	default:
