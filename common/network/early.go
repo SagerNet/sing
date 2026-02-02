@@ -1,10 +1,13 @@
 package network
 
 import (
+	"errors"
 	"io"
 
 	"github.com/sagernet/sing/common"
 )
+
+var ErrHandshakeCompleted = errors.New("protocol handshake completed")
 
 // Deprecated: use EarlyReader and EarlyWriter instead.
 type EarlyConn interface {
@@ -35,4 +38,34 @@ func NeedHandshakeForWrite(writer io.Writer) bool {
 		return true
 	}
 	return false
+}
+
+type HandshakeState struct {
+	readPending  bool
+	writePending bool
+	source       io.Reader
+	destination  io.Writer
+}
+
+func NewHandshakeState(source io.Reader, destination io.Writer) HandshakeState {
+	return HandshakeState{
+		readPending:  NeedHandshakeForRead(source),
+		writePending: NeedHandshakeForWrite(destination),
+		source:       source,
+		destination:  destination,
+	}
+}
+
+func (s HandshakeState) Upgradable() bool {
+	return s.readPending || s.writePending
+}
+
+func (s HandshakeState) Check() error {
+	if s.readPending && !NeedHandshakeForRead(s.source) {
+		return ErrHandshakeCompleted
+	}
+	if s.writePending && !NeedHandshakeForWrite(s.destination) {
+		return ErrHandshakeCompleted
+	}
+	return nil
 }
