@@ -146,7 +146,7 @@ func SyscallConnForRead(reader io.Reader) (SyscallReader, syscall.RawConn) {
 	if c, ok := reader.(SyscallReader); ok {
 		return c, c.SyscallConnForRead()
 	}
-	if u, ok := reader.(ReaderWithUpstream); !ok || u.ReaderReplaceable() {
+	if u, ok := reader.(ReaderWithUpstream); !ok || !u.ReaderReplaceable() {
 		return nil, nil
 	}
 	if u, ok := reader.(WithUpstreamReader); ok {
