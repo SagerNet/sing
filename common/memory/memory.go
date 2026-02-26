@@ -14,3 +14,11 @@ func Inuse() uint64 {
 	runtime.ReadMemStats(&memStats)
 	return memStats.StackInuse + memStats.HeapInuse + memStats.HeapIdle - memStats.HeapReleased
 }
+
+func Available() uint64 {
+	return availableNative()
+}
+
+func AvailableSupported() bool {
+	return availableNativeSupported()
+}
