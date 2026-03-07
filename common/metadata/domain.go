@@ -1,13 +1,8 @@
 package metadata
 
-import "net/netip"
-
 func IsDomainName(domain string) bool {
 	l := len(domain)
 	if l == 0 || l > 254 {
-		return false
-	}
-	if _, err := netip.ParseAddr(unwrapIPv6Address(domain)); err == nil {
 		return false
 	}
 	labelLength := 0
