@@ -140,3 +140,7 @@ func (c *natConn) SetWriteDeadline(t time.Time) error {
 func (c *natConn) Upstream() any {
 	return c.writer
 }
+
+func (c *natConn) CreateReadNotifier() N.ReadNotifier {
+	return &N.ChannelNotifier{Channel: c.packetChan}
+}
