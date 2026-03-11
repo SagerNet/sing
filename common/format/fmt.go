@@ -73,5 +73,5 @@ func MapToString[T any](arr []T) []string {
 
 func Seconds(seconds float64) string {
 	seconds100 := int(seconds * 100)
-	return ToString(seconds100/100, ".", seconds100%100, seconds100%10)
+	return ToString(seconds100/100, ".", seconds100%100/10, seconds100%10)
 }
