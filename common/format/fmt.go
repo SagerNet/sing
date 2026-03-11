@@ -46,6 +46,10 @@ func ToString(messages ...any) string {
 			output += strconv.FormatInt(int64(message), 10)
 		case int64:
 			output += strconv.FormatInt(message, 10)
+		case float32:
+			output += strconv.FormatFloat(float64(message), 'f', -1, 32)
+		case float64:
+			output += strconv.FormatFloat(message, 'f', -1, 64)
 		case uintptr:
 			output += strconv.FormatUint(uint64(message), 10)
 		case error:
