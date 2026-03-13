@@ -100,6 +100,13 @@ func (c *LazyConn) Upstream() any {
 	return c.Conn
 }
 
+func (c *LazyConn) CloseWrite() error {
+	if writeCloser, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return writeCloser.CloseWrite()
+	}
+	return nil
+}
+
 type LazyAssociatePacketConn struct {
 	AssociatePacketConn
 	responseWritten bool
