@@ -65,7 +65,7 @@ func (c *ServerConn) loopInput() {
 				break
 			}
 		}
-		if destination.IsFqdn() {
+		if destination.IsDomain() {
 			addr, err := net.ResolveUDPAddr("udp", destination.String())
 			if err != nil {
 				continue

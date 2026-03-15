@@ -82,7 +82,7 @@ func (r *packetReader) pipeReadFrom(pLen int) {
 func (r *packetReader) pipeReturnFrom(result *packetReadResult, p []byte) (n int, addr net.Addr, err error) {
 	n = copy(p, result.buffer.Bytes())
 	if result.destination.IsValid() {
-		if result.destination.IsFqdn() {
+		if result.destination.IsDomain() {
 			addr = result.destination
 		} else {
 			addr = result.destination.UDPAddr()

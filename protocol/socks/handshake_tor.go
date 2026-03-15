@@ -26,7 +26,7 @@ type TorResolver interface {
 func handleTorSocks4(ctx context.Context, conn net.Conn, request socks4.Request, resolver TorResolver) error {
 	switch request.Command {
 	case CommandTorResolve:
-		if !request.Destination.IsFqdn() {
+		if !request.Destination.IsDomain() {
 			return E.New("socks4: torsocks: invalid destination")
 		}
 		ipAddr, err := resolver.LookupIP(ctx, request.Destination.Fqdn)
@@ -87,7 +87,7 @@ func handleTorSocks4(ctx context.Context, conn net.Conn, request socks4.Request,
 func handleTorSocks5(ctx context.Context, conn net.Conn, request socks5.Request, resolver TorResolver) error {
 	switch request.Command {
 	case CommandTorResolve:
-		if !request.Destination.IsFqdn() {
+		if !request.Destination.IsDomain() {
 			return E.New("socks5: torsocks: invalid destination")
 		}
 		ipAddr, err := resolver.LookupIP(ctx, request.Destination.Fqdn)

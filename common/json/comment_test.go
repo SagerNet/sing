@@ -37,6 +37,7 @@ func readAllWithBuf(t *testing.T, r io.Reader, size int) string {
 }
 
 func TestCommentFilter(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -61,6 +62,7 @@ func TestCommentFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			r := NewCommentFilter(strings.NewReader(tt.input))
 			got, err := io.ReadAll(r)
 			if err != nil {
@@ -74,6 +76,7 @@ func TestCommentFilter(t *testing.T) {
 }
 
 func TestCommentFilterSmallBuffer(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
 		input string
@@ -95,6 +98,7 @@ func TestCommentFilterSmallBuffer(t *testing.T) {
 	for _, size := range []int{1, 2} {
 		for _, tt := range tests {
 			t.Run(tt.name+"_buf_"+strconv.Itoa(size), func(t *testing.T) {
+				t.Parallel()
 				r := NewCommentFilter(strings.NewReader(tt.input))
 				got := readAllWithBuf(t, r, size)
 				if got != tt.want {
