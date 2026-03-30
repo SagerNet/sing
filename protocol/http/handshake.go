@@ -42,7 +42,7 @@ func HandleConnectionEx(
 			)
 			authorization := request.Header.Get("Proxy-Authorization")
 			if strings.HasPrefix(authorization, "Basic ") {
-				userPassword, _ := base64.URLEncoding.DecodeString(authorization[6:])
+				userPassword, _ := base64.StdEncoding.DecodeString(authorization[6:])
 				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
 				if len(userPswdArr) == 2 {
 					username = userPswdArr[0]
