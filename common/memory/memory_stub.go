@@ -1,9 +1,19 @@
-//go:build (darwin && !cgo) || !darwin
+//go:build (darwin && !cgo) || (!darwin && !linux && !windows)
 
 package memory
 
-const nativeAvailable = false
-
-func usageNative() uint64 {
+func totalNative() uint64 {
 	return 0
+}
+
+func totalAvailable() bool {
+	return false
+}
+
+func availableNative() uint64 {
+	return 0
+}
+
+func availableAvailable() bool {
+	return false
 }
