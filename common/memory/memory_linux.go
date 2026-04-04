@@ -8,8 +8,41 @@ import (
 	"strings"
 )
 
-func availableNativeSupported() bool {
-	return true
+var pageSize = uint64(os.Getpagesize())
+
+func totalNative() uint64 {
+	fd, err := os.Open("/proc/self/statm")
+	if err != nil {
+		return 0
+	}
+	defer fd.Close()
+	var buf [128]byte
+	n, _ := fd.Read(buf[:])
+	if n == 0 {
+		return 0
+	}
+	i := 0
+	for i < n && buf[i] != ' ' {
+		i++
+	}
+	i++
+	var rss uint64
+	for i < n && buf[i] >= '0' && buf[i] <= '9' {
+		rss = rss*10 + uint64(buf[i]-'0')
+		i++
+	}
+	return rss * pageSize
+}
+
+func totalAvailable() bool {
+	fd, err := os.Open("/proc/self/statm")
+	if err != nil {
+		return false
+	}
+	defer fd.Close()
+	var buf [1]byte
+	n, _ := fd.Read(buf[:])
+	return n > 0
 }
 
 func availableNative() uint64 {
@@ -18,6 +51,19 @@ func availableNative() uint64 {
 		return available
 	}
 	return procMemAvailable()
+}
+
+func availableAvailable() bool {
+	_, ok := cgroupAvailable()
+	if ok {
+		return true
+	}
+	fd, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return false
+	}
+	fd.Close()
+	return true
 }
 
 func cgroupAvailable() (uint64, bool) {
