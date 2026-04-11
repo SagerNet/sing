@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"time"
 )
 
 type (
@@ -17,6 +18,8 @@ type Config interface {
 	SetServerName(serverName string)
 	NextProtos() []string
 	SetNextProtos(nextProto []string)
+	HandshakeTimeout() time.Duration
+	SetHandshakeTimeout(timeout time.Duration)
 	STDConfig() (*STDConfig, error)
 	Client(conn net.Conn) (Conn, error)
 	Clone() Config
@@ -51,6 +54,11 @@ type Conn interface {
 }
 
 func ClientHandshake(ctx context.Context, conn net.Conn, config Config) (Conn, error) {
+	if handshakeTimeout := config.HandshakeTimeout(); handshakeTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, handshakeTimeout)
+		defer cancel()
+	}
 	if compatServer, isCompat := config.(ConfigCompat); isCompat {
 		return compatServer.ClientHandshake(ctx, conn)
 	}
@@ -66,6 +74,11 @@ func ClientHandshake(ctx context.Context, conn net.Conn, config Config) (Conn, e
 }
 
 func ServerHandshake(ctx context.Context, conn net.Conn, config ServerConfig) (Conn, error) {
+	if handshakeTimeout := config.HandshakeTimeout(); handshakeTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, handshakeTimeout)
+		defer cancel()
+	}
 	if compatServer, isCompat := config.(ServerConfigCompat); isCompat {
 		return compatServer.ServerHandshake(ctx, conn)
 	}
