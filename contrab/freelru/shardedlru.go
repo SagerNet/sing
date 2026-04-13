@@ -191,9 +191,9 @@ func (lru *ShardedLRU[K, V]) GetWithLifetimeNoExpire(key K) (value V, lifetime t
 	hash := lru.hash(key)
 	shard := (hash >> 16) & lru.mask
 
-	lru.mus[shard].RLock()
+	lru.mus[shard].Lock()
 	value, lifetime, ok = lru.lrus[shard].getWithLifetimeNoExpire(hash, key)
-	lru.mus[shard].RUnlock()
+	lru.mus[shard].Unlock()
 
 	return
 }
