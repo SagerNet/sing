@@ -614,6 +614,7 @@ func (lru *LRU[K, V]) updateLifetime(hash uint32, key K, value V, lifetime time.
 				return false
 			}
 
+			lru.elements[pos].lifetime = lifetime
 			lru.elements[pos].expire = expire(lifetime)
 
 			if pos != lru.head {

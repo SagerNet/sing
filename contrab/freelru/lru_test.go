@@ -78,6 +78,24 @@ func TestUpdateLifetime2(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestUpdateLifetimePersistsAcrossRefresh(t *testing.T) {
+	t.Parallel()
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.AddWithLifetime("hello", "world", 50*time.Millisecond)
+	require.True(t, lru.UpdateLifetime("hello", "world", 500*time.Millisecond))
+	value, updated, ok := lru.GetAndRefreshOrAdd("hello", func() (string, bool) {
+		t.Fatal("constructor should not be called for an existing key")
+		return "", false
+	})
+	require.True(t, ok)
+	require.True(t, updated)
+	require.Equal(t, "world", value)
+	_, lifetime, ok := lru.PeekWithLifetime("hello")
+	require.True(t, ok)
+	require.Greater(t, time.Until(lifetime), 250*time.Millisecond)
+}
+
 func TestPurgeExpired(t *testing.T) {
 	t.Parallel()
 	lru, err := freelru.New[string, *string](1024, maphash.NewHasher[string]().Hash32)
