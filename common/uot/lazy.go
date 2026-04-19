@@ -2,6 +2,8 @@ package uot
 
 import (
 	"net"
+	"sync"
+	"sync/atomic"
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -12,7 +14,8 @@ type LazyClientConn struct {
 	net.Conn
 	writer         N.VectorisedWriter
 	request        Request
-	requestWritten bool
+	access         sync.Mutex
+	requestWritten atomic.Bool
 }
 
 func NewLazyClientConn(conn net.Conn, request Request) *LazyClientConn {
@@ -29,38 +32,46 @@ func NewLazyConn(conn net.Conn, request Request) *Conn {
 }
 
 func (c *LazyClientConn) Write(p []byte) (n int, err error) {
-	if !c.requestWritten {
-		var request *buf.Buffer
-		request, err = EncodeRequest(c.request)
-		if err != nil {
-			return
-		}
-		err = c.writer.WriteVectorised([]*buf.Buffer{request, buf.As(p)})
-		if err != nil {
-			return
-		}
-		c.requestWritten = true
-		return len(p), nil
+	if c.requestWritten.Load() {
+		return c.Conn.Write(p)
 	}
-	return c.Conn.Write(p)
+	err = c.writeVectorised([]*buf.Buffer{buf.As(p)})
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func (c *LazyClientConn) WriteVectorised(buffers []*buf.Buffer) error {
-	if !c.requestWritten {
-		request, err := EncodeRequest(c.request)
-		if err != nil {
-			return err
-		}
+	if c.requestWritten.Load() {
+		return c.writer.WriteVectorised(buffers)
+	}
+	return c.writeVectorised(buffers)
+}
 
-		err = c.writer.WriteVectorised(append([]*buf.Buffer{request}, buffers...))
-		c.requestWritten = true
+func (c *LazyClientConn) writeVectorised(buffers []*buf.Buffer) error {
+	c.access.Lock()
+	defer c.access.Unlock()
+
+	if c.requestWritten.Load() {
+		return c.writer.WriteVectorised(buffers)
+	}
+
+	request, err := EncodeRequest(c.request)
+	if err != nil {
+		buf.ReleaseMulti(buffers)
 		return err
 	}
-	return c.writer.WriteVectorised(buffers)
+	err = c.writer.WriteVectorised(append([]*buf.Buffer{request}, buffers...))
+	if err != nil {
+		return err
+	}
+	c.requestWritten.Store(true)
+	return nil
 }
 
 func (c *LazyClientConn) NeedHandshake() bool {
-	return !c.requestWritten
+	return !c.requestWritten.Load()
 }
 
 func (c *LazyClientConn) ReaderReplaceable() bool {
@@ -68,7 +79,7 @@ func (c *LazyClientConn) ReaderReplaceable() bool {
 }
 
 func (c *LazyClientConn) WriterReplaceable() bool {
-	return c.requestWritten
+	return c.requestWritten.Load()
 }
 
 func (c *LazyClientConn) Upstream() any {
