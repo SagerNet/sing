@@ -17,6 +17,14 @@ func ContextWithDefaultRegistry(ctx context.Context) context.Context {
 	return context.WithValue(ctx, common.DefaultValue[*Registry](), NewRegistry())
 }
 
+func ExtendContext(ctx context.Context) context.Context {
+	registry := RegistryFromContext(ctx)
+	if registry == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, common.DefaultValue[*Registry](), registry.Clone())
+}
+
 func RegistryFromContext(ctx context.Context) Registry {
 	registry := ctx.Value(common.DefaultValue[*Registry]())
 	if registry == nil {
