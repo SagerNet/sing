@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -24,6 +25,7 @@ type Conn struct {
 	destination     M.Socksaddr
 	writer          N.VectorisedWriter
 	readWaitOptions N.ReadWaitOptions
+	writeAccess     sync.Mutex
 }
 
 func NewConn(conn net.Conn, request Request) *Conn {
@@ -72,6 +74,9 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+
 	destination := M.SocksaddrFromNet(addr)
 	var bufferLen int
 	if !c.isConnect {
@@ -123,6 +128,9 @@ func (c *Conn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err erro
 }
 
 func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
+	c.writeAccess.Lock()
+	defer c.writeAccess.Unlock()
+
 	var headerLen int
 	if !c.isConnect {
 		headerLen += AddrParser.AddrPortLen(destination)

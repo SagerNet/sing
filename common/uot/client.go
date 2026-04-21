@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -59,6 +60,9 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 		if err != nil {
 			tcpConn.Close()
 			return nil, err
+		}
+		if c.Version == LegacyVersion {
+			return bufio.NewBindPacketConn(uConn, destination), nil
 		}
 		return uConn, nil
 	default:
