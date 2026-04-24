@@ -3,6 +3,7 @@
 package metadata
 
 import (
+	"encoding/binary"
 	"net/netip"
 	"unsafe"
 
@@ -38,11 +39,28 @@ func AddrPortFromRawSockaddr(sa *unix.RawSockaddr) netip.AddrPort {
 	switch sa.Family {
 	case unix.AF_INET:
 		sa4 := (*unix.RawSockaddrInet4)(unsafe.Pointer(sa))
-		return netip.AddrPortFrom(netip.AddrFrom4(sa4.Addr), sa4.Port)
+		port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa4.Port))[:])
+		return netip.AddrPortFrom(netip.AddrFrom4(sa4.Addr), port)
 	case unix.AF_INET6:
 		sa6 := (*unix.RawSockaddrInet6)(unsafe.Pointer(sa))
-		return netip.AddrPortFrom(netip.AddrFrom16(sa6.Addr), sa6.Port)
+		port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa6.Port))[:])
+		return netip.AddrPortFrom(netip.AddrFrom16(sa6.Addr), port)
 	default:
 		return netip.AddrPort{}
 	}
+}
+
+func SocksaddrFromRawSockaddrAny(sa *unix.RawSockaddrAny) Socksaddr {
+	return SocksaddrFromNetIP(AddrPortFromRawSockaddr(&sa.Addr)).Unwrap()
+}
+
+func AddrPortToRawSockaddrAny(name *unix.RawSockaddrAny, addrPort netip.AddrPort, forceInet6 bool) uint32 {
+	rawName, nameLen := AddrPortToRawSockaddr(addrPort, forceInet6)
+	*name = unix.RawSockaddrAny{}
+	if nameLen == unix.SizeofSockaddrInet4 {
+		*(*unix.RawSockaddrInet4)(unsafe.Pointer(name)) = *(*unix.RawSockaddrInet4)(rawName)
+	} else {
+		*(*unix.RawSockaddrInet6)(unsafe.Pointer(name)) = *(*unix.RawSockaddrInet6)(rawName)
+	}
+	return nameLen
 }
