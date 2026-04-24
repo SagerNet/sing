@@ -1,6 +1,7 @@
 package bufio
 
 import (
+	"os"
 	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
@@ -69,6 +70,94 @@ func (c *CounterPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksa
 	return nil
 }
 
+func (c *CounterPacketConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
+	writer, created := CreatePacketBatchWriter(c.PacketConn)
+	if !created {
+		return nil, false
+	}
+	return &counterPacketBatchWriter{writer, c.writeCounter}, true
+}
+
+type counterPacketBatchWriter struct {
+	writer      N.PacketBatchWriter
+	writeCounts []N.CountFunc
+}
+
+func (w *counterPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
+	if len(buffers) == 0 || len(buffers) != len(destinations) {
+		buf.ReleaseMulti(buffers)
+		return os.ErrInvalid
+	}
+	dataLens := make([]int64, len(buffers))
+	for index, buffer := range buffers {
+		dataLens[index] = int64(buffer.Len())
+	}
+	err := w.writer.WritePacketBatch(buffers, destinations)
+	if err != nil {
+		return err
+	}
+	for _, dataLen := range dataLens {
+		if dataLen > 0 {
+			for _, counter := range w.writeCounts {
+				counter(dataLen)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *CounterPacketConn) CreateConnectedPacketBatchWriter() (N.ConnectedPacketBatchWriter, bool) {
+	writer, created := CreateConnectedPacketBatchWriter(c.PacketConn)
+	if !created {
+		return nil, false
+	}
+	return &counterConnectedPacketBatchWriter{writer, c.writeCounter}, true
+}
+
+type counterConnectedPacketBatchWriter struct {
+	writer      N.ConnectedPacketBatchWriter
+	writeCounts []N.CountFunc
+}
+
+func (w *counterConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buffer) error {
+	if len(buffers) == 0 {
+		buf.ReleaseMulti(buffers)
+		return os.ErrInvalid
+	}
+	dataLens := make([]int64, len(buffers))
+	for index, buffer := range buffers {
+		dataLens[index] = int64(buffer.Len())
+	}
+	err := w.writer.WriteConnectedPacketBatch(buffers)
+	if err != nil {
+		return err
+	}
+	for _, dataLen := range dataLens {
+		if dataLen > 0 {
+			for _, counter := range w.writeCounts {
+				counter(dataLen)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *CounterPacketConn) CreatePacketBatchReadWaiter() (N.PacketBatchReadWaiter, bool) {
+	readWaiter, isReadWaiter := CreatePacketBatchReadWaiter(c.PacketConn)
+	if !isReadWaiter {
+		return nil, false
+	}
+	return &counterPacketBatchReadWaiter{readWaiter, c.readCounter}, true
+}
+
+func (c *CounterPacketConn) CreateConnectedPacketBatchReadWaiter() (N.ConnectedPacketBatchReadWaiter, bool) {
+	readWaiter, isReadWaiter := CreateConnectedPacketBatchReadWaiter(c.PacketConn)
+	if !isReadWaiter {
+		return nil, false
+	}
+	return &counterConnectedPacketBatchReadWaiter{readWaiter, c.readCounter}, true
+}
+
 func (c *CounterPacketConn) UnwrapPacketReader() (N.PacketReader, []N.CountFunc) {
 	return c.PacketConn, c.readCounter
 }
@@ -79,4 +168,52 @@ func (c *CounterPacketConn) UnwrapPacketWriter() (N.PacketWriter, []N.CountFunc)
 
 func (c *CounterPacketConn) Upstream() any {
 	return c.PacketConn
+}
+
+type counterPacketBatchReadWaiter struct {
+	readWaiter N.PacketBatchReadWaiter
+	readCounts []N.CountFunc
+}
+
+func (w *counterPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
+}
+
+func (w *counterPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
+	buffers, destinations, err = w.readWaiter.WaitReadPackets()
+	if err != nil {
+		return
+	}
+	for _, buffer := range buffers {
+		if buffer.Len() > 0 {
+			for _, counter := range w.readCounts {
+				counter(int64(buffer.Len()))
+			}
+		}
+	}
+	return
+}
+
+type counterConnectedPacketBatchReadWaiter struct {
+	readWaiter N.ConnectedPacketBatchReadWaiter
+	readCounts []N.CountFunc
+}
+
+func (w *counterConnectedPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return w.readWaiter.InitializeReadWaiter(options)
+}
+
+func (w *counterConnectedPacketBatchReadWaiter) WaitReadConnectedPackets() (buffers []*buf.Buffer, destination M.Socksaddr, err error) {
+	buffers, destination, err = w.readWaiter.WaitReadConnectedPackets()
+	if err != nil {
+		return
+	}
+	for _, buffer := range buffers {
+		if buffer.Len() > 0 {
+			for _, counter := range w.readCounts {
+				counter(int64(buffer.Len()))
+			}
+		}
+	}
+	return
 }

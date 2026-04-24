@@ -3,6 +3,7 @@ package bufio
 import (
 	"net"
 	"net/netip"
+	"os"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -65,6 +66,40 @@ func (c *unidirectionalNATPacketConn) WritePacket(buffer *buf.Buffer, destinatio
 		}
 	}
 	return c.NetPacketConn.WritePacket(buffer, destination)
+}
+
+func (c *unidirectionalNATPacketConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
+	writer, created := CreatePacketBatchWriter(c.NetPacketConn)
+	if !created {
+		return nil, false
+	}
+	return &unidirectionalNATPacketBatchWriter{c, writer}, true
+}
+
+func (c *unidirectionalNATPacketConn) CreateConnectedPacketBatchWriter() (N.ConnectedPacketBatchWriter, bool) {
+	return CreateConnectedPacketBatchWriter(c.NetPacketConn)
+}
+
+type unidirectionalNATPacketBatchWriter struct {
+	*unidirectionalNATPacketConn
+	writer N.PacketBatchWriter
+}
+
+func (w *unidirectionalNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
+	if len(buffers) == 0 || len(buffers) != len(destinations) {
+		buf.ReleaseMulti(buffers)
+		return os.ErrInvalid
+	}
+	for index, destination := range destinations {
+		if socksaddrWithoutPort(destination) == w.destination {
+			destinations[index] = M.Socksaddr{
+				Addr: w.origin.Addr,
+				Fqdn: w.origin.Fqdn,
+				Port: destination.Port,
+			}
+		}
+	}
+	return w.writer.WritePacketBatch(buffers, destinations)
 }
 
 func (c *unidirectionalNATPacketConn) UpdateDestination(destinationAddress netip.Addr) {
@@ -140,6 +175,40 @@ func (c *bidirectionalNATPacketConn) WritePacket(buffer *buf.Buffer, destination
 	return c.NetPacketConn.WritePacket(buffer, destination)
 }
 
+func (c *bidirectionalNATPacketConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
+	writer, created := CreatePacketBatchWriter(c.NetPacketConn)
+	if !created {
+		return nil, false
+	}
+	return &bidirectionalNATPacketBatchWriter{c, writer}, true
+}
+
+func (c *bidirectionalNATPacketConn) CreateConnectedPacketBatchWriter() (N.ConnectedPacketBatchWriter, bool) {
+	return CreateConnectedPacketBatchWriter(c.NetPacketConn)
+}
+
+type bidirectionalNATPacketBatchWriter struct {
+	*bidirectionalNATPacketConn
+	writer N.PacketBatchWriter
+}
+
+func (w *bidirectionalNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
+	if len(buffers) == 0 || len(buffers) != len(destinations) {
+		buf.ReleaseMulti(buffers)
+		return os.ErrInvalid
+	}
+	for index, destination := range destinations {
+		if socksaddrWithoutPort(destination) == w.destination {
+			destinations[index] = M.Socksaddr{
+				Addr: w.origin.Addr,
+				Fqdn: w.origin.Fqdn,
+				Port: destination.Port,
+			}
+		}
+	}
+	return w.writer.WritePacketBatch(buffers, destinations)
+}
+
 func (c *bidirectionalNATPacketConn) UpdateDestination(destinationAddress netip.Addr) {
 	c.destination = M.SocksaddrFrom(destinationAddress, c.destination.Port)
 }
@@ -192,6 +261,36 @@ func (c *destinationNATPacketConn) WritePacket(buffer *buf.Buffer, destination M
 		destination = c.origin
 	}
 	return c.NetPacketConn.WritePacket(buffer, destination)
+}
+
+func (c *destinationNATPacketConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
+	writer, created := CreatePacketBatchWriter(c.NetPacketConn)
+	if !created {
+		return nil, false
+	}
+	return &destinationNATPacketBatchWriter{c, writer}, true
+}
+
+func (c *destinationNATPacketConn) CreateConnectedPacketBatchWriter() (N.ConnectedPacketBatchWriter, bool) {
+	return CreateConnectedPacketBatchWriter(c.NetPacketConn)
+}
+
+type destinationNATPacketBatchWriter struct {
+	*destinationNATPacketConn
+	writer N.PacketBatchWriter
+}
+
+func (w *destinationNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
+	if len(buffers) == 0 || len(buffers) != len(destinations) {
+		buf.ReleaseMulti(buffers)
+		return os.ErrInvalid
+	}
+	for index, destination := range destinations {
+		if destination == w.destination {
+			destinations[index] = w.origin
+		}
+	}
+	return w.writer.WritePacketBatch(buffers, destinations)
 }
 
 func (c *destinationNATPacketConn) UpdateDestination(destinationAddress netip.Addr) {
