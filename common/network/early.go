@@ -19,6 +19,10 @@ type EarlyReader interface {
 }
 
 func NeedHandshakeForRead(reader io.Reader) bool {
+	return NeedHandshakeForReadAny(reader)
+}
+
+func NeedHandshakeForReadAny(reader any) bool {
 	if earlyReader, isEarlyReader := common.Cast[EarlyReader](reader); isEarlyReader && earlyReader.NeedHandshakeForRead() {
 		return true
 	}
@@ -30,6 +34,10 @@ type EarlyWriter interface {
 }
 
 func NeedHandshakeForWrite(writer io.Writer) bool {
+	return NeedHandshakeForWriteAny(writer)
+}
+
+func NeedHandshakeForWriteAny(writer any) bool {
 	if //goland:noinspection GoDeprecation
 	earlyConn, isEarlyConn := writer.(EarlyConn); isEarlyConn {
 		return earlyConn.NeedHandshake()
@@ -43,14 +51,23 @@ func NeedHandshakeForWrite(writer io.Writer) bool {
 type HandshakeState struct {
 	readPending  bool
 	writePending bool
-	source       io.Reader
-	destination  io.Writer
+	source       any
+	destination  any
 }
 
 func NewHandshakeState(source io.Reader, destination io.Writer) HandshakeState {
 	return HandshakeState{
-		readPending:  NeedHandshakeForRead(source),
-		writePending: NeedHandshakeForWrite(destination),
+		readPending:  NeedHandshakeForReadAny(source),
+		writePending: NeedHandshakeForWriteAny(destination),
+		source:       source,
+		destination:  destination,
+	}
+}
+
+func NewPacketHandshakeState(source PacketReader, destination PacketWriter) HandshakeState {
+	return HandshakeState{
+		readPending:  NeedHandshakeForReadAny(source),
+		writePending: NeedHandshakeForWriteAny(destination),
 		source:       source,
 		destination:  destination,
 	}
@@ -61,10 +78,10 @@ func (s HandshakeState) Upgradable() bool {
 }
 
 func (s HandshakeState) Check() error {
-	if s.readPending && !NeedHandshakeForRead(s.source) {
+	if s.readPending && !NeedHandshakeForReadAny(s.source) {
 		return ErrHandshakeCompleted
 	}
-	if s.writePending && !NeedHandshakeForWrite(s.destination) {
+	if s.writePending && !NeedHandshakeForWriteAny(s.destination) {
 		return ErrHandshakeCompleted
 	}
 	return nil
