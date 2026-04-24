@@ -81,7 +81,7 @@ func UnwrapCountPacketReader(reader PacketReader, countFunc []CountFunc) (Packet
 		return reader, countFunc
 	}
 	switch u := reader.(type) {
-	case PacketReadWaiter, PacketReadWaitCreator, syscall.Conn:
+	case PacketReadWaiter, PacketReadWaitCreator, PacketBatchReadWaiter, PacketBatchReadWaitCreator, ConnectedPacketBatchReadWaiter, ConnectedPacketBatchReadWaitCreator, VectorisedPacketReadWaitCreator, syscall.Conn:
 		// In our use cases, counters is always at the top, so we stop when we encounter ReadWaiter
 		return reader, countFunc
 	case WithUpstreamReader:
@@ -103,7 +103,7 @@ func UnwrapCountPacketWriter(writer PacketWriter, countFunc []CountFunc) (Packet
 		return writer, countFunc
 	}
 	switch u := writer.(type) {
-	case syscall.Conn:
+	case PacketBatchWriter, ConnectedPacketBatchWriter, syscall.Conn:
 		// In our use cases, counters is always at the top, so we stop when we encounter syscall conn
 		return writer, countFunc
 	case WithUpstreamWriter:
