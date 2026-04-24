@@ -37,10 +37,12 @@ func AddrPortFromRawSockaddr(sa *windows.RawSockaddr) netip.AddrPort {
 	switch sa.Family {
 	case windows.AF_INET:
 		sa4 := (*windows.RawSockaddrInet4)(unsafe.Pointer(sa))
-		return netip.AddrPortFrom(netip.AddrFrom4(sa4.Addr), sa4.Port)
+		port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa4.Port))[:])
+		return netip.AddrPortFrom(netip.AddrFrom4(sa4.Addr), port)
 	case windows.AF_INET6:
 		sa6 := (*windows.RawSockaddrInet6)(unsafe.Pointer(sa))
-		return netip.AddrPortFrom(netip.AddrFrom16(sa6.Addr), sa6.Port)
+		port := binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa6.Port))[:])
+		return netip.AddrPortFrom(netip.AddrFrom16(sa6.Addr), port)
 	default:
 		return netip.AddrPort{}
 	}

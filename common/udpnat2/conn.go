@@ -24,6 +24,10 @@ type Conn interface {
 }
 
 var _ Conn = (*natConn)(nil)
+var (
+	_ N.PacketBatchReadWaitCreator = (*natConn)(nil)
+	_ N.PacketBatchWriteCreator    = (*natConn)(nil)
+)
 
 type natConn struct {
 	cache           freelru.Cache[netip.AddrPort, *natConn]
@@ -57,6 +61,16 @@ func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error
 	return c.writer.WritePacket(buffer, destination)
 }
 
+func (c *natConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
+	if writer, isWriter := c.writer.(N.PacketBatchWriter); isWriter {
+		return writer, true
+	}
+	if creator, isCreator := c.writer.(N.PacketBatchWriteCreator); isCreator {
+		return creator.CreatePacketBatchWriter()
+	}
+	return nil, false
+}
+
 func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
 	c.handlerAccess.Lock()
 	defer c.handlerAccess.Unlock()
@@ -76,6 +90,34 @@ func (c *natConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr,
 	case <-c.readDeadline.Wait():
 		return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
 	}
+}
+
+func (c *natConn) CreatePacketBatchReadWaiter() (N.PacketBatchReadWaiter, bool) {
+	return c, true
+}
+
+func (c *natConn) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
+	buffer, destination, err := c.WaitReadPacket()
+	if err != nil {
+		return nil, nil, err
+	}
+	batchSize := c.readWaitOptions.BatchSize
+	if batchSize <= 0 {
+		batchSize = 1
+	}
+	buffers = append(buffers, buffer)
+	destinations = append(destinations, destination)
+	for len(buffers) < batchSize {
+		select {
+		case packet := <-c.packetChan:
+			buffers = append(buffers, c.readWaitOptions.Copy(packet.Buffer))
+			destinations = append(destinations, packet.Destination)
+			N.PutPacketBuffer(packet)
+		default:
+			return
+		}
+	}
+	return
 }
 
 func (c *natConn) SetHandler(handler N.UDPHandlerEx) {
