@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
@@ -92,6 +93,17 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	default:
 		packet.Buffer.Release()
 		N.PutPacketBuffer(packet)
+	}
+}
+
+func (s *Service) NewPacketBatch(buffers []*buf.Buffer, sources []M.Socksaddr, destination M.Socksaddr, userData any) {
+	if len(buffers) != len(sources) {
+		buf.ReleaseMulti(buffers)
+		return
+	}
+	for index, buffer := range buffers {
+		s.NewPacket([][]byte{buffer.Bytes()}, sources[index], destination, userData)
+		buffer.Release()
 	}
 }
 

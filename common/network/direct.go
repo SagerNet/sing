@@ -105,13 +105,30 @@ type PacketReadWaitCreator interface {
 	CreateReadWaiter() (PacketReadWaiter, bool)
 }
 
-type VectorisedPacketReadWaiter interface {
+type PacketBatchReadWaiter interface {
 	ReadWaitable
 	WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error)
 }
 
+type PacketBatchReadWaitCreator interface {
+	CreatePacketBatchReadWaiter() (PacketBatchReadWaiter, bool)
+}
+
+type ConnectedPacketBatchReadWaiter interface {
+	ReadWaitable
+	WaitReadConnectedPackets() (buffers []*buf.Buffer, destination M.Socksaddr, err error)
+}
+
+type ConnectedPacketBatchReadWaitCreator interface {
+	CreateConnectedPacketBatchReadWaiter() (ConnectedPacketBatchReadWaiter, bool)
+}
+
+// Deprecated: use PacketBatchReadWaiter.
+type VectorisedPacketReadWaiter = PacketBatchReadWaiter
+
+// Deprecated: use PacketBatchReadWaitCreator.
 type VectorisedPacketReadWaitCreator interface {
-	CreateVectorisedPacketReadWaiter() (VectorisedPacketReadWaiter, bool)
+	CreateVectorisedPacketReadWaiter() (PacketBatchReadWaiter, bool)
 }
 
 type SyscallReader interface {
