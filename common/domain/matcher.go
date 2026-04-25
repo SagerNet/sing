@@ -109,11 +109,12 @@ func (m *Matcher) Dump() (domainList []string, prefixList []string) {
 	prefixMap := make(map[string]bool)
 	for _, key := range m.set.keys() {
 		key = reverseDomain(key)
-		if key[0] == prefixLabel {
+		switch key[0] {
+		case prefixLabel:
 			prefixMap[key[1:]] = true
-		} else if key[0] == rootLabel {
+		case rootLabel:
 			prefixList = append(prefixList, key[1:])
-		} else {
+		default:
 			domainMap[key] = true
 		}
 	}

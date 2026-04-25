@@ -9,6 +9,7 @@ import (
 	"io"
 	"strconv"
 
+	// nolint:staticcheck
 	. "github.com/sagernet/sing/common/abx/internal"
 	E "github.com/sagernet/sing/common/exceptions"
 )

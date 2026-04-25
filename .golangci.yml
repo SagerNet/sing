@@ -11,14 +11,9 @@ linters:
     staticcheck:
       checks:
         - all
-        - -S1000
-        - -S1008
-        - -S1017
-        - -ST1001
-        - -ST1003
-        - -QF1001
-        - -QF1003
-        - -QF1008
+        - -QF1008 # could remove embedded field "<interface>" from selector
+        - -ST1003 # should not use ALL_CAPS in Go names; use CamelCase instead
+        - -QF1001 # could apply De Morgan's law
   exclusions:
     presets:
       - comments
