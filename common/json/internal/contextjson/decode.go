@@ -103,17 +103,22 @@ func Unmarshal(data []byte, v any) error {
 }
 
 func UnmarshalContext(ctx context.Context, data []byte, v any) error {
+	data, comments, err := stripJSONComments(data)
+	if err != nil {
+		return err
+	}
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
 	// before discovering a JSON syntax error.
 	var d decodeState
 	d.ctx = ctx
-	err := checkValid(data, &d.scan)
+	err = checkValid(data, &d.scan)
 	if err != nil {
 		return err
 	}
 
 	d.init(data)
+	d.comments = comments
 	return d.unmarshal(v)
 }
 
@@ -225,6 +230,7 @@ type decodeState struct {
 	useNumber             bool
 	disallowUnknownFields bool
 	context               []decodePathSegment
+	comments              *CommentSet
 }
 
 // readIndex returns the position of the last byte read.
@@ -440,7 +446,7 @@ func (d *decodeState) valueQuoted() any {
 // If it encounters an Unmarshaler, indirect stops and returns that.
 // If decodingNull is true, indirect stops at the first settable pointer so it
 // can be set to nil.
-func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, ContextUnmarshaler, encoding.TextUnmarshaler, reflect.Value) {
+func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, CommentUnmarshaler, ContextUnmarshaler, encoding.TextUnmarshaler, reflect.Value) {
 	// Issue #24153 indicates that it is generally not a guaranteed property
 	// that you may round-trip a reflect.Value by calling Value.Addr().Elem()
 	// and expect the value to still be settable for values derived from
@@ -494,14 +500,17 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, ContextUnmarshal
 		}
 		if v.Type().NumMethod() > 0 && v.CanInterface() {
 			if u, ok := v.Interface().(Unmarshaler); ok {
-				return u, nil, nil, reflect.Value{}
+				return u, nil, nil, nil, reflect.Value{}
+			}
+			if cu, ok := v.Interface().(CommentUnmarshaler); ok {
+				return nil, cu, nil, nil, reflect.Value{}
 			}
 			if cu, ok := v.Interface().(ContextUnmarshaler); ok {
-				return nil, cu, nil, reflect.Value{}
+				return nil, nil, cu, nil, reflect.Value{}
 			}
 			if !decodingNull {
 				if u, ok := v.Interface().(encoding.TextUnmarshaler); ok {
-					return nil, nil, u, reflect.Value{}
+					return nil, nil, nil, u, reflect.Value{}
 				}
 			}
 		}
@@ -513,18 +522,27 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, ContextUnmarshal
 			v = v.Elem()
 		}
 	}
-	return nil, nil, nil, v
+	return nil, nil, nil, nil, v
 }
 
 // array consumes an array from d.data[d.off-1:], decoding into v.
 // The first byte of the array ('[') has been read already.
 func (d *decodeState) array(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, cu, ut, pv := indirect(v, false)
+	u, ccu, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
 		if err := u.UnmarshalJSON(d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if ccu != nil {
+		start := d.readIndex()
+		d.skip()
+		ccu.SetComments(d.commentsForCurrentValue())
+		if err := ccu.UnmarshalJSONContext(d.ctx, d.data[start:d.off]); err != nil {
 			d.saveError(err)
 		}
 		return nil
@@ -634,11 +652,20 @@ var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
 // The first byte ('{') of the object has been read already.
 func (d *decodeState) object(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, cu, ut, pv := indirect(v, false)
+	u, ccu, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
 		if err := u.UnmarshalJSON(d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if ccu != nil {
+		start := d.readIndex()
+		d.skip()
+		ccu.SetComments(d.commentsForCurrentValue())
+		if err := ccu.UnmarshalJSONContext(d.ctx, d.data[start:d.off]); err != nil {
 			d.saveError(err)
 		}
 		return nil
@@ -909,9 +936,16 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		return nil
 	}
 	isNull := item[0] == 'n' // null
-	u, cu, ut, pv := indirect(v, isNull)
+	u, ccu, cu, ut, pv := indirect(v, isNull)
 	if u != nil {
 		if err := u.UnmarshalJSON(item); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if ccu != nil {
+		ccu.SetComments(d.commentsForCurrentValue())
+		if err := ccu.UnmarshalJSONContext(d.ctx, item); err != nil {
 			d.saveError(err)
 		}
 		return nil
