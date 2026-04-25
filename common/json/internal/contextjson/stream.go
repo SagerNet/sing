@@ -69,7 +69,12 @@ func (dec *Decoder) Decode(v any) error {
 	if err != nil {
 		return err
 	}
-	dec.d.init(dec.buf[dec.scanp : dec.scanp+n])
+	data, comments, err := stripJSONComments(dec.buf[dec.scanp : dec.scanp+n])
+	if err != nil {
+		return err
+	}
+	dec.d.init(data)
+	dec.d.comments = comments
 	dec.scanp += n
 
 	// Don't save err from unmarshal into dec.err:
@@ -516,10 +521,41 @@ func (dec *Decoder) More() bool {
 func (dec *Decoder) peek() (byte, error) {
 	var err error
 	for {
-		for i := dec.scanp; i < len(dec.buf); i++ {
+	Buffer:
+		for i := dec.scanp; i < len(dec.buf); {
 			c := dec.buf[i]
 			if isSpace(c) {
+				i++
 				continue
+			}
+			if c == '#' {
+				next, ok := dec.skipLineCommentInBuffer(i + 1)
+				if !ok {
+					break
+				}
+				i = next
+				continue
+			}
+			if c == '/' {
+				if i+1 >= len(dec.buf) {
+					break Buffer
+				}
+				switch dec.buf[i+1] {
+				case '/':
+					next, ok := dec.skipLineCommentInBuffer(i + 2)
+					if !ok {
+						break Buffer
+					}
+					i = next
+					continue
+				case '*':
+					next, ok := dec.skipBlockCommentInBuffer(i + 2)
+					if !ok {
+						break Buffer
+					}
+					i = next
+					continue
+				}
 			}
 			dec.scanp = i
 			return c, nil
@@ -549,6 +585,26 @@ func (dec *Decoder) peekNoRefill() (byte, error) {
 		}
 		err = dec.refill()
 	}
+}
+
+func (dec *Decoder) skipLineCommentInBuffer(i int) (int, bool) {
+	for i < len(dec.buf) {
+		if dec.buf[i] == '\n' || dec.buf[i] == '\r' {
+			return i + 1, true
+		}
+		i++
+	}
+	return i, false
+}
+
+func (dec *Decoder) skipBlockCommentInBuffer(i int) (int, bool) {
+	for i+1 < len(dec.buf) {
+		if dec.buf[i] == '*' && dec.buf[i+1] == '/' {
+			return i + 2, true
+		}
+		i++
+	}
+	return i, false
 }
 
 // InputOffset returns the input stream byte offset of the current decoder position.

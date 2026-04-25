@@ -328,6 +328,323 @@ func TestTrailingCommaDecoderDecode(t *testing.T) {
 	}
 }
 
+func TestUnmarshalAcceptsJSONComments(t *testing.T) {
+	t.Parallel()
+	var value map[string]int
+	if err := json.Unmarshal([]byte(`{
+		// leading
+		"a": 1,
+		# hash
+		"b": 2, /* block */
+	}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if value["a"] != 1 || value["b"] != 2 {
+		t.Fatalf("value = %#v", value)
+	}
+}
+
+func TestDecoderAcceptsJSONComments(t *testing.T) {
+	t.Parallel()
+	decoder := json.NewDecoder(strings.NewReader(`// before
+	{"value": 1}`))
+	var value map[string]int
+	if err := decoder.Decode(&value); err != nil {
+		t.Fatal(err)
+	}
+	if value["value"] != 1 {
+		t.Fatalf("value = %#v", value)
+	}
+}
+
+func TestTokenAcceptsJSONComments(t *testing.T) {
+	t.Parallel()
+	decoder := json.NewDecoder(strings.NewReader(`[// before
+	1]`))
+	token, err := decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != json.Delim('[') {
+		t.Fatalf("start token = %v", token)
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != float64(1) {
+		t.Fatalf("value token = %#v", token)
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != json.Delim(']') {
+		t.Fatalf("end token = %v", token)
+	}
+}
+
+type commentContextValue struct {
+	Value       int `json:"value"`
+	Raw         string
+	CommentsSet *json.CommentSet
+}
+
+func (v *commentContextValue) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	return json.MarshalContext(ctx, struct {
+		Value int `json:"value"`
+	}{Value: v.Value})
+}
+
+func (v *commentContextValue) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	v.Raw = string(content)
+	var wire struct {
+		Value int `json:"value"`
+	}
+	if err := json.UnmarshalContext(ctx, content, &wire); err != nil {
+		return err
+	}
+	v.Value = wire.Value
+	return nil
+}
+
+func (v *commentContextValue) Comments() *json.CommentSet {
+	return v.CommentsSet
+}
+
+func (v *commentContextValue) SetComments(comments *json.CommentSet) {
+	v.CommentsSet = comments
+}
+
+func TestCommentUnmarshalerReceivesComments(t *testing.T) {
+	t.Parallel()
+	var value commentContextValue
+	if err := json.UnmarshalContext(context.Background(), []byte(`{
+		// value leading
+		"value": 1 // value trailing
+	}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(value.Raw, "//") {
+		t.Fatalf("raw content contains comments: %q", value.Raw)
+	}
+	if value.CommentsSet == nil || len(value.CommentsSet.Comments) != 2 {
+		t.Fatalf("comments = %#v", value.CommentsSet)
+	}
+	leading, trailing := value.CommentsSet.Comments[0], value.CommentsSet.Comments[1]
+	if leading.Placement != json.CommentPlacementLeading || len(leading.Path) != 1 || leading.Path[0].Key != "value" {
+		t.Fatalf("leading comment = %#v", leading)
+	}
+	if trailing.Placement != json.CommentPlacementTrailing || len(trailing.Path) != 1 || trailing.Path[0].Key != "value" {
+		t.Fatalf("trailing comment = %#v", trailing)
+	}
+}
+
+func TestCommentMarshalerWritesComments(t *testing.T) {
+	t.Parallel()
+	value := &commentContextValue{
+		Value: 1,
+		CommentsSet: &json.CommentSet{Comments: []json.Comment{
+			{
+				Kind:      json.CommentKindLine,
+				Placement: json.CommentPlacementLeading,
+				Path:      json.CommentPath{{Kind: json.CommentPathKey, Key: "value"}},
+				Text:      " value leading",
+			},
+			{
+				Kind:      json.CommentKindBlock,
+				Placement: json.CommentPlacementTrailing,
+				Path:      json.CommentPath{{Kind: json.CommentPathKey, Key: "value"}},
+				Text:      " value trailing ",
+			},
+		}},
+	}
+	content, err := json.MarshalContext(context.Background(), value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "// value leading") || !strings.Contains(string(content), "/* value trailing */") {
+		t.Fatalf("content = %s", content)
+	}
+	var decoded map[string]int
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded["value"] != 1 {
+		t.Fatalf("decoded = %#v", decoded)
+	}
+}
+
+type commentFormatValue struct {
+	Listen      string
+	Port        int
+	Legacy      bool
+	Route       map[string]any
+	Items       []int
+	CommentsSet *json.CommentSet
+}
+
+func (v *commentFormatValue) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	type wire struct {
+		Listen string          `json:"listen,omitempty"`
+		Port   int             `json:"port,omitempty"`
+		Legacy bool            `json:"legacy,omitempty"`
+		Route  *map[string]any `json:"route,omitempty"`
+		Items  []int           `json:"items,omitempty"`
+	}
+	var route *map[string]any
+	if v.Route != nil {
+		route = &v.Route
+	}
+	return json.MarshalContext(ctx, wire{
+		Listen: v.Listen,
+		Port:   v.Port,
+		Legacy: v.Legacy,
+		Route:  route,
+		Items:  v.Items,
+	})
+}
+
+func (v *commentFormatValue) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	type wire struct {
+		Listen string         `json:"listen"`
+		Port   int            `json:"port"`
+		Legacy bool           `json:"legacy"`
+		Route  map[string]any `json:"route"`
+		Items  []int          `json:"items"`
+	}
+	var decoded wire
+	if err := json.UnmarshalContext(ctx, content, &decoded); err != nil {
+		return err
+	}
+	v.Listen = decoded.Listen
+	v.Port = decoded.Port
+	v.Legacy = decoded.Legacy
+	if decoded.Route != nil {
+		v.Route = decoded.Route
+	}
+	v.Items = decoded.Items
+	return nil
+}
+
+func (v *commentFormatValue) Comments() *json.CommentSet {
+	return v.CommentsSet
+}
+
+func (v *commentFormatValue) SetComments(comments *json.CommentSet) {
+	v.CommentsSet = comments
+}
+
+func TestCommentMarshalIndentPreservesJSONCFormatting(t *testing.T) {
+	t.Parallel()
+	const input = `{
+  // listen address
+  "listen": "127.0.0.1",
+  "port": 7890, // mixed port
+  # legacy option
+  "legacy": true,
+  /*
+   * block line 1
+   * block line 2
+   */
+  "route": {}
+}`
+	var value commentFormatValue
+	if err := json.UnmarshalContext(context.Background(), []byte(input), &value); err != nil {
+		t.Fatal(err)
+	}
+	content, err := json.MarshalIndent(&value, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != input {
+		t.Fatalf("content mismatch\nwant:\n%s\n\ngot:\n%s", input, content)
+	}
+}
+
+func TestCommentMarshalIndentFormatsArrayComments(t *testing.T) {
+	t.Parallel()
+	const input = `{
+  "items": [
+    // first
+    1,
+    2, // second
+    3
+  ]
+}`
+	var value commentFormatValue
+	if err := json.UnmarshalContext(context.Background(), []byte(input), &value); err != nil {
+		t.Fatal(err)
+	}
+	content, err := json.MarshalIndent(&value, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != input {
+		t.Fatalf("content mismatch\nwant:\n%s\n\ngot:\n%s", input, content)
+	}
+}
+
+func TestIndentPreservesJSONComments(t *testing.T) {
+	t.Parallel()
+	const input = `{"a":1, // a
+"b":[/* inner */2,3],"c":4, /* c */"d":5}`
+	const expected = `{
+  "a": 1, // a
+  "b": [
+    /* inner */
+    2,
+    3
+  ],
+  "c": 4, /* c */
+  "d": 5
+}`
+	var out bytes.Buffer
+	if err := json.Indent(&out, []byte(input), "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != expected {
+		t.Fatalf("content mismatch\nwant:\n%s\n\ngot:\n%s", expected, out.String())
+	}
+}
+
+func TestEncoderSetIndentPreservesJSONComments(t *testing.T) {
+	t.Parallel()
+	value := &commentFormatValue{
+		Listen: "127.0.0.1",
+		Port:   7890,
+		CommentsSet: &json.CommentSet{Comments: []json.Comment{
+			{
+				Kind:      json.CommentKindLine,
+				Placement: json.CommentPlacementLeading,
+				Path:      json.CommentPath{{Kind: json.CommentPathKey, Key: "listen"}},
+				Text:      " listen address",
+			},
+			{
+				Kind:      json.CommentKindLine,
+				Placement: json.CommentPlacementTrailing,
+				Path:      json.CommentPath{{Kind: json.CommentPathKey, Key: "port"}},
+				Text:      " mixed port",
+			},
+		}},
+	}
+	const expected = `{
+  // listen address
+  "listen": "127.0.0.1",
+  "port": 7890 // mixed port
+}
+`
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != expected {
+		t.Fatalf("content mismatch\nwant:\n%s\n\ngot:\n%s", expected, out.String())
+	}
+}
+
 func TestTrailingCommaDoesNotAllowMissingValues(t *testing.T) {
 	t.Parallel()
 	tests := []string{
