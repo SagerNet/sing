@@ -105,6 +105,47 @@ func TestContextErrorPathAndUnwrap(t *testing.T) {
 	}
 }
 
+func TestContextErrorPathEscapedKeys(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name:    "empty",
+			content: `{"":{}}`,
+			want:    `[""]: context value error`,
+		},
+		{
+			name:    "dot",
+			content: `{"a.b":{}}`,
+			want:    `["a.b"]: context value error`,
+		},
+		{
+			name:    "bracket",
+			content: `{"a[b]":{}}`,
+			want:    `["a[b]"]: context value error`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var target map[string]errorContextValue
+			err := json.UnmarshalContext(context.Background(), []byte(test.content), &target)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %q, want to contain %q", err.Error(), test.want)
+			}
+			if !errors.Is(err, errContextValue) {
+				t.Fatalf("expected unwrap to contain sentinel, got %v", err)
+			}
+		})
+	}
+}
+
 func TestUnknownFieldErrorPath(t *testing.T) {
 	t.Parallel()
 	var target struct {
@@ -118,6 +159,54 @@ func TestUnknownFieldErrorPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `inner[0].unknown: json: unknown field "unknown"`) {
 		t.Fatalf("error = %q", err.Error())
+	}
+}
+
+func TestTrailingCommaToken(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		content string
+		start   json.Delim
+		end     json.Delim
+	}{
+		{
+			name:    "array",
+			content: `[1,]`,
+			start:   '[',
+			end:     ']',
+		},
+		{
+			name:    "object",
+			content: `{"a":1,}`,
+			start:   '{',
+			end:     '}',
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			decoder := json.NewDecoder(strings.NewReader(test.content))
+			token, err := decoder.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != test.start {
+				t.Fatalf("start token = %v", token)
+			}
+			for decoder.More() {
+				if _, err := decoder.Token(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			token, err = decoder.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != test.end {
+				t.Fatalf("end token = %v", token)
+			}
+		})
 	}
 }
 
@@ -136,6 +225,47 @@ func TestTrailingComma(t *testing.T) {
 	}
 	if object["a"] != 1 {
 		t.Fatalf("object = %#v", object)
+	}
+}
+
+type precedenceValue struct {
+	value string
+}
+
+func (v *precedenceValue) MarshalJSON() ([]byte, error) {
+	return json.Marshal("standard")
+}
+
+func (v *precedenceValue) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	return json.Marshal("context")
+}
+
+func (v *precedenceValue) UnmarshalJSON(content []byte) error {
+	v.value = "standard"
+	return nil
+}
+
+func (v *precedenceValue) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	v.value = "context"
+	return nil
+}
+
+func TestStandardJSONMethodsTakePrecedence(t *testing.T) {
+	t.Parallel()
+	content, err := json.MarshalContext(context.Background(), &precedenceValue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != `"standard"` {
+		t.Fatalf("content = %s", content)
+	}
+
+	var value precedenceValue
+	if err := json.UnmarshalContext(context.Background(), []byte(`"value"`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if value.value != "standard" {
+		t.Fatalf("value = %q", value.value)
 	}
 }
 

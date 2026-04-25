@@ -1,37 +1,66 @@
 package json
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
-type decodeContext struct {
-	parent *decodeContext
-	index  int
-	key    string
+type decodePathKind byte
+
+const (
+	decodePathKey decodePathKind = iota
+	decodePathIndex
+)
+
+type decodePathSegment struct {
+	kind  decodePathKind
+	key   string
+	index int
+}
+
+func (d *decodeState) pushContextKey(key string) {
+	d.context = append(d.context, decodePathSegment{kind: decodePathKey, key: key})
+}
+
+func (d *decodeState) pushContextIndex(index int) {
+	d.context = append(d.context, decodePathSegment{kind: decodePathIndex, index: index})
+}
+
+func (d *decodeState) popContext(length int) {
+	d.context = d.context[:length]
 }
 
 func (d *decodeState) formatContext() string {
-	var description string
-	context := d.context
-	var appendDot bool
-	for context != nil {
-		if appendDot {
-			description = "." + description
+	var description strings.Builder
+	for _, segment := range d.context {
+		switch segment.kind {
+		case decodePathKey:
+			if isSimpleContextKey(segment.key) {
+				if description.Len() > 0 {
+					description.WriteByte('.')
+				}
+				description.WriteString(segment.key)
+			} else {
+				description.WriteByte('[')
+				description.WriteString(strconv.Quote(segment.key))
+				description.WriteByte(']')
+			}
+		case decodePathIndex:
+			description.WriteByte('[')
+			description.WriteString(strconv.Itoa(segment.index))
+			description.WriteByte(']')
 		}
-		if context.key != "" {
-			description = context.key + description
-			appendDot = true
-		} else {
-			description = "[" + strconv.Itoa(context.index) + "]" + description
-			appendDot = false
-		}
-		context = context.parent
 	}
-	return description
+	return description.String()
+}
+
+func isSimpleContextKey(key string) bool {
+	return key != "" && !strings.ContainsAny(key, ".[]")
 }
 
 type contextError struct {
 	parent  error
 	context string
-	index   bool
 }
 
 func (c *contextError) Unwrap() error {

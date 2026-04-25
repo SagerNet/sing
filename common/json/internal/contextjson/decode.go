@@ -224,7 +224,7 @@ type decodeState struct {
 	savedError            error
 	useNumber             bool
 	disallowUnknownFields bool
-	context               *decodeContext
+	context               []decodePathSegment
 }
 
 // readIndex returns the position of the last byte read.
@@ -241,6 +241,7 @@ func (d *decodeState) init(data []byte) *decodeState {
 	d.data = data
 	d.off = 0
 	d.savedError = nil
+	d.context = d.context[:0]
 	if d.errorContext != nil {
 		d.errorContext.Struct = nil
 		// Reuse the allocated space for the FieldStack slice.
@@ -254,8 +255,8 @@ func (d *decodeState) init(data []byte) *decodeState {
 func (d *decodeState) saveError(err error) {
 	if d.savedError == nil {
 		err = d.addErrorContext(err)
-		if d.context != nil {
-			err = &contextError{parent: err, context: d.formatContext(), index: d.context.key == ""}
+		if len(d.context) > 0 {
+			err = &contextError{parent: err, context: d.formatContext()}
 		}
 		d.savedError = err
 	}
@@ -563,9 +564,9 @@ func (d *decodeState) array(v reflect.Value) error {
 	}
 
 	i := 0
-	d.context = &decodeContext{parent: d.context}
+	contextLength := len(d.context)
 	defer func() {
-		d.context = d.context.parent
+		d.popContext(contextLength)
 	}()
 	for {
 		// Look ahead for ] - can only happen on first iteration.
@@ -584,6 +585,7 @@ func (d *decodeState) array(v reflect.Value) error {
 			}
 		}
 
+		d.pushContextIndex(i)
 		if i < v.Len() {
 			// Decode into element.
 			if err := d.value(v.Index(i)); err != nil {
@@ -595,8 +597,8 @@ func (d *decodeState) array(v reflect.Value) error {
 				return err
 			}
 		}
+		d.popContext(contextLength)
 		i++
-		d.context.index++
 
 		// Next token must be , or ].
 		if d.opcode == scanSkipSpace {
@@ -703,9 +705,9 @@ func (d *decodeState) object(v reflect.Value) error {
 		origErrorContext = *d.errorContext
 	}
 
-	d.context = &decodeContext{parent: d.context}
+	contextLength := len(d.context)
 	defer func() {
-		d.context = d.context.parent
+		d.popContext(contextLength)
 	}()
 	for {
 		// Read opening " of string key or closing }.
@@ -726,7 +728,7 @@ func (d *decodeState) object(v reflect.Value) error {
 		if !ok {
 			panic(phasePanicMsg)
 		}
-		d.context.key = string(key)
+		d.pushContextKey(string(key))
 
 		// Figure out field corresponding to key.
 		var subv reflect.Value
@@ -874,6 +876,7 @@ func (d *decodeState) object(v reflect.Value) error {
 		if d.opcode != scanObjectValue {
 			panic(phasePanicMsg)
 		}
+		d.popContext(contextLength)
 	}
 	return nil
 }
@@ -1105,9 +1108,9 @@ func (d *decodeState) valueInterface() (val any) {
 // arrayInterface is like array but returns []any.
 func (d *decodeState) arrayInterface() []any {
 	var v = make([]any, 0)
-	d.context = &decodeContext{parent: d.context}
+	contextLength := len(d.context)
 	defer func() {
-		d.context = d.context.parent
+		d.popContext(contextLength)
 	}()
 	for {
 		// Look ahead for ] - can only happen on first iteration.
@@ -1116,8 +1119,9 @@ func (d *decodeState) arrayInterface() []any {
 			break
 		}
 
+		d.pushContextIndex(len(v))
 		v = append(v, d.valueInterface())
-		d.context.index++
+		d.popContext(contextLength)
 
 		// Next token must be , or ].
 		if d.opcode == scanSkipSpace {
@@ -1136,9 +1140,9 @@ func (d *decodeState) arrayInterface() []any {
 // objectInterface is like object but returns map[string]any.
 func (d *decodeState) objectInterface() map[string]any {
 	m := make(map[string]any)
-	d.context = &decodeContext{parent: d.context}
+	contextLength := len(d.context)
 	defer func() {
-		d.context = d.context.parent
+		d.popContext(contextLength)
 	}()
 	for {
 		// Read opening " of string key or closing }.
@@ -1159,7 +1163,7 @@ func (d *decodeState) objectInterface() map[string]any {
 		if !ok {
 			panic(phasePanicMsg)
 		}
-		d.context.key = key
+		d.pushContextKey(key)
 
 		// Read : before value.
 		if d.opcode == scanSkipSpace {
@@ -1172,6 +1176,7 @@ func (d *decodeState) objectInterface() map[string]any {
 
 		// Read value.
 		m[key] = d.valueInterface()
+		d.popContext(contextLength)
 
 		// Next token must be , or }.
 		if d.opcode == scanSkipSpace {

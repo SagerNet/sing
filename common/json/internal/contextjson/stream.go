@@ -392,7 +392,7 @@ func (dec *Decoder) Token() (Token, error) {
 			return Delim('['), nil
 
 		case ']':
-			if dec.tokenState != tokenArrayStart && dec.tokenState != tokenArrayComma {
+			if dec.tokenState != tokenArrayStart && dec.tokenState != tokenArrayComma && dec.tokenState != tokenArrayValue {
 				return dec.tokenError(c)
 			}
 			dec.scanp++
