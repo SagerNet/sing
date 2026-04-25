@@ -21,6 +21,7 @@ linters:
       - comments
       - common-false-positives
     paths:
+      - common/json/internal/contextjson
       - contrab
 formatters:
   enable:
@@ -33,3 +34,6 @@ formatters:
         - prefix(github.com/sagernet/)
         - default
       custom-order: true
+  exclusions:
+    paths:
+      - common/json/internal/contextjson
