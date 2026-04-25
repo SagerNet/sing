@@ -1,7 +1,6 @@
 package json
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -15,9 +14,8 @@ func UnmarshalExtended[T any](content []byte) (T, error) {
 }
 
 func UnmarshalExtendedContext[T any](ctx context.Context, content []byte) (T, error) {
-	decoder := NewDecoderContext(ctx, NewCommentFilter(bytes.NewReader(content)))
 	var value T
-	err := decoder.Decode(&value)
+	err := UnmarshalContext(ctx, content, &value)
 	if err == nil {
 		return value, err
 	}

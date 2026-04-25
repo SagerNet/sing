@@ -29,6 +29,7 @@ type CommentFilter struct {
 	pendingN int
 }
 
+// Deprecated: use new contextjson instead
 func NewCommentFilter(reader io.Reader) io.Reader {
 	return &CommentFilter{br: bufio.NewReader(reader)}
 }

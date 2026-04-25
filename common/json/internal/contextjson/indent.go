@@ -87,13 +87,260 @@ func appendCompact(dst, src []byte, escape bool) ([]byte, error) {
 	return dst, nil
 }
 
-func appendNewline(dst []byte, prefix, indent string, depth int) []byte {
-	dst = append(dst, '\n')
+type jsonCommentToken struct {
+	kind   CommentKind
+	text   []byte
+	end    int
+	closed bool
+}
+
+func readJSONComment(src []byte, start int) (jsonCommentToken, bool) {
+	if start >= len(src) {
+		return jsonCommentToken{}, false
+	}
+	switch src[start] {
+	case '#':
+		textStart := start + 1
+		textEnd := textStart
+		for textEnd < len(src) && src[textEnd] != '\n' && src[textEnd] != '\r' {
+			textEnd++
+		}
+		end := consumeLineEnd(src, textEnd)
+		return jsonCommentToken{kind: CommentKindHash, text: src[textStart:textEnd], end: end, closed: true}, true
+	case '/':
+		if start+1 >= len(src) {
+			return jsonCommentToken{}, false
+		}
+		switch src[start+1] {
+		case '/':
+			textStart := start + 2
+			textEnd := textStart
+			for textEnd < len(src) && src[textEnd] != '\n' && src[textEnd] != '\r' {
+				textEnd++
+			}
+			end := consumeLineEnd(src, textEnd)
+			return jsonCommentToken{kind: CommentKindLine, text: src[textStart:textEnd], end: end, closed: true}, true
+		case '*':
+			textStart := start + 2
+			for i := textStart; i+1 < len(src); i++ {
+				if src[i] == '*' && src[i+1] == '/' {
+					return jsonCommentToken{kind: CommentKindBlock, text: src[textStart:i], end: i + 2, closed: true}, true
+				}
+			}
+			return jsonCommentToken{kind: CommentKindBlock, text: src[textStart:], end: len(src)}, true
+		}
+	}
+	return jsonCommentToken{}, false
+}
+
+func consumeLineEnd(src []byte, i int) int {
+	if i >= len(src) {
+		return i
+	}
+	if src[i] == '\r' {
+		i++
+		if i < len(src) && src[i] == '\n' {
+			i++
+		}
+		return i
+	}
+	if src[i] == '\n' {
+		return i + 1
+	}
+	return i
+}
+
+func appendLineBreak(dst []byte) []byte {
+	return append(dst, '\n')
+}
+
+func appendIndentPrefix(dst []byte, prefix, indent string, depth int) []byte {
 	dst = append(dst, prefix...)
 	for i := 0; i < depth; i++ {
 		dst = append(dst, indent...)
 	}
 	return dst
+}
+
+func nextCommentInline(src []byte, i int) bool {
+	for i < len(src) {
+		switch src[i] {
+		case ' ', '\t':
+			i++
+			continue
+		case '\n', '\r':
+			return false
+		}
+		break
+	}
+	comment, ok := readJSONComment(src, i)
+	if !ok || !comment.closed {
+		return false
+	}
+	return comment.kind != CommentKindBlock || !containsLineBreak(comment.text)
+}
+
+func containsLineBreak(value []byte) bool {
+	for _, c := range value {
+		if c == '\n' || c == '\r' {
+			return true
+		}
+	}
+	return false
+}
+
+func appendJSONComment(dst []byte, comment jsonCommentToken, prefix, indent string, depth int, atLineStart, lineHasContent bool) ([]byte, bool, bool) {
+	if comment.kind == CommentKindBlock {
+		return appendBlockJSONComment(dst, comment.text, prefix, indent, depth, atLineStart, lineHasContent)
+	}
+	if lineHasContent {
+		dst = appendSpaceBeforeInlineComment(dst)
+	} else if atLineStart {
+		dst = appendIndentPrefix(dst, prefix, indent, depth)
+		atLineStart = false
+	}
+	dst = appendCommentMarker(dst, comment.kind)
+	dst = append(dst, comment.text...)
+	dst = appendLineBreak(dst)
+	return dst, true, false
+}
+
+func appendBlockJSONComment(dst []byte, text []byte, prefix, indent string, depth int, atLineStart, lineHasContent bool) ([]byte, bool, bool) {
+	if !containsLineBreak(text) {
+		leading := !lineHasContent
+		inlineAfterComma := lineHasContent && lastNonSpaceByte(dst) == ','
+		if lineHasContent {
+			dst = appendSpaceBeforeInlineComment(dst)
+		} else if atLineStart {
+			dst = appendIndentPrefix(dst, prefix, indent, depth)
+			atLineStart = false
+		}
+		dst = append(dst, '/', '*')
+		dst = append(dst, text...)
+		dst = append(dst, '*', '/')
+		if leading || inlineAfterComma {
+			dst = appendLineBreak(dst)
+			return dst, true, false
+		}
+		return dst, false, true
+	}
+	if lineHasContent {
+		dst = appendLineBreak(dst)
+		atLineStart = true
+		lineHasContent = false
+	}
+	if atLineStart {
+		dst = appendIndentPrefix(dst, prefix, indent, depth)
+	}
+	dst = appendMultilineBlockComment(dst, text, prefix, indent, depth)
+	dst = appendLineBreak(dst)
+	return dst, true, false
+}
+
+func appendSpaceBeforeInlineComment(dst []byte) []byte {
+	if len(dst) == 0 {
+		return dst
+	}
+	switch dst[len(dst)-1] {
+	case ' ', '\t', '\n', '\r':
+		return dst
+	default:
+		return append(dst, ' ')
+	}
+}
+
+func lastNonSpaceByte(value []byte) byte {
+	for i := len(value) - 1; i >= 0; i-- {
+		switch value[i] {
+		case ' ', '\t', '\n', '\r':
+			continue
+		default:
+			return value[i]
+		}
+	}
+	return 0
+}
+
+func appendCommentMarker(dst []byte, kind CommentKind) []byte {
+	switch kind {
+	case CommentKindHash:
+		return append(dst, '#')
+	case CommentKindBlock:
+		return append(dst, '/', '*')
+	default:
+		return append(dst, '/', '/')
+	}
+}
+
+func appendMultilineBlockComment(dst []byte, text []byte, prefix, indent string, depth int) []byte {
+	lines := splitCommentLines(text)
+	trim := blockCommentTrim(lines)
+	dst = append(dst, '/', '*')
+	for i, line := range lines {
+		if i > 0 {
+			dst = appendLineBreak(dst)
+			dst = appendIndentPrefix(dst, prefix, indent, depth)
+			line = trimBlockCommentLine(line, trim)
+		}
+		dst = append(dst, line...)
+	}
+	dst = append(dst, '*', '/')
+	return dst
+}
+
+func splitCommentLines(text []byte) [][]byte {
+	lines := make([][]byte, 0, bytes.Count(text, []byte{'\n'})+1)
+	start := 0
+	for i := 0; i < len(text); i++ {
+		if text[i] != '\n' && text[i] != '\r' {
+			continue
+		}
+		lines = append(lines, text[start:i])
+		if text[i] == '\r' && i+1 < len(text) && text[i+1] == '\n' {
+			i++
+		}
+		start = i + 1
+	}
+	lines = append(lines, text[start:])
+	return lines
+}
+
+func blockCommentTrim(lines [][]byte) int {
+	minIndent := -1
+	for _, line := range lines[1:] {
+		if len(line) == 0 {
+			continue
+		}
+		indent := leadingCommentIndent(line)
+		if indent == len(line) {
+			continue
+		}
+		if minIndent < 0 || indent < minIndent {
+			minIndent = indent
+		}
+	}
+	if minIndent <= 1 {
+		return 0
+	}
+	return minIndent - 1
+}
+
+func leadingCommentIndent(line []byte) int {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return i
+}
+
+func trimBlockCommentLine(line []byte, trim int) []byte {
+	if trim == 0 {
+		return line
+	}
+	if indent := leadingCommentIndent(line); indent < trim {
+		return line[indent:]
+	}
+	return line[trim:]
 }
 
 // indentGrowthFactor specifies the growth factor of indenting JSON input.
@@ -129,10 +376,35 @@ func appendIndent(dst, src []byte, prefix, indent string) ([]byte, error) {
 	defer freeScanner(scan)
 	needIndent := false
 	depth := 0
-	for _, c := range src {
+	atLineStart := true
+	lineHasContent := false
+Input:
+	for i := 0; i < len(src); i++ {
+		c := src[i]
 		scan.bytes++
 		v := scan.step(scan, c)
 		if v == scanSkipSpace {
+			if comment, ok := readJSONComment(src, i); ok {
+				for j := i + 1; j < comment.end; j++ {
+					scan.bytes++
+					if scan.step(scan, src[j]) == scanError {
+						break Input
+					}
+				}
+				if !comment.closed {
+					i = comment.end - 1
+					continue
+				}
+				if needIndent {
+					dst = appendLineBreak(dst)
+					atLineStart = true
+					lineHasContent = false
+					needIndent = false
+				}
+				dst, atLineStart, lineHasContent = appendJSONComment(dst, comment, prefix, indent, depth, atLineStart, lineHasContent)
+				i = comment.end - 1
+				continue
+			}
 			continue
 		}
 		if v == scanError {
@@ -140,39 +412,70 @@ func appendIndent(dst, src []byte, prefix, indent string) ([]byte, error) {
 		}
 		if needIndent && v != scanEndObject && v != scanEndArray {
 			needIndent = false
-			depth++
-			dst = appendNewline(dst, prefix, indent, depth)
+			dst = appendLineBreak(dst)
+			atLineStart = true
+			lineHasContent = false
 		}
 
 		// Emit semantically uninteresting bytes
 		// (in particular, punctuation in strings) unmodified.
 		if v == scanContinue {
+			if atLineStart {
+				dst = appendIndentPrefix(dst, prefix, indent, depth)
+				atLineStart = false
+			}
 			dst = append(dst, c)
+			lineHasContent = true
 			continue
 		}
 
 		// Add spacing around real punctuation.
 		switch c {
 		case '{', '[':
+			if atLineStart {
+				dst = appendIndentPrefix(dst, prefix, indent, depth)
+				atLineStart = false
+			}
 			// delay indent so that empty object and array are formatted as {} and [].
 			needIndent = true
 			dst = append(dst, c)
+			lineHasContent = true
+			depth++
 		case ',':
 			dst = append(dst, c)
-			dst = appendNewline(dst, prefix, indent, depth)
+			lineHasContent = true
+			if !nextCommentInline(src, i+1) {
+				dst = appendLineBreak(dst)
+				atLineStart = true
+				lineHasContent = false
+			}
 		case ':':
 			dst = append(dst, c, ' ')
+			lineHasContent = true
+			atLineStart = false
 		case '}', ']':
+			depth--
 			if needIndent {
 				// suppress indent in empty object/array
 				needIndent = false
-			} else {
-				depth--
-				dst = appendNewline(dst, prefix, indent, depth)
+			} else if lineHasContent {
+				dst = appendLineBreak(dst)
+				atLineStart = true
+				lineHasContent = false
+			}
+			if atLineStart {
+				dst = appendIndentPrefix(dst, prefix, indent, depth)
+				atLineStart = false
 			}
 			dst = append(dst, c)
+			lineHasContent = true
 		default:
+			if atLineStart {
+				dst = appendIndentPrefix(dst, prefix, indent, depth)
+				atLineStart = false
+			}
 			dst = append(dst, c)
+			lineHasContent = true
 		}
 	}
 	if scan.eof() == scanError {
