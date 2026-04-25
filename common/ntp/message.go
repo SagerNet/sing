@@ -144,16 +144,6 @@ func (m *msg) setLeap(li LeapIndicator) {
 	m.LiVnMode = (m.LiVnMode & 0x3f) | uint8(li)<<6
 }
 
-// getVersion returns the version value in the message.
-func (m *msg) getVersion() int {
-	return int((m.LiVnMode >> 3) & 0x07)
-}
-
-// getMode returns the mode value in the message.
-func (m *msg) getMode() mode {
-	return mode(m.LiVnMode & 0x07)
-}
-
 // getLeap returns the leap indicator on the message.
 func (m *msg) getLeap() LeapIndicator {
 	return LeapIndicator((m.LiVnMode >> 6) & 0x03)

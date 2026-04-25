@@ -23,6 +23,7 @@ type TorResolver interface {
 	LookupPTR(ctx context.Context, addr netip.Addr) (string, error)
 }
 
+//nolint:unused
 func handleTorSocks4(ctx context.Context, conn net.Conn, request socks4.Request, resolver TorResolver) error {
 	switch request.Command {
 	case CommandTorResolve:
@@ -84,6 +85,7 @@ func handleTorSocks4(ctx context.Context, conn net.Conn, request socks4.Request,
 	}
 }
 
+//nolint:unused
 func handleTorSocks5(ctx context.Context, conn net.Conn, request socks5.Request, resolver TorResolver) error {
 	switch request.Command {
 	case CommandTorResolve:
