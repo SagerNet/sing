@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -42,7 +41,7 @@ type Batch[T any] struct {
 	mux    sync.Mutex
 	err    *Error
 	once   sync.Once
-	cancel common.ContextCancelCauseFunc
+	cancel context.CancelCauseFunc
 }
 
 func (b *Batch[T]) Go(key string, fn func() (T, error)) {
@@ -97,7 +96,7 @@ func (b *Batch[T]) Result() map[string]Result[T] {
 }
 
 func New[T any](ctx context.Context, opts ...Option[T]) (*Batch[T], context.Context) {
-	ctx, cancel := common.ContextWithCancelCause(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 
 	b := &Batch[T]{
 		result: map[string]Result[T]{},

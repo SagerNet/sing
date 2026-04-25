@@ -5,18 +5,16 @@ import (
 	"net"
 	"os"
 	"time"
-
-	"github.com/sagernet/sing/common"
 )
 
 type Instance struct {
 	ctx        context.Context
-	cancelFunc common.ContextCancelCauseFunc
+	cancelFunc context.CancelCauseFunc
 	timer      *time.Timer
 	timeout    time.Duration
 }
 
-func New(ctx context.Context, cancelFunc common.ContextCancelCauseFunc, timeout time.Duration) *Instance {
+func New(ctx context.Context, cancelFunc context.CancelCauseFunc, timeout time.Duration) *Instance {
 	instance := &Instance{
 		ctx,
 		cancelFunc,

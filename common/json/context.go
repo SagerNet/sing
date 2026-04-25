@@ -1,4 +1,4 @@
-//go:build go1.20 && !without_contextjson
+//go:build !without_contextjson
 
 package json
 

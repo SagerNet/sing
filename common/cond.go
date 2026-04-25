@@ -1,13 +1,12 @@
 package common
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"runtime"
 	"sort"
 	"unsafe"
-
-	"github.com/sagernet/sing/common/x/constraints"
 )
 
 func Any[T any](array []T, block func(it T) bool) bool {
@@ -214,13 +213,13 @@ func UniqBy[T any, C comparable](arr []T, block func(it T) C) []T {
 	return result
 }
 
-func SortBy[T any, C constraints.Ordered](arr []T, block func(it T) C) {
+func SortBy[T any, C cmp.Ordered](arr []T, block func(it T) C) {
 	sort.Slice(arr, func(i, j int) bool {
 		return block(arr[i]) < block(arr[j])
 	})
 }
 
-func MinBy[T any, C constraints.Ordered](arr []T, block func(it T) C) T {
+func MinBy[T any, C cmp.Ordered](arr []T, block func(it T) C) T {
 	var min T
 	var minValue C
 	if len(arr) == 0 {
@@ -239,7 +238,7 @@ func MinBy[T any, C constraints.Ordered](arr []T, block func(it T) C) T {
 	return min
 }
 
-func MaxBy[T any, C constraints.Ordered](arr []T, block func(it T) C) T {
+func MaxBy[T any, C cmp.Ordered](arr []T, block func(it T) C) T {
 	var max T
 	var maxValue C
 	if len(arr) == 0 {

@@ -5,7 +5,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
@@ -15,12 +14,12 @@ import (
 type TimeoutPacketConn struct {
 	N.PacketConn
 	timeout time.Duration
-	cancel  common.ContextCancelCauseFunc
+	cancel  context.CancelCauseFunc
 	active  time.Time
 }
 
 func NewTimeoutPacketConn(ctx context.Context, conn N.PacketConn, timeout time.Duration) (context.Context, PacketConn) {
-	ctx, cancel := common.ContextWithCancelCause(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	return ctx, &TimeoutPacketConn{
 		PacketConn: conn,
 		timeout:    timeout,

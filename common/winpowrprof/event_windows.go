@@ -3,13 +3,14 @@ package winpowrprof
 // modify from https://github.com/golang/go/blob/b634f6fdcbebee23b7da709a243f3db217b64776/src/runtime/os_windows.go#L257
 
 import (
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 type powerEventListener struct {
-	pinner   myPinner
+	pinner   runtime.Pinner
 	callback EventCallback
 	handle   uintptr
 }

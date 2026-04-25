@@ -1,10 +1,10 @@
 module github.com/sagernet/sing
 
-go 1.20
+go 1.24.0
 
 require (
-	github.com/stretchr/testify v1.9.0
-	golang.org/x/sys v0.21.0
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/sys v0.41.0
 )
 
 require (

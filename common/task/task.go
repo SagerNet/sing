@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -55,8 +54,10 @@ func (g *Group) Concurrency(n int) {
 }
 
 func (g *Group) Run(ctx context.Context) error {
-	taskContext, taskFinish := common.ContextWithCancelCause(context.Background())
-	taskCancelContext, taskCancel := common.ContextWithCancelCause(ctx)
+	taskContext, taskFinish := context.WithCancelCause(context.Background())
+	defer taskFinish(nil)
+	taskCancelContext, taskCancel := context.WithCancelCause(ctx)
+	defer taskCancel(nil)
 
 	var errorAccess sync.Mutex
 	var returnError error

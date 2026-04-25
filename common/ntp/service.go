@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -35,7 +34,7 @@ var _ TimeService = (*Service)(nil)
 
 type Service struct {
 	ctx           context.Context
-	cancel        common.ContextCancelCauseFunc
+	cancel        context.CancelCauseFunc
 	dialer        N.Dialer
 	logger        logger.Logger
 	server        M.Socksaddr
@@ -53,7 +52,7 @@ func NewService(options Options) *Service {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := common.ContextWithCancelCause(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	destination := options.Server
 	if !destination.IsValid() {
 		destination = M.Socksaddr{
