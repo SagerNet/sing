@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !goexperiment.jsonv2
-
 // Package json implements encoding and decoding of JSON as defined in RFC 7159.
 // The mapping between JSON and Go values is described in the documentation for
 // the Marshal and Unmarshal functions.
@@ -47,6 +45,7 @@ package json
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding"
 	"encoding/base64"
 	"fmt"
@@ -203,7 +202,11 @@ import (
 // handle them. Passing cyclic structures to Marshal will result in
 // an error.
 func Marshal(v any) ([]byte, error) {
-	e := newEncodeState()
+	return MarshalContext(context.Background(), v)
+}
+
+func MarshalContext(ctx context.Context, v any) ([]byte, error) {
+	e := newEncodeState(ctx)
 	defer encodeStatePool.Put(e)
 
 	err := e.marshal(v, encOpts{escapeHTML: true})
@@ -299,6 +302,8 @@ const hex = "0123456789abcdef"
 type encodeState struct {
 	bytes.Buffer // accumulated output
 
+	ctx context.Context
+
 	// Keep track of what pointers we've seen in the current recursive call
 	// path, to avoid cycles that could lead to a stack overflow. Only do
 	// the relatively expensive map operations if ptrLevel is larger than
@@ -312,17 +317,18 @@ const startDetectingCyclesAfter = 1000
 
 var encodeStatePool sync.Pool
 
-func newEncodeState() *encodeState {
+func newEncodeState(ctx context.Context) *encodeState {
 	if v := encodeStatePool.Get(); v != nil {
 		e := v.(*encodeState)
 		e.Reset()
+		e.ctx = ctx
 		if len(e.ptrSeen) > 0 {
 			panic("ptrEncoder.encode should have emptied ptrSeen via defers")
 		}
 		e.ptrLevel = 0
 		return e
 	}
-	return &encodeState{ptrSeen: make(map[any]struct{})}
+	return &encodeState{ctx: ctx, ptrSeen: make(map[any]struct{})}
 }
 
 // jsonError is an error wrapper type for internal use only.
@@ -412,8 +418,9 @@ func typeEncoder(t reflect.Type) encoderFunc {
 }
 
 var (
-	marshalerType     = reflect.TypeFor[Marshaler]()
-	textMarshalerType = reflect.TypeFor[encoding.TextMarshaler]()
+	marshalerType        = reflect.TypeFor[Marshaler]()
+	contextMarshalerType = reflect.TypeFor[ContextMarshaler]()
+	textMarshalerType    = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
 // newTypeEncoder constructs an encoderFunc for a type.
@@ -428,6 +435,12 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 	}
 	if t.Implements(marshalerType) {
 		return marshalerEncoder
+	}
+	if t.Kind() != reflect.Pointer && allowAddr && reflect.PointerTo(t).Implements(contextMarshalerType) {
+		return newCondAddrEncoder(addrContextMarshalerEncoder, newTypeEncoder(t, false))
+	}
+	if t.Implements(contextMarshalerType) {
+		return contextMarshalerEncoder
 	}
 	if t.Kind() != reflect.Pointer && allowAddr && reflect.PointerTo(t).Implements(textMarshalerType) {
 		return newCondAddrEncoder(addrTextMarshalerEncoder, newTypeEncoder(t, false))
@@ -508,6 +521,47 @@ func addrMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 	}
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err, "MarshalJSON"})
+	}
+}
+
+func contextMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		e.WriteString("null")
+		return
+	}
+	m, ok := v.Interface().(ContextMarshaler)
+	if !ok {
+		e.WriteString("null")
+		return
+	}
+	b, err := m.MarshalJSONContext(e.ctx)
+	if err == nil {
+		e.Grow(len(b))
+		out := e.AvailableBuffer()
+		out, err = appendCompact(out, b, opts.escapeHTML)
+		e.Buffer.Write(out)
+	}
+	if err != nil {
+		e.error(&MarshalerError{v.Type(), err, "MarshalJSONContext"})
+	}
+}
+
+func addrContextMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
+	va := v.Addr()
+	if va.IsNil() {
+		e.WriteString("null")
+		return
+	}
+	m := va.Interface().(ContextMarshaler)
+	b, err := m.MarshalJSONContext(e.ctx)
+	if err == nil {
+		e.Grow(len(b))
+		out := e.AvailableBuffer()
+		out, err = appendCompact(out, b, opts.escapeHTML)
+		e.Buffer.Write(out)
+	}
+	if err != nil {
+		e.error(&MarshalerError{v.Type(), err, "MarshalJSONContext"})
 	}
 }
 
@@ -879,7 +933,7 @@ func newSliceEncoder(t reflect.Type) encoderFunc {
 	// Byte slices get special treatment; arrays don't.
 	if t.Elem().Kind() == reflect.Uint8 {
 		p := reflect.PointerTo(t.Elem())
-		if !p.Implements(marshalerType) && !p.Implements(textMarshalerType) {
+		if !p.Implements(marshalerType) && !p.Implements(contextMarshalerType) && !p.Implements(textMarshalerType) {
 			return encodeByteSlice
 		}
 	}

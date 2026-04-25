@@ -1,3 +1,5 @@
+//go:build !without_contextjson
+
 package json
 
 import (

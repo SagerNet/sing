@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !goexperiment.jsonv2
-
 package json
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 )
@@ -31,7 +30,11 @@ type Decoder struct {
 // The decoder introduces its own buffering and may
 // read data from r beyond the JSON values requested.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: r}
+	return NewDecoderContext(context.Background(), r)
+}
+
+func NewDecoderContext(ctx context.Context, r io.Reader) *Decoder {
+	return &Decoder{r: r, d: decodeState{ctx: ctx}}
 }
 
 // UseNumber causes the Decoder to unmarshal a number into an
@@ -181,6 +184,7 @@ func nonSpace(b []byte) bool {
 
 // An Encoder writes JSON values to an output stream.
 type Encoder struct {
+	ctx        context.Context
 	w          io.Writer
 	err        error
 	escapeHTML bool
@@ -192,7 +196,11 @@ type Encoder struct {
 
 // NewEncoder returns a new encoder that writes to w.
 func NewEncoder(w io.Writer) *Encoder {
-	return &Encoder{w: w, escapeHTML: true}
+	return NewEncoderContext(context.Background(), w)
+}
+
+func NewEncoderContext(ctx context.Context, w io.Writer) *Encoder {
+	return &Encoder{ctx: ctx, w: w, escapeHTML: true}
 }
 
 // Encode writes the JSON encoding of v to the stream,
@@ -206,7 +214,7 @@ func (enc *Encoder) Encode(v any) error {
 		return enc.err
 	}
 
-	e := newEncodeState()
+	e := newEncodeState(enc.ctx)
 	defer encodeStatePool.Put(e)
 
 	err := e.marshal(v, encOpts{escapeHTML: enc.escapeHTML})
@@ -403,7 +411,7 @@ func (dec *Decoder) Token() (Token, error) {
 			return Delim('{'), nil
 
 		case '}':
-			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma {
+			if dec.tokenState != tokenObjectStart && dec.tokenState != tokenObjectComma && dec.tokenState != tokenObjectKey {
 				return dec.tokenError(c)
 			}
 			dec.scanp++
@@ -484,10 +492,47 @@ func (dec *Decoder) tokenError(c byte) (Token, error) {
 // current array or object being parsed.
 func (dec *Decoder) More() bool {
 	c, err := dec.peek()
-	return err == nil && c != ']' && c != '}'
+	if err != nil {
+		return false
+	}
+	if c == ']' || c == '}' {
+		return false
+	}
+	if c == ',' {
+		scanp := dec.scanp
+		dec.scanp++
+		c, err = dec.peekNoRefill()
+		dec.scanp = scanp
+		if err != nil {
+			return false
+		}
+		if c == ']' || c == '}' {
+			return false
+		}
+	}
+	return true
 }
 
 func (dec *Decoder) peek() (byte, error) {
+	var err error
+	for {
+		for i := dec.scanp; i < len(dec.buf); i++ {
+			c := dec.buf[i]
+			if isSpace(c) {
+				continue
+			}
+			dec.scanp = i
+			return c, nil
+		}
+		// buffer has been scanned, now report any error
+		if err != nil {
+			return 0, err
+		}
+		err = dec.refill()
+	}
+}
+
+func (dec *Decoder) peekNoRefill() (byte, error) {
 	var err error
 	for {
 		for i := dec.scanp; i < len(dec.buf); i++ {

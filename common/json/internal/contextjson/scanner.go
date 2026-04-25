@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !goexperiment.jsonv2
-
 package json
 
 // JSON value parser state machine.
@@ -302,7 +300,7 @@ func stateEndValue(s *scanner, c byte) int {
 	case parseObjectValue:
 		if c == ',' {
 			s.parseState[n-1] = parseObjectKey
-			s.step = stateBeginString
+			s.step = stateBeginStringOrEmpty
 			return scanObjectValue
 		}
 		if c == '}' {
@@ -312,7 +310,7 @@ func stateEndValue(s *scanner, c byte) int {
 		return s.error(c, "after object key:value pair")
 	case parseArrayValue:
 		if c == ',' {
-			s.step = stateBeginValue
+			s.step = stateBeginValueOrEmpty
 			return scanArrayValue
 		}
 		if c == ']' {

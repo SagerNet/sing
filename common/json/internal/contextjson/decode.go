@@ -5,11 +5,10 @@
 // Represents JSON data structure using native Go types: booleans, floats,
 // strings, arrays, and maps.
 
-//go:build !goexperiment.jsonv2
-
 package json
 
 import (
+	"context"
 	"encoding"
 	"encoding/base64"
 	"fmt"
@@ -100,10 +99,15 @@ import (
 // Instead, they are replaced by the Unicode replacement
 // character U+FFFD.
 func Unmarshal(data []byte, v any) error {
+	return UnmarshalContext(context.Background(), data, v)
+}
+
+func UnmarshalContext(ctx context.Context, data []byte, v any) error {
 	// Check for well-formedness.
 	// Avoids filling out half a data structure
 	// before discovering a JSON syntax error.
 	var d decodeState
+	d.ctx = ctx
 	err := checkValid(data, &d.scan)
 	if err != nil {
 		return err
@@ -211,6 +215,7 @@ type errorContext struct {
 
 // decodeState represents the state while decoding a JSON value.
 type decodeState struct {
+	ctx                   context.Context
 	data                  []byte
 	off                   int // next read offset in data
 	opcode                int // last read result
@@ -219,6 +224,7 @@ type decodeState struct {
 	savedError            error
 	useNumber             bool
 	disallowUnknownFields bool
+	context               *decodeContext
 }
 
 // readIndex returns the position of the last byte read.
@@ -247,7 +253,11 @@ func (d *decodeState) init(data []byte) *decodeState {
 // for reporting at the end of the unmarshal.
 func (d *decodeState) saveError(err error) {
 	if d.savedError == nil {
-		d.savedError = d.addErrorContext(err)
+		err = d.addErrorContext(err)
+		if d.context != nil {
+			err = &contextError{parent: err, context: d.formatContext(), index: d.context.key == ""}
+		}
+		d.savedError = err
 	}
 }
 
@@ -429,7 +439,7 @@ func (d *decodeState) valueQuoted() any {
 // If it encounters an Unmarshaler, indirect stops and returns that.
 // If decodingNull is true, indirect stops at the first settable pointer so it
 // can be set to nil.
-func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnmarshaler, reflect.Value) {
+func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, ContextUnmarshaler, encoding.TextUnmarshaler, reflect.Value) {
 	// Issue #24153 indicates that it is generally not a guaranteed property
 	// that you may round-trip a reflect.Value by calling Value.Addr().Elem()
 	// and expect the value to still be settable for values derived from
@@ -483,11 +493,14 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 		}
 		if v.Type().NumMethod() > 0 && v.CanInterface() {
 			if u, ok := v.Interface().(Unmarshaler); ok {
-				return u, nil, reflect.Value{}
+				return u, nil, nil, reflect.Value{}
+			}
+			if cu, ok := v.Interface().(ContextUnmarshaler); ok {
+				return nil, cu, nil, reflect.Value{}
 			}
 			if !decodingNull {
 				if u, ok := v.Interface().(encoding.TextUnmarshaler); ok {
-					return nil, u, reflect.Value{}
+					return nil, nil, u, reflect.Value{}
 				}
 			}
 		}
@@ -499,18 +512,29 @@ func indirect(v reflect.Value, decodingNull bool) (Unmarshaler, encoding.TextUnm
 			v = v.Elem()
 		}
 	}
-	return nil, nil, v
+	return nil, nil, nil, v
 }
 
 // array consumes an array from d.data[d.off-1:], decoding into v.
 // The first byte of the array ('[') has been read already.
 func (d *decodeState) array(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, ut, pv := indirect(v, false)
+	u, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
-		return u.UnmarshalJSON(d.data[start:d.off])
+		if err := u.UnmarshalJSON(d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		start := d.readIndex()
+		d.skip()
+		if err := cu.UnmarshalJSONContext(d.ctx, d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
 	}
 	if ut != nil {
 		d.saveError(&UnmarshalTypeError{Value: "array", Type: v.Type(), Offset: int64(d.off)})
@@ -539,6 +563,10 @@ func (d *decodeState) array(v reflect.Value) error {
 	}
 
 	i := 0
+	d.context = &decodeContext{parent: d.context}
+	defer func() {
+		d.context = d.context.parent
+	}()
 	for {
 		// Look ahead for ] - can only happen on first iteration.
 		d.scanWhile(scanSkipSpace)
@@ -568,6 +596,7 @@ func (d *decodeState) array(v reflect.Value) error {
 			}
 		}
 		i++
+		d.context.index++
 
 		// Next token must be , or ].
 		if d.opcode == scanSkipSpace {
@@ -603,11 +632,22 @@ var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
 // The first byte ('{') of the object has been read already.
 func (d *decodeState) object(v reflect.Value) error {
 	// Check for unmarshaler.
-	u, ut, pv := indirect(v, false)
+	u, cu, ut, pv := indirect(v, false)
 	if u != nil {
 		start := d.readIndex()
 		d.skip()
-		return u.UnmarshalJSON(d.data[start:d.off])
+		if err := u.UnmarshalJSON(d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		start := d.readIndex()
+		d.skip()
+		if err := cu.UnmarshalJSONContext(d.ctx, d.data[start:d.off]); err != nil {
+			d.saveError(err)
+		}
+		return nil
 	}
 	if ut != nil {
 		d.saveError(&UnmarshalTypeError{Value: "object", Type: v.Type(), Offset: int64(d.off)})
@@ -663,6 +703,10 @@ func (d *decodeState) object(v reflect.Value) error {
 		origErrorContext = *d.errorContext
 	}
 
+	d.context = &decodeContext{parent: d.context}
+	defer func() {
+		d.context = d.context.parent
+	}()
 	for {
 		// Read opening " of string key or closing }.
 		d.scanWhile(scanSkipSpace)
@@ -682,6 +726,7 @@ func (d *decodeState) object(v reflect.Value) error {
 		if !ok {
 			panic(phasePanicMsg)
 		}
+		d.context.key = string(key)
 
 		// Figure out field corresponding to key.
 		var subv reflect.Value
@@ -861,9 +906,18 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		return nil
 	}
 	isNull := item[0] == 'n' // null
-	u, ut, pv := indirect(v, isNull)
+	u, cu, ut, pv := indirect(v, isNull)
 	if u != nil {
-		return u.UnmarshalJSON(item)
+		if err := u.UnmarshalJSON(item); err != nil {
+			d.saveError(err)
+		}
+		return nil
+	}
+	if cu != nil {
+		if err := cu.UnmarshalJSONContext(d.ctx, item); err != nil {
+			d.saveError(err)
+		}
+		return nil
 	}
 	if ut != nil {
 		if item[0] != '"' {
@@ -1051,6 +1105,10 @@ func (d *decodeState) valueInterface() (val any) {
 // arrayInterface is like array but returns []any.
 func (d *decodeState) arrayInterface() []any {
 	var v = make([]any, 0)
+	d.context = &decodeContext{parent: d.context}
+	defer func() {
+		d.context = d.context.parent
+	}()
 	for {
 		// Look ahead for ] - can only happen on first iteration.
 		d.scanWhile(scanSkipSpace)
@@ -1059,6 +1117,7 @@ func (d *decodeState) arrayInterface() []any {
 		}
 
 		v = append(v, d.valueInterface())
+		d.context.index++
 
 		// Next token must be , or ].
 		if d.opcode == scanSkipSpace {
@@ -1077,6 +1136,10 @@ func (d *decodeState) arrayInterface() []any {
 // objectInterface is like object but returns map[string]any.
 func (d *decodeState) objectInterface() map[string]any {
 	m := make(map[string]any)
+	d.context = &decodeContext{parent: d.context}
+	defer func() {
+		d.context = d.context.parent
+	}()
 	for {
 		// Read opening " of string key or closing }.
 		d.scanWhile(scanSkipSpace)
@@ -1096,6 +1159,7 @@ func (d *decodeState) objectInterface() map[string]any {
 		if !ok {
 			panic(phasePanicMsg)
 		}
+		d.context.key = key
 
 		// Read : before value.
 		if d.opcode == scanSkipSpace {
