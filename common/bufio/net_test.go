@@ -119,7 +119,7 @@ func TCPTest(t *testing.T, inputConn net.Conn, outputConn net.Conn) error {
 	writeRandData := func(conn net.Conn) (map[int][]byte, error) {
 		buf := make([]byte, chunkSize)
 		hashMap := map[int][]byte{}
-		for i := 0; i < times; i++ {
+		for i := range times {
 			if _, err := rand.Read(buf[1:]); err != nil {
 				return nil, err
 			}
@@ -139,7 +139,7 @@ func TCPTest(t *testing.T, inputConn net.Conn, outputConn net.Conn) error {
 		hashMap := map[int][]byte{}
 		buf := make([]byte, chunkSize)
 
-		for i := 0; i < times; i++ {
+		for range times {
 			_, err := io.ReadFull(outputConn, buf)
 			if err != nil {
 				t.Log(err.Error())
@@ -172,7 +172,7 @@ func TCPTest(t *testing.T, inputConn net.Conn, outputConn net.Conn) error {
 		hashMap := map[int][]byte{}
 		buf := make([]byte, chunkSize)
 
-		for i := 0; i < times; i++ {
+		for range times {
 			_, err = io.ReadFull(inputConn, buf)
 			if err != nil {
 				t.Log(err.Error())
@@ -199,7 +199,7 @@ func UDPTest(t *testing.T, inputConn net.PacketConn, outputConn net.PacketConn, 
 	writeRandData := func(pc net.PacketConn, addr net.Addr) (map[int][]byte, error) {
 		hashMap := map[int][]byte{}
 		mux := sync.Mutex{}
-		for i := 0; i < times; i++ {
+		for i := range times {
 			buf := make([]byte, chunkSize)
 			if _, err := rand.Read(buf[1:]); err != nil {
 				t.Log(err.Error())
@@ -229,7 +229,7 @@ func UDPTest(t *testing.T, inputConn net.PacketConn, outputConn net.PacketConn, 
 		hashMap := map[int][]byte{}
 		buf := make([]byte, 64*1024)
 
-		for i := 0; i < times; i++ {
+		for range times {
 			_, lAddr, err = outputConn.ReadFrom(buf)
 			if err != nil {
 				t.Log(err.Error())
@@ -260,7 +260,7 @@ func UDPTest(t *testing.T, inputConn net.PacketConn, outputConn net.PacketConn, 
 		hashMap := map[int][]byte{}
 		buf := make([]byte, 64*1024)
 
-		for i := 0; i < times; i++ {
+		for range times {
 			_, _, err := inputConn.ReadFrom(buf)
 			if err != nil {
 				t.Log(err.Error())

@@ -2,6 +2,7 @@ package batch
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	E "github.com/sagernet/sing/common/exceptions"
@@ -26,7 +27,7 @@ func (e *Error) Error() string {
 func WithConcurrencyNum[T any](n int) Option[T] {
 	return func(b *Batch[T]) {
 		q := make(chan struct{}, n)
-		for i := 0; i < n; i++ {
+		for range n {
 			q <- struct{}{}
 		}
 		b.queue = q
@@ -88,11 +89,9 @@ func (b *Batch[T]) WaitAndGetResult() (map[string]Result[T], *Error) {
 func (b *Batch[T]) Result() map[string]Result[T] {
 	b.mux.Lock()
 	defer b.mux.Unlock()
-	copy := map[string]Result[T]{}
-	for k, v := range b.result {
-		copy[k] = v
-	}
-	return copy
+	result := make(map[string]Result[T], len(b.result))
+	maps.Copy(result, b.result)
+	return result
 }
 
 func New[T any](ctx context.Context, opts ...Option[T]) (*Batch[T], context.Context) {

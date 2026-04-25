@@ -48,7 +48,7 @@ func (g *Group) FastFail() {
 
 func (g *Group) Concurrency(n int) {
 	g.queue = make(chan struct{}, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		g.queue <- struct{}{}
 	}
 }

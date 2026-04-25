@@ -5,17 +5,13 @@ import (
 	"context"
 	"io"
 	"runtime"
+	"slices"
 	"sort"
 	"unsafe"
 )
 
 func Any[T any](array []T, block func(it T) bool) bool {
-	for _, it := range array {
-		if block(it) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(array, block)
 }
 
 func AnyIndexed[T any](array []T, block func(index int, it T) bool) bool {
@@ -46,12 +42,7 @@ func AllIndexed[T any](array []T, block func(index int, it T) bool) bool {
 }
 
 func Contains[T comparable](arr []T, target T) bool {
-	for index := range arr {
-		if target == arr[index] {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(arr, target)
 }
 
 func Map[T any, N any](arr []T, block func(it T) N) []N {

@@ -220,7 +220,7 @@ func BenchmarkAdGuardWildcardDepth(b *testing.B) {
 
 func generateLargeRuleset(count int) []string {
 	rules := make([]string, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		switch i % 4 {
 		case 0:
 			rules = append(rules, fmt.Sprintf("||example%d.com^", i))

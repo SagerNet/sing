@@ -92,7 +92,7 @@ func (m *AdGuardMatcher) hasWithDepth(key []byte, nodeId, bmIdx int, depth int) 
 	}
 
 	keyLen := len(key)
-	for i := 0; i < keyLen; i++ {
+	for i := range keyLen {
 		currentChar := key[i]
 		for ; ; bmIdx++ {
 			if getBit(m.set.labelBitmap, bmIdx) != 0 {

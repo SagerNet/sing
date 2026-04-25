@@ -1,6 +1,7 @@
 package service
 
 import (
+	"maps"
 	"sync"
 )
 
@@ -39,9 +40,7 @@ func (r *defaultRegistry) Clone() Registry {
 	r.access.RLock()
 	defer r.access.RUnlock()
 	serviceTypes := make(map[any]any, len(r.serviceTypes))
-	for serviceType, service := range r.serviceTypes {
-		serviceTypes[serviceType] = service
-	}
+	maps.Copy(serviceTypes, r.serviceTypes)
 	return &defaultRegistry{
 		serviceTypes: serviceTypes,
 	}

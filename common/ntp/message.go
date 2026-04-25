@@ -305,10 +305,7 @@ func rtt(org, rec, xmt, dst ntpTime) time.Duration {
 	a := dst.Time().Sub(org.Time())
 	b := xmt.Time().Sub(rec.Time())
 	rtt := a - b
-	if rtt < 0 {
-		rtt = 0
-	}
-	return rtt
+	return max(rtt, 0)
 }
 
 func offset(org, rec, xmt, dst ntpTime) time.Duration {
