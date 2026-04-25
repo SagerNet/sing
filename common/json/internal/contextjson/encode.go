@@ -419,6 +419,7 @@ func typeEncoder(t reflect.Type) encoderFunc {
 
 var (
 	marshalerType        = reflect.TypeFor[Marshaler]()
+	commentMarshalerType = reflect.TypeFor[CommentMarshaler]()
 	contextMarshalerType = reflect.TypeFor[ContextMarshaler]()
 	textMarshalerType    = reflect.TypeFor[encoding.TextMarshaler]()
 )
@@ -435,6 +436,12 @@ func newTypeEncoder(t reflect.Type, allowAddr bool) encoderFunc {
 	}
 	if t.Implements(marshalerType) {
 		return marshalerEncoder
+	}
+	if t.Kind() != reflect.Pointer && allowAddr && reflect.PointerTo(t).Implements(commentMarshalerType) {
+		return newCondAddrEncoder(addrCommentMarshalerEncoder, newTypeEncoder(t, false))
+	}
+	if t.Implements(commentMarshalerType) {
+		return commentMarshalerEncoder
 	}
 	if t.Kind() != reflect.Pointer && allowAddr && reflect.PointerTo(t).Implements(contextMarshalerType) {
 		return newCondAddrEncoder(addrContextMarshalerEncoder, newTypeEncoder(t, false))
@@ -540,6 +547,57 @@ func contextMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
 		out := e.AvailableBuffer()
 		out, err = appendCompact(out, b, opts.escapeHTML)
 		e.Buffer.Write(out)
+	}
+	if err != nil {
+		e.error(&MarshalerError{v.Type(), err, "MarshalJSONContext"})
+	}
+}
+
+func commentMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		e.WriteString("null")
+		return
+	}
+	m, ok := v.Interface().(CommentMarshaler)
+	if !ok {
+		e.WriteString("null")
+		return
+	}
+	b, err := m.MarshalJSONContext(e.ctx)
+	if err == nil {
+		var out []byte
+		out, err = appendCompact(out, b, opts.escapeHTML)
+		if err == nil {
+			out, err = insertJSONComments(out, m.Comments())
+		}
+		if err == nil {
+			e.Grow(len(out))
+			e.Buffer.Write(out)
+		}
+	}
+	if err != nil {
+		e.error(&MarshalerError{v.Type(), err, "MarshalJSONContext"})
+	}
+}
+
+func addrCommentMarshalerEncoder(e *encodeState, v reflect.Value, opts encOpts) {
+	va := v.Addr()
+	if va.IsNil() {
+		e.WriteString("null")
+		return
+	}
+	m := va.Interface().(CommentMarshaler)
+	b, err := m.MarshalJSONContext(e.ctx)
+	if err == nil {
+		var out []byte
+		out, err = appendCompact(out, b, opts.escapeHTML)
+		if err == nil {
+			out, err = insertJSONComments(out, m.Comments())
+		}
+		if err == nil {
+			e.Grow(len(out))
+			e.Buffer.Write(out)
+		}
 	}
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err, "MarshalJSONContext"})
@@ -933,7 +991,7 @@ func newSliceEncoder(t reflect.Type) encoderFunc {
 	// Byte slices get special treatment; arrays don't.
 	if t.Elem().Kind() == reflect.Uint8 {
 		p := reflect.PointerTo(t.Elem())
-		if !p.Implements(marshalerType) && !p.Implements(contextMarshalerType) && !p.Implements(textMarshalerType) {
+		if !p.Implements(marshalerType) && !p.Implements(commentMarshalerType) && !p.Implements(contextMarshalerType) && !p.Implements(textMarshalerType) {
 			return encodeByteSlice
 		}
 	}
