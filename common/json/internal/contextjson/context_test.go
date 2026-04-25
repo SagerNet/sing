@@ -78,6 +78,72 @@ func TestEncoderDecoderContext(t *testing.T) {
 	}
 }
 
+func TestContextNestedContainers(t *testing.T) {
+	t.Parallel()
+	type nested struct {
+		Items []contextValue             `json:"items"`
+		Map   map[string]*contextValue   `json:"map"`
+		Ptr   *contextValue              `json:"ptr"`
+		Any   any                        `json:"any"`
+		Raw   []map[string]contextValue  `json:"raw"`
+		Ptrs  []map[string]*contextValue `json:"ptrs"`
+	}
+
+	input := nested{
+		Items: []contextValue{{}},
+		Map: map[string]*contextValue{
+			"item": {},
+		},
+		Ptr: &contextValue{},
+		Any: &contextValue{},
+		Ptrs: []map[string]*contextValue{{
+			"item": {},
+		}},
+	}
+	content, err := json.MarshalContext(contextWithValue("nested"), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"items":["nested"]`,
+		`"map":{"item":"nested"}`,
+		`"ptr":"nested"`,
+		`"any":"nested"`,
+		`"ptrs":[{"item":"nested"}]`,
+	} {
+		if !strings.Contains(string(content), want) {
+			t.Fatalf("content = %s, want to contain %s", content, want)
+		}
+	}
+
+	var output nested
+	if err := json.UnmarshalContext(contextWithValue("decoded"), []byte(`{
+		"items":[{}],
+		"map":{"item":{}},
+		"ptr":{},
+		"any":{},
+		"raw":[{"item":{}}],
+		"ptrs":[{"item":{}}]
+	}`), &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.Items[0].value != "decoded" {
+		t.Fatalf("items value = %q", output.Items[0].value)
+	}
+	if output.Map["item"].value != "decoded" {
+		t.Fatalf("map value = %q", output.Map["item"].value)
+	}
+	if output.Ptr.value != "decoded" {
+		t.Fatalf("ptr value = %q", output.Ptr.value)
+	}
+	if output.Raw[0]["item"].value != "decoded" {
+		t.Fatalf("raw value = %q", output.Raw[0]["item"].value)
+	}
+	if output.Ptrs[0]["item"].value != "decoded" {
+		t.Fatalf("ptrs value = %q", output.Ptrs[0]["item"].value)
+	}
+}
+
 var errContextValue = errors.New("context value error")
 
 type errorContextValue struct{}
@@ -162,6 +228,22 @@ func TestUnknownFieldErrorPath(t *testing.T) {
 	}
 }
 
+func TestTypeErrorPath(t *testing.T) {
+	t.Parallel()
+	var target struct {
+		Outer map[string][]struct {
+			Count int `json:"count"`
+		} `json:"outer"`
+	}
+	err := json.Unmarshal([]byte(`{"outer":{"a.b":[{"count":"bad"}]}}`), &target)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), `outer["a.b"][0].count: json: cannot unmarshal string into Go struct field`) {
+		t.Fatalf("error = %q", err.Error())
+	}
+}
+
 func TestTrailingCommaToken(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -228,6 +310,43 @@ func TestTrailingComma(t *testing.T) {
 	}
 }
 
+func TestTrailingCommaDecoderDecode(t *testing.T) {
+	t.Parallel()
+	var array []int
+	if err := json.NewDecoder(strings.NewReader(`[1,]`)).Decode(&array); err != nil {
+		t.Fatal(err)
+	}
+	if len(array) != 1 || array[0] != 1 {
+		t.Fatalf("array = %#v", array)
+	}
+	var object map[string]int
+	if err := json.NewDecoder(strings.NewReader(`{"a":1,}`)).Decode(&object); err != nil {
+		t.Fatal(err)
+	}
+	if object["a"] != 1 {
+		t.Fatalf("object = %#v", object)
+	}
+}
+
+func TestTrailingCommaDoesNotAllowMissingValues(t *testing.T) {
+	t.Parallel()
+	tests := []string{
+		`[,]`,
+		`[1,,]`,
+		`{,}`,
+		`{"a":1,,}`,
+	}
+	for _, test := range tests {
+		t.Run(test, func(t *testing.T) {
+			t.Parallel()
+			var value any
+			if err := json.Unmarshal([]byte(test), &value); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
 type precedenceValue struct {
 	value string
 }
@@ -266,6 +385,67 @@ func TestStandardJSONMethodsTakePrecedence(t *testing.T) {
 	}
 	if value.value != "standard" {
 		t.Fatalf("value = %q", value.value)
+	}
+}
+
+type contextTextValue struct {
+	value string
+}
+
+func (v *contextTextValue) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	return json.Marshal("context")
+}
+
+func (v *contextTextValue) MarshalText() ([]byte, error) {
+	return []byte("text"), nil
+}
+
+func (v *contextTextValue) UnmarshalJSONContext(ctx context.Context, content []byte) error {
+	v.value = "context"
+	return nil
+}
+
+func (v *contextTextValue) UnmarshalText(content []byte) error {
+	v.value = "text"
+	return nil
+}
+
+func TestContextJSONMethodsTakePrecedenceOverTextMethods(t *testing.T) {
+	t.Parallel()
+	content, err := json.MarshalContext(context.Background(), &contextTextValue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != `"context"` {
+		t.Fatalf("content = %s", content)
+	}
+
+	var value contextTextValue
+	if err := json.UnmarshalContext(context.Background(), []byte(`"value"`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if value.value != "context" {
+		t.Fatalf("value = %q", value.value)
+	}
+}
+
+type pointerContextValue struct{}
+
+func (v *pointerContextValue) MarshalJSONContext(ctx context.Context) ([]byte, error) {
+	return json.Marshal(ctx.Value(contextKey{}).(string))
+}
+
+func TestPointerContextMarshalerOnAddressableValue(t *testing.T) {
+	t.Parallel()
+	var input struct {
+		Value pointerContextValue `json:"value"`
+	}
+	content, err := json.MarshalContext(contextWithValue("pointer"), &input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != `{"value":"pointer"}` {
+		t.Fatalf("content = %s", content)
 	}
 }
 
