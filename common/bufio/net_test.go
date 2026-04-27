@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/task"
 
@@ -194,7 +195,7 @@ func TCPTest(t *testing.T, inputConn net.Conn, outputConn net.Conn) error {
 func UDPTest(t *testing.T, inputConn net.PacketConn, outputConn net.PacketConn, outputAddr M.Socksaddr) error {
 	rAddr := outputAddr.UDPAddr()
 	times := 50
-	chunkSize := 9000
+	chunkSize := min(9000, buf.UDPBufferSize)
 	pingCh, pongCh, test := newLargeDataPair()
 	writeRandData := func(pc net.PacketConn, addr net.Addr) (map[int][]byte, error) {
 		hashMap := map[int][]byte{}

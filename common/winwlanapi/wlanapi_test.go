@@ -7,6 +7,7 @@ import (
 )
 
 func TestOpenHandle(t *testing.T) {
+	t.Parallel()
 	handle, err := OpenHandle()
 	if err != nil {
 		t.Skipf("WLAN service not available: %v", err)
@@ -19,6 +20,7 @@ func TestOpenHandle(t *testing.T) {
 }
 
 func TestEnumInterfaces(t *testing.T) {
+	t.Parallel()
 	handle, err := OpenHandle()
 	if err != nil {
 		t.Skipf("WLAN service not available: %v", err)
@@ -38,6 +40,7 @@ func TestEnumInterfaces(t *testing.T) {
 }
 
 func TestQueryCurrentConnection(t *testing.T) {
+	t.Parallel()
 	handle, err := OpenHandle()
 	if err != nil {
 		t.Skipf("WLAN service not available: %v", err)
@@ -79,6 +82,7 @@ func TestQueryCurrentConnection(t *testing.T) {
 }
 
 func TestCloseHandle(t *testing.T) {
+	t.Parallel()
 	handle, err := OpenHandle()
 	if err != nil {
 		t.Skipf("WLAN service not available: %v", err)
