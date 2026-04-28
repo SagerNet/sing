@@ -292,6 +292,102 @@ func TestTrailingCommaToken(t *testing.T) {
 	}
 }
 
+func TestTokenMoreAfterCommaAcrossRefill(t *testing.T) {
+	t.Parallel()
+	// Positions the comma at decoder buffer offset 500 and the next value
+	// beyond the initial 512-byte read.
+	value := strings.Repeat("a", 497)
+	decoder := json.NewDecoder(strings.NewReader(`["` + value + `",` + strings.Repeat(" ", 11) + `2]`))
+	token, err := decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != json.Delim('[') {
+		t.Fatalf("start token = %v", token)
+	}
+	if !decoder.More() {
+		t.Fatal("expected first array value")
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != value {
+		t.Fatalf("first value = %#v", token)
+	}
+	if !decoder.More() {
+		t.Fatal("expected second array value")
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != float64(2) {
+		t.Fatalf("second value = %#v", token)
+	}
+	if decoder.More() {
+		t.Fatal("expected end of array")
+	}
+	token, err = decoder.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != json.Delim(']') {
+		t.Fatalf("end token = %v", token)
+	}
+}
+
+func TestTrailingCommaTokenAcrossRefill(t *testing.T) {
+	t.Parallel()
+	value := strings.Repeat("a", 497)
+	tests := []struct {
+		name   string
+		suffix string
+	}{
+		{
+			name:   "spaces",
+			suffix: strings.Repeat(" ", 11) + `]`,
+		},
+		{
+			name:   "line comment",
+			suffix: strings.Repeat(" ", 11) + "// trailing\n]",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			decoder := json.NewDecoder(strings.NewReader(`["` + value + `",` + test.suffix))
+			token, err := decoder.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != json.Delim('[') {
+				t.Fatalf("start token = %v", token)
+			}
+			if !decoder.More() {
+				t.Fatal("expected array value")
+			}
+			token, err = decoder.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != value {
+				t.Fatalf("value = %#v", token)
+			}
+			if decoder.More() {
+				t.Fatal("expected trailing comma to end array")
+			}
+			token, err = decoder.Token()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if token != json.Delim(']') {
+				t.Fatalf("end token = %v", token)
+			}
+		})
+	}
+}
+
 func TestTrailingComma(t *testing.T) {
 	t.Parallel()
 	var array []int
