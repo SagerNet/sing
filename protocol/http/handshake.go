@@ -147,7 +147,7 @@ func handleHTTPConnection(
 	conn net.Conn,
 	request *http.Request, source M.Socksaddr,
 ) error {
-	keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+	keepAlive := requestWantsHTTPProxyKeepAlive(request)
 	request.RequestURI = ""
 
 	removeHopByHopHeaders(request.Header)
@@ -189,8 +189,9 @@ func handleHTTPConnection(
 		return E.Errors(innerErr.Load(), err, responseWith(request, http.StatusBadGateway).Write(conn))
 	}
 
-	removeHopByHopHeaders(response.Header)
+	keepAlive = keepAlive && canKeepAliveHTTPProxyResponse(request, response)
 
+	removeHopByHopHeaders(response.Header)
 	if keepAlive {
 		response.Header.Set("Proxy-Connection", "keep-alive")
 		response.Header.Set("Connection", "keep-alive")
@@ -210,6 +211,34 @@ func handleHTTPConnection(
 		return conn.Close()
 	}
 	return nil
+}
+
+func requestWantsHTTPProxyKeepAlive(request *http.Request) bool {
+	return !(request.ProtoMajor == 1 && request.ProtoMinor == 0) &&
+		strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+}
+
+func canKeepAliveHTTPProxyResponse(request *http.Request, response *http.Response) bool {
+	if response.Close {
+		return false
+	}
+	if responseHasCloseDelimitedBody(request, response) {
+		return false
+	}
+	return true
+}
+
+func responseHasCloseDelimitedBody(request *http.Request, response *http.Response) bool {
+	if request.Method == http.MethodHead {
+		return false
+	}
+	if response.StatusCode >= 100 && response.StatusCode <= 199 {
+		return false
+	}
+	if response.StatusCode == http.StatusNoContent || response.StatusCode == http.StatusNotModified {
+		return false
+	}
+	return response.ContentLength < 0 && len(response.TransferEncoding) == 0
 }
 
 func removeHopByHopHeaders(header http.Header) {
