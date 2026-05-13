@@ -499,10 +499,7 @@ func (dec *Decoder) More() bool {
 		return false
 	}
 	if c == ',' {
-		scanp := dec.scanp
-		dec.scanp++
-		c, err = dec.peekNoRefill()
-		dec.scanp = scanp
+		c, _, err = dec.peekFrom(dec.scanp + 1)
 		if err != nil {
 			return false
 		}
@@ -514,40 +511,32 @@ func (dec *Decoder) More() bool {
 }
 
 func (dec *Decoder) peek() (byte, error) {
-	var err error
-	for {
-		for i := dec.scanp; i < len(dec.buf); i++ {
-			c := dec.buf[i]
-			if isSpace(c) {
-				continue
-			}
-			dec.scanp = i
-			return c, nil
-		}
-		// buffer has been scanned, now report any error
-		if err != nil {
-			return 0, err
-		}
-		err = dec.refill()
+	c, scanp, err := dec.peekFrom(dec.scanp)
+	if err != nil {
+		return 0, err
 	}
+	dec.scanp = scanp
+	return c, nil
 }
 
-func (dec *Decoder) peekNoRefill() (byte, error) {
+func (dec *Decoder) peekFrom(scanp int) (byte, int, error) {
 	var err error
 	for {
-		for i := dec.scanp; i < len(dec.buf); i++ {
-			c := dec.buf[i]
+		for scanp < len(dec.buf) {
+			c := dec.buf[scanp]
 			if isSpace(c) {
+				scanp++
 				continue
 			}
-			dec.scanp = i
-			return c, nil
+			return c, scanp, nil
 		}
 		// buffer has been scanned, now report any error
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
+		oldScanp := dec.scanp
 		err = dec.refill()
+		scanp -= oldScanp
 	}
 }
 
