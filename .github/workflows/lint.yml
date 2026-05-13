@@ -16,8 +16,34 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Lint ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: '386'
+          - goos: windows
+            goarch: arm64
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+          - goos: linux
+            goarch: '386'
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: android
+            goarch: arm64
+          - goos: freebsd
+            goarch: amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +61,9 @@ jobs:
           key: go-${{ hashFiles('**/go.sum') }}
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         with:
           version: latest
           args: --timeout=30m
