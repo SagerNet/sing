@@ -333,6 +333,9 @@ func (p *commentNodeParser) parseValue(i int, path CommentPath, anchor int) (com
 		return node, end, true
 	default:
 		end := p.parseLiteralEnd(i)
+		if end == i {
+			return commentNode{}, i + 1, false
+		}
 		node := commentNode{path: cloneCommentPath(path), start: anchor, end: end}
 		p.nodes = append(p.nodes, node)
 		return node, end, true
