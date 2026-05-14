@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	json "github.com/sagernet/sing/common/json/internal/contextjson"
 )
@@ -879,5 +880,33 @@ func TestOmitZero(t *testing.T) {
 	}
 	if string(content) != `{}` {
 		t.Fatalf("content = %s", content)
+	}
+}
+
+func TestUnmarshalTerminatesOnInvalidArrayElement(t *testing.T) {
+	t.Parallel()
+	// Regression: a stray byte where a key was expected inside an array
+	// element (here U+3002 full-width period) caused the comment-node
+	// parser to spin forever. parseLiteralEnd returns immediately at
+	// delimiters like ':', and parseArray's loop did not enforce
+	// forward progress. A leading comment is required to route the
+	// input through the comment-node parser.
+	const input = `{
+  // comment
+  "rules": [
+    {
+    。  "action": "sniff"
+    }
+  ]
+}`
+	done := make(chan error, 1)
+	go func() {
+		var value any
+		done <- json.Unmarshal([]byte(input), &value)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Unmarshal did not return within 1s (suspected infinite loop)")
 	}
 }
