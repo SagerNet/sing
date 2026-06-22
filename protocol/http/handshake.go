@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
@@ -20,6 +22,22 @@ import (
 	"github.com/sagernet/sing/common/pipe"
 )
 
+// proxyAuthRetryTimeoutNanos bounds waiting time for the single auth retry request.
+// It remains mutable for tests and uses atomic storage to avoid races.
+var proxyAuthRetryTimeoutNanos atomic.Int64
+
+func init() {
+	proxyAuthRetryTimeoutNanos.Store(int64(5 * time.Second))
+}
+
+func proxyAuthRetryTimeout() time.Duration {
+	return time.Duration(proxyAuthRetryTimeoutNanos.Load())
+}
+
+func setProxyAuthRetryTimeout(timeout time.Duration) {
+	proxyAuthRetryTimeoutNanos.Store(int64(timeout))
+}
+
 func HandleConnectionEx(
 	ctx context.Context,
 	conn net.Conn,
@@ -29,11 +47,21 @@ func HandleConnectionEx(
 	source M.Socksaddr,
 	onClose N.CloseHandlerFunc,
 ) error {
+	missingProxyAuthorizationRetried := false
+	waitingRetryProxyAuthentication := false
 	for {
 		request, err := ReadRequest(reader)
 		if err != nil {
 			return E.Cause(err, "read http request")
 		}
+		if waitingRetryProxyAuthentication {
+			waitingRetryProxyAuthentication = false
+			err = conn.SetReadDeadline(time.Time{})
+			if err != nil {
+				return E.Cause(err, "clear retry-proxy-authentication timeout")
+			}
+		}
+		retryMissingProxyAuthorization := shouldRetryMissingProxyAuthorization(request)
 		if authenticator != nil {
 			var (
 				username string
@@ -67,6 +95,15 @@ func HandleConnectionEx(
 				} else if authorization != "" {
 					return E.New("http: authentication failed, Proxy-Authorization=", authorization)
 				} else {
+					if retryMissingProxyAuthorization && !missingProxyAuthorizationRetried {
+						missingProxyAuthorizationRetried = true
+						err = conn.SetReadDeadline(time.Now().Add(proxyAuthRetryTimeout()))
+						if err != nil {
+							return E.Cause(err, "set retry-proxy-authentication timeout")
+						}
+						waitingRetryProxyAuthentication = true
+						continue
+					}
 					return E.New("http: authentication failed, no Proxy-Authorization header")
 				}
 			}
@@ -147,7 +184,7 @@ func handleHTTPConnection(
 	conn net.Conn,
 	request *http.Request, source M.Socksaddr,
 ) error {
-	keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+	keepAlive := isProxyKeepAlive(request)
 	request.RequestURI = ""
 
 	removeHopByHopHeaders(request.Header)
@@ -210,6 +247,43 @@ func handleHTTPConnection(
 		return conn.Close()
 	}
 	return nil
+}
+
+func isProxyKeepAlive(request *http.Request) bool {
+	connection := request.Header.Get("Connection")
+	proxyConnection := request.Header.Get("Proxy-Connection")
+
+	if request.ProtoMajor > 1 || (request.ProtoMajor == 1 && request.ProtoMinor >= 1) {
+		// HTTP/1.1+ connections are persistent unless explicitly closed.
+		return !hasHeaderToken(connection, "close") && !hasHeaderToken(proxyConnection, "close")
+	}
+
+	if request.ProtoMajor == 1 && request.ProtoMinor == 0 {
+		// HTTP/1.0 defaults to close unless keep-alive is requested.
+		if hasHeaderToken(connection, "close") || hasHeaderToken(proxyConnection, "close") {
+			return false
+		}
+		return hasHeaderToken(connection, "keep-alive") || hasHeaderToken(proxyConnection, "keep-alive")
+	}
+
+	return false
+}
+
+func hasHeaderToken(headerValue string, token string) bool {
+	for h := range strings.SplitSeq(headerValue, ",") {
+		if strings.EqualFold(strings.TrimSpace(h), token) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldRetryMissingProxyAuthorization(request *http.Request) bool {
+	return isProxyKeepAlive(request) &&
+		!request.Close &&
+		!hasHeaderToken(request.Header.Get("Connection"), "upgrade") &&
+		request.ContentLength == 0 &&
+		len(request.TransferEncoding) == 0
 }
 
 func removeHopByHopHeaders(header http.Header) {
