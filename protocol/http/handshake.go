@@ -41,7 +41,7 @@ func HandleConnectionEx(
 			} else {
 				keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive" && request.ContentLength == 0
 				// Since no one else is using the library, use a fixed realm until rewritten
-				headers := []string{"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`}
+				headers := []string{"Proxy-Authenticate", `Basic realm="sing-box", charset="UTF-8"`}
 				if !keepAlive {
 					headers = append(headers, "Connection", "close")
 				}
