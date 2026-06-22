@@ -270,7 +270,7 @@ func isProxyKeepAlive(request *http.Request) bool {
 }
 
 func hasHeaderToken(headerValue string, token string) bool {
-	for h := range strings.SplitSeq(headerValue, ",") {
+	for _, h := range strings.Split(headerValue, ",") {
 		if strings.EqualFold(strings.TrimSpace(h), token) {
 			return true
 		}
