@@ -57,7 +57,7 @@ func HandleConnectionEx(
 				// Since no one else is using the library, use a fixed realm until rewritten
 				err = responseWith(
 					request, http.StatusProxyAuthRequired,
-					"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`,
+					"Proxy-Authenticate", `Basic realm="sing-box", charset="UTF-8"`,
 				).Write(conn)
 				if err != nil {
 					return err
