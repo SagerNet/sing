@@ -7,8 +7,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -17,25 +17,27 @@ import (
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
 )
 
-// proxyAuthRetryTimeoutNanos bounds waiting time for the single auth retry request.
-// It remains mutable for tests and uses atomic storage to avoid races.
-var proxyAuthRetryTimeoutNanos atomic.Int64
+const defaultProxyAuthRetryTimeout = 5 * time.Second
 
-func init() {
-	proxyAuthRetryTimeoutNanos.Store(int64(5 * time.Second))
+type HTTPServerOptions struct {
+	ProxyAuthRetryTimeout time.Duration
+	Logger                logger.ContextLogger
 }
 
-func proxyAuthRetryTimeout() time.Duration {
-	return time.Duration(proxyAuthRetryTimeoutNanos.Load())
-}
-
-func setProxyAuthRetryTimeout(timeout time.Duration) {
-	proxyAuthRetryTimeoutNanos.Store(int64(timeout))
+func normalizeHTTPServerOptions(options HTTPServerOptions) HTTPServerOptions {
+	if options.ProxyAuthRetryTimeout <= 0 {
+		options.ProxyAuthRetryTimeout = defaultProxyAuthRetryTimeout
+	}
+	if options.Logger == nil {
+		options.Logger = logger.NOP()
+	}
+	return options
 }
 
 func HandleConnectionEx(
@@ -47,6 +49,20 @@ func HandleConnectionEx(
 	source M.Socksaddr,
 	onClose N.CloseHandlerFunc,
 ) error {
+	return HandleConnectionExWithOptions(ctx, conn, reader, authenticator, handler, source, onClose, HTTPServerOptions{})
+}
+
+func HandleConnectionExWithOptions(
+	ctx context.Context,
+	conn net.Conn,
+	reader *std_bufio.Reader,
+	authenticator *auth.Authenticator,
+	handler N.TCPConnectionHandlerEx,
+	source M.Socksaddr,
+	onClose N.CloseHandlerFunc,
+	options HTTPServerOptions,
+) error {
+	options = normalizeHTTPServerOptions(options)
 	missingProxyAuthorizationRetried := false
 	waitingRetryProxyAuthentication := false
 	for {
@@ -54,6 +70,7 @@ func HandleConnectionEx(
 		if err != nil {
 			return E.Cause(err, "read http request")
 		}
+		printRequestHeaders(ctx, options.Logger, request)
 		if waitingRetryProxyAuthentication {
 			waitingRetryProxyAuthentication = false
 			err = conn.SetReadDeadline(time.Time{})
@@ -83,10 +100,12 @@ func HandleConnectionEx(
 			}
 			if !authOk {
 				// Since no one else is using the library, use a fixed realm until rewritten
-				err = responseWith(
+				proxyAuthRequiredResponse := responseWith(
 					request, http.StatusProxyAuthRequired,
 					"Proxy-Authenticate", `Basic realm="sing-box", charset="UTF-8"`,
-				).Write(conn)
+				)
+				printResponseHeaders(ctx, options.Logger, proxyAuthRequiredResponse)
+				err = proxyAuthRequiredResponse.Write(conn)
 				if err != nil {
 					return err
 				}
@@ -97,7 +116,7 @@ func HandleConnectionEx(
 				} else {
 					if retryMissingProxyAuthorization && !missingProxyAuthorizationRetried {
 						missingProxyAuthorizationRetried = true
-						err = conn.SetReadDeadline(time.Now().Add(proxyAuthRetryTimeout()))
+						err = conn.SetReadDeadline(time.Now().Add(options.ProxyAuthRetryTimeout))
 						if err != nil {
 							return E.Cause(err, "set retry-proxy-authentication timeout")
 						}
@@ -170,7 +189,7 @@ func HandleConnectionEx(
 			}
 			return bufio.CopyConn(ctx, conn, serverConn)
 		} else {
-			err = handleHTTPConnection(ctx, handler, conn, request, source)
+			err = handleHTTPConnection(ctx, handler, conn, request, source, options.Logger)
 			if err != nil {
 				return err
 			}
@@ -182,7 +201,9 @@ func handleHTTPConnection(
 	ctx context.Context,
 	handler N.TCPConnectionHandlerEx,
 	conn net.Conn,
-	request *http.Request, source M.Socksaddr,
+	request *http.Request,
+	source M.Socksaddr,
+	contextLogger logger.ContextLogger,
 ) error {
 	keepAlive := isProxyKeepAlive(request)
 	request.RequestURI = ""
@@ -197,7 +218,9 @@ func handleHTTPConnection(
 	}
 
 	if request.URL.Scheme == "" || request.URL.Host == "" {
-		return responseWith(request, http.StatusBadRequest).Write(conn)
+		badRequestResponse := responseWith(request, http.StatusBadRequest)
+		printResponseHeaders(ctx, contextLogger, badRequestResponse)
+		return badRequestResponse.Write(conn)
 	}
 
 	var innerErr common.TypedValue[error]
@@ -223,7 +246,9 @@ func handleHTTPConnection(
 	response, err := httpClient.Do(request.WithContext(requestCtx))
 	if err != nil {
 		cancel()
-		return E.Errors(innerErr.Load(), err, responseWith(request, http.StatusBadGateway).Write(conn))
+		badGatewayResponse := responseWith(request, http.StatusBadGateway)
+		printResponseHeaders(ctx, contextLogger, badGatewayResponse)
+		return E.Errors(innerErr.Load(), err, badGatewayResponse.Write(conn))
 	}
 
 	removeHopByHopHeaders(response.Header)
@@ -235,6 +260,7 @@ func handleHTTPConnection(
 	}
 
 	response.Close = !keepAlive
+	printResponseHeaders(ctx, contextLogger, response)
 
 	err = response.Write(conn)
 	if err != nil {
@@ -284,6 +310,40 @@ func shouldRetryMissingProxyAuthorization(request *http.Request) bool {
 		!hasHeaderToken(request.Header.Get("Connection"), "upgrade") &&
 		request.ContentLength == 0 &&
 		len(request.TransferEncoding) == 0
+}
+
+func printRequestHeaders(ctx context.Context, contextLogger logger.ContextLogger, request *http.Request) {
+	contextLogger.TraceContext(ctx, "request protocol: ", request.Proto)
+	printHeaders(ctx, contextLogger, "request", request.Header)
+}
+
+func printResponseHeaders(ctx context.Context, contextLogger logger.ContextLogger, response *http.Response) {
+	contextLogger.TraceContext(ctx, "response: protocol=", response.Proto, " status=", response.StatusCode)
+	printHeaders(ctx, contextLogger, "response", response.Header)
+}
+
+func printHeaders(ctx context.Context, contextLogger logger.ContextLogger, kind string, header http.Header) {
+	keys := make([]string, 0, len(header))
+	for key := range header {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		redacted := shouldRedactHeaderValue(key)
+		for _, value := range header[key] {
+			if redacted {
+				value = "[redacted]"
+			}
+			contextLogger.TraceContext(ctx, kind, " header: ", key, ": ", value)
+		}
+	}
+}
+
+func shouldRedactHeaderValue(headerKey string) bool {
+	return strings.EqualFold(headerKey, "Authorization") ||
+		strings.EqualFold(headerKey, "Proxy-Authorization") ||
+		strings.EqualFold(headerKey, "Cookie") ||
+		strings.EqualFold(headerKey, "Set-Cookie")
 }
 
 func removeHopByHopHeaders(header http.Header) {
