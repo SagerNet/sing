@@ -5,18 +5,84 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	std_http "net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sagernet/sing/common/auth"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
+
+type testLogger struct {
+	mu       sync.Mutex
+	messages []string
+}
+
+var _ logger.ContextLogger = (*testLogger)(nil)
+
+func (l *testLogger) append(args ...any) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.messages = append(l.messages, fmt.Sprint(args...))
+}
+
+func (l *testLogger) Messages() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.messages...)
+}
+
+func (l *testLogger) Trace(args ...any) {
+	l.append(args...)
+}
+
+func (l *testLogger) Debug(args ...any) {
+}
+
+func (l *testLogger) Info(args ...any) {
+}
+
+func (l *testLogger) Warn(args ...any) {
+}
+
+func (l *testLogger) Error(args ...any) {
+}
+
+func (l *testLogger) Fatal(args ...any) {
+}
+
+func (l *testLogger) Panic(args ...any) {
+}
+
+func (l *testLogger) TraceContext(ctx context.Context, args ...any) {
+	l.append(args...)
+}
+
+func (l *testLogger) DebugContext(ctx context.Context, args ...any) {
+}
+
+func (l *testLogger) InfoContext(ctx context.Context, args ...any) {
+}
+
+func (l *testLogger) WarnContext(ctx context.Context, args ...any) {
+}
+
+func (l *testLogger) ErrorContext(ctx context.Context, args ...any) {
+}
+
+func (l *testLogger) FatalContext(ctx context.Context, args ...any) {
+}
+
+func (l *testLogger) PanicContext(ctx context.Context, args ...any) {
+}
 
 type recordingHandler struct {
 	calls atomic.Int32
@@ -43,13 +109,17 @@ func (h *recordingHandler) NewConnectionEx(_ context.Context, conn net.Conn, _ M
 	}()
 }
 
-func startHandshake(t *testing.T, authenticator *auth.Authenticator, handler N.TCPConnectionHandlerEx) (net.Conn, *std_bufio.Reader, <-chan error) {
+func startHandshake(t *testing.T, authenticator *auth.Authenticator, handler N.TCPConnectionHandlerEx, options *HTTPServerOptions) (net.Conn, *std_bufio.Reader, <-chan error) {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()
 	done := make(chan error, 1)
 	go func() {
 		defer serverConn.Close()
-		done <- HandleConnectionEx(context.Background(), serverConn, std_bufio.NewReader(serverConn), authenticator, handler, M.Socksaddr{}, nil)
+		if options == nil {
+			done <- HandleConnectionEx(context.Background(), serverConn, std_bufio.NewReader(serverConn), authenticator, handler, M.Socksaddr{}, nil)
+		} else {
+			done <- HandleConnectionExWithOptions(context.Background(), serverConn, std_bufio.NewReader(serverConn), authenticator, handler, M.Socksaddr{}, nil, *options)
+		}
 	}()
 	return clientConn, std_bufio.NewReader(clientConn), done
 }
@@ -89,7 +159,7 @@ func waitResult(t *testing.T, done <-chan error) error {
 func TestHandleConnectionEx_AuthMissingHeaderRetryThenSuccess(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n")
@@ -120,7 +190,7 @@ func TestHandleConnectionEx_AuthMissingHeaderRetryThenSuccess(t *testing.T) {
 func TestHandleConnectionEx_AuthMissingHeaderRetryOnlyOnce(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	request := "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n"
@@ -150,7 +220,7 @@ func TestHandleConnectionEx_AuthMissingHeaderRetryOnlyOnce(t *testing.T) {
 func TestHandleConnectionEx_AuthMissingHeaderRetryHTTP10KeepAlive(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.0\r\nHost: example.com\r\nConnection: keep-alive\r\n\r\n")
@@ -181,7 +251,7 @@ func TestHandleConnectionEx_AuthMissingHeaderRetryHTTP10KeepAlive(t *testing.T) 
 func TestHandleConnectionEx_AuthMissingHeaderNoRetryHTTP10DefaultClose(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.0\r\nHost: example.com\r\n\r\n")
@@ -203,7 +273,7 @@ func TestHandleConnectionEx_AuthMissingHeaderNoRetryHTTP10DefaultClose(t *testin
 func TestHandleConnectionEx_AuthMissingHeaderNoRetryHTTP10CloseWins(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.0\r\nHost: example.com\r\nConnection: keep-alive, close\r\n\r\n")
@@ -225,7 +295,7 @@ func TestHandleConnectionEx_AuthMissingHeaderNoRetryHTTP10CloseWins(t *testing.T
 func TestHandleConnectionEx_AuthMissingHeaderNoRetryWithRequestBody(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "POST http://example.com/ HTTP/1.1\r\nHost: example.com\r\nProxy-Connection: keep-alive\r\nContent-Length: 4\r\n\r\nping")
@@ -245,15 +315,11 @@ func TestHandleConnectionEx_AuthMissingHeaderNoRetryWithRequestBody(t *testing.T
 }
 
 func TestHandleConnectionEx_AuthMissingHeaderRetryTimeout(t *testing.T) {
-	oldTimeout := proxyAuthRetryTimeout()
-	setProxyAuthRetryTimeout(100 * time.Millisecond)
-	t.Cleanup(func() {
-		setProxyAuthRetryTimeout(oldTimeout)
-	})
+	options := &HTTPServerOptions{ProxyAuthRetryTimeout: 100 * time.Millisecond}
 
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, options)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n")
@@ -279,7 +345,7 @@ func TestHandleConnectionEx_AuthMissingHeaderRetryTimeout(t *testing.T) {
 func TestHandleConnectionEx_AuthMissingHeaderNoRetryOnUpgrade(t *testing.T) {
 	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
 	handler := &recordingHandler{}
-	clientConn, reader, done := startHandshake(t, authenticator, handler)
+	clientConn, reader, done := startHandshake(t, authenticator, handler, nil)
 	defer clientConn.Close()
 
 	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n")
@@ -295,5 +361,67 @@ func TestHandleConnectionEx_AuthMissingHeaderNoRetryOnUpgrade(t *testing.T) {
 	}
 	if handler.calls.Load() != 0 {
 		t.Fatalf("handler call count = %d, want 0", handler.calls.Load())
+	}
+}
+
+func TestHandleConnectionEx_LoggerPrintsRequestAndResponse(t *testing.T) {
+	testLog := &testLogger{}
+	options := &HTTPServerOptions{Logger: testLog}
+	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
+	handler := &recordingHandler{}
+
+	clientConn, reader, done := startHandshake(t, authenticator, handler, options)
+	defer clientConn.Close()
+
+	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.0\r\nHost: example.com\r\n\r\n")
+	response := mustReadResponse(t, reader)
+	if response.StatusCode != std_http.StatusProxyAuthRequired {
+		t.Fatalf("response status = %d, want %d", response.StatusCode, std_http.StatusProxyAuthRequired)
+	}
+	_ = response.Body.Close()
+
+	err := waitResult(t, done)
+	if err == nil || !strings.Contains(err.Error(), "no Proxy-Authorization header") {
+		t.Fatalf("handshake error = %v, want missing Proxy-Authorization header", err)
+	}
+
+	logs := testLog.Messages()
+	joined := strings.Join(logs, "\n")
+	if !strings.Contains(joined, "request protocol: HTTP/1.0") {
+		t.Fatalf("logs missing request protocol line, logs: %s", joined)
+	}
+	if !strings.Contains(joined, "response: protocol=HTTP/1.0 status=407") {
+		t.Fatalf("logs missing response status line, logs: %s", joined)
+	}
+}
+
+func TestHandleConnectionEx_LoggerRedactsSensitiveHeaders(t *testing.T) {
+	testLog := &testLogger{}
+	options := &HTTPServerOptions{Logger: testLog}
+	authenticator := auth.NewAuthenticator([]auth.User{{Username: "user", Password: "pass"}})
+	handler := &recordingHandler{}
+
+	clientConn, reader, done := startHandshake(t, authenticator, handler, options)
+	defer clientConn.Close()
+
+	authorization := base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	mustWriteRequest(t, clientConn, "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\nProxy-Authorization: Basic "+authorization+"\r\n\r\n")
+	response := mustReadResponse(t, reader)
+	if response.StatusCode != std_http.StatusOK {
+		t.Fatalf("response status = %d, want %d", response.StatusCode, std_http.StatusOK)
+	}
+	_ = response.Body.Close()
+
+	_ = clientConn.Close()
+	if err := waitResult(t, done); err == nil {
+		t.Fatal("expected handshake to end with read error after client close")
+	}
+
+	joined := strings.Join(testLog.Messages(), "\n")
+	if !strings.Contains(joined, "request header: Proxy-Authorization: [redacted]") {
+		t.Fatalf("logs missing redacted proxy authorization header, logs: %s", joined)
+	}
+	if strings.Contains(joined, authorization) || strings.Contains(joined, "user:pass") {
+		t.Fatalf("logs unexpectedly contain sensitive credentials, logs: %s", joined)
 	}
 }
