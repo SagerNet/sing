@@ -2,6 +2,7 @@ package http
 
 import (
 	std_bufio "bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"io"
@@ -105,9 +106,9 @@ func HandleConnectionExWithOptions(
 					"Proxy-Authenticate", `Basic realm="sing-box", charset="UTF-8"`,
 				)
 				printResponseHeaders(ctx, options.Logger, proxyAuthRequiredResponse)
-				err = proxyAuthRequiredResponse.Write(conn)
+				err = writeResponseBuffered(conn, proxyAuthRequiredResponse)
 				if err != nil {
-					return err
+					return E.Cause(err, "write proxy authentication required response")
 				}
 				if username != "" {
 					return E.New("http: authentication failed, username=", username, ", password=", password)
@@ -384,6 +385,22 @@ func removeExtraHTTPHostPort(req *http.Request) {
 
 	req.Host = host
 	req.URL.Host = host
+}
+
+func writeResponseBuffered(conn net.Conn, response *http.Response) error {
+	var responseBuffer bytes.Buffer
+	err := response.Write(&responseBuffer)
+	if err != nil {
+		return err
+	}
+	n, err := conn.Write(responseBuffer.Bytes())
+	if err != nil {
+		return err
+	}
+	if n != responseBuffer.Len() {
+		return io.ErrShortWrite
+	}
+	return nil
 }
 
 func responseWith(request *http.Request, statusCode int, headers ...string) *http.Response {
