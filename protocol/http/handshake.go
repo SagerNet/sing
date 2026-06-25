@@ -3,7 +3,6 @@ package http
 import (
 	std_bufio "bufio"
 	"context"
-	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -35,38 +34,31 @@ func HandleConnectionEx(
 			return E.Cause(err, "read http request")
 		}
 		if authenticator != nil {
-			var (
-				username string
-				password string
-				authOk   bool
-			)
-			authorization := request.Header.Get("Proxy-Authorization")
-			if strings.HasPrefix(authorization, "Basic ") {
-				userPassword, _ := base64.StdEncoding.DecodeString(authorization[6:])
-				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
-				if len(userPswdArr) == 2 {
-					username = userPswdArr[0]
-					password = userPswdArr[1]
-					authOk = authenticator.Verify(username, password)
-					if authOk {
-						ctx = auth.ContextWithUser(ctx, userPswdArr[0])
-					}
-				}
-			}
-			if !authOk {
+			username, password, authOk := ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
+			authOk = authOk && authenticator.Verify(username, password)
+			if authOk {
+				ctx = auth.ContextWithUser(ctx, username)
+			} else {
+				keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive" && request.ContentLength == 0
 				// Since no one else is using the library, use a fixed realm until rewritten
-				err = responseWith(
-					request, http.StatusProxyAuthRequired,
-					"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`,
-				).Write(conn)
+				headers := []string{"Proxy-Authenticate", `Basic realm="sing-box" charset="UTF-8"`}
+				if !keepAlive {
+					headers = append(headers, "Connection", "close")
+				}
+				err = responseWith(request, http.StatusProxyAuthRequired, headers...).Write(conn)
 				if err != nil {
 					return err
 				}
-				if username != "" {
+				if keepAlive {
+					continue
+				}
+				authorization := request.Header.Get("Proxy-Authorization")
+				switch {
+				case username != "":
 					return E.New("http: authentication failed, username=", username, ", password=", password)
-				} else if authorization != "" {
+				case authorization != "":
 					return E.New("http: authentication failed, Proxy-Authorization=", authorization)
-				} else {
+				default:
 					return E.New("http: authentication failed, no Proxy-Authorization header")
 				}
 			}
