@@ -4,7 +4,6 @@ import (
 	std_bufio "bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -81,25 +80,11 @@ func HandleConnectionExWithOptions(
 		}
 		retryMissingProxyAuthorization := shouldRetryMissingProxyAuthorization(request)
 		if authenticator != nil {
-			var (
-				username string
-				password string
-				authOk   bool
-			)
-			authorization := request.Header.Get("Proxy-Authorization")
-			if strings.HasPrefix(authorization, "Basic ") {
-				userPassword, _ := base64.StdEncoding.DecodeString(authorization[6:])
-				userPswdArr := strings.SplitN(string(userPassword), ":", 2)
-				if len(userPswdArr) == 2 {
-					username = userPswdArr[0]
-					password = userPswdArr[1]
-					authOk = authenticator.Verify(username, password)
-					if authOk {
-						ctx = auth.ContextWithUser(ctx, userPswdArr[0])
-					}
-				}
-			}
-			if !authOk {
+			username, password, authOk := ParseBasicAuth(request.Header.Get("Proxy-Authorization"))
+			authOk = authOk && authenticator.Verify(username, password)
+			if authOk {
+				ctx = auth.ContextWithUser(ctx, username)
+			} else {
 				// Since no one else is using the library, use a fixed realm until rewritten
 				proxyAuthRequiredResponse := responseWith(
 					request, http.StatusProxyAuthRequired,
@@ -110,9 +95,11 @@ func HandleConnectionExWithOptions(
 				if err != nil {
 					return E.Cause(err, "write proxy authentication required response")
 				}
-				if username != "" {
+				authorization := request.Header.Get("Proxy-Authorization")
+				switch {
+				case username != "":
 					return E.New("http: authentication failed, username=", username, ", password=", password)
-				} else if authorization != "" {
+				case authorization != "":
 					return E.New("http: authentication failed, Proxy-Authorization=", authorization)
 				} else {
 					if retryMissingProxyAuthorization && !missingProxyAuthorizationRetried {
