@@ -53,6 +53,10 @@ func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
 	return o.newBuffer(buf.UDPBufferSize, true)
 }
 
+func (o ReadWaitOptions) NewBufferSize(bufferSize int) *buf.Buffer {
+	return o.newBuffer(bufferSize+o.FrontHeadroom+o.RearHeadroom, true)
+}
+
 func (o ReadWaitOptions) newBuffer(defaultBufferSize int, reserve bool) *buf.Buffer {
 	var bufferSize int
 	if o.IncreaseBuffer {

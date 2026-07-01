@@ -75,10 +75,15 @@ func (s *Service) NewPacket(bufferSlices [][]byte, source M.Socksaddr, destinati
 	readWaitOptions := conn.readWaitOptions
 	handler := conn.handler
 	conn.handlerAccess.RUnlock()
-	buffer := readWaitOptions.NewPacketBuffer()
+	var dataLen int
+	for _, bufferSlice := range bufferSlices {
+		dataLen += len(bufferSlice)
+	}
+	buffer := readWaitOptions.NewBufferSize(dataLen)
 	for _, bufferSlice := range bufferSlices {
 		buffer.Write(bufferSlice)
 	}
+	readWaitOptions.PostReturn(buffer)
 	if handler != nil {
 		handler.NewPacketEx(buffer, destination)
 		return
