@@ -1,7 +1,5 @@
 package buf
 
-// Inspired by https://github.com/xtaci/smux/blob/master/alloc.go
-
 import (
 	"errors"
 	"math/bits"
@@ -10,22 +8,20 @@ import (
 
 var DefaultAllocator = newDefaultAllocator()
 
+const MaxPooledBufferSize = 1<<16 + 1<<13
+
 type Allocator interface {
 	Get(size int) []byte
 	Put(buf []byte) error
 }
 
-// defaultAllocator for incoming frames, optimized to prevent overwriting after zeroing
 type defaultAllocator struct {
-	buffers [11]sync.Pool
+	buffers [12]sync.Pool
 }
 
-// NewAllocator initiates a []byte allocator for frames less than 65536 bytes,
-// the waste(memory fragmentation) of space allocation is guaranteed to be
-// no more than 50%.
 func newDefaultAllocator() Allocator {
 	return &defaultAllocator{
-		buffers: [...]sync.Pool{ // 64B -> 64K
+		buffers: [...]sync.Pool{
 			{New: func() any { return new([1 << 6]byte) }},
 			{New: func() any { return new([1 << 7]byte) }},
 			{New: func() any { return new([1 << 8]byte) }},
@@ -37,23 +33,26 @@ func newDefaultAllocator() Allocator {
 			{New: func() any { return new([1 << 14]byte) }},
 			{New: func() any { return new([1 << 15]byte) }},
 			{New: func() any { return new([1 << 16]byte) }},
+			{New: func() any { return new([MaxPooledBufferSize]byte) }},
 		},
 	}
 }
 
-// Get a []byte from pool with most appropriate cap
 func (alloc *defaultAllocator) Get(size int) []byte {
-	if size <= 0 || size > 65536 {
+	if size <= 0 || size > MaxPooledBufferSize {
 		return nil
 	}
-
 	var index uint16
 	if size > 64 {
-		index = msb(size)
-		if size != 1<<index {
-			index += 1
+		if size > 1<<16 {
+			index = 11
+		} else {
+			index = msb(size)
+			if size != 1<<index {
+				index += 1
+			}
+			index -= 6
 		}
-		index -= 6
 	}
 
 	buffer := alloc.buffers[index].Get()
@@ -80,53 +79,57 @@ func (alloc *defaultAllocator) Get(size int) []byte {
 		return buffer.(*[1 << 15]byte)[:size]
 	case 10:
 		return buffer.(*[1 << 16]byte)[:size]
+	case 11:
+		return buffer.(*[MaxPooledBufferSize]byte)[:size]
 	default:
 		panic("invalid pool index")
 	}
 }
 
-// Put returns a []byte to pool for future use,
-// which the cap must be exactly 2^n
 func (alloc *defaultAllocator) Put(buf []byte) error {
-	bits := msb(cap(buf))
-	if cap(buf) < 64 || cap(buf) > 65536 || cap(buf) != 1<<bits {
+	index := msb(cap(buf))
+	if cap(buf) == MaxPooledBufferSize {
+		index = 11
+	} else if cap(buf) < 64 || cap(buf) > 65536 || cap(buf) != 1<<index {
 		return errors.New("allocator Put() incorrect buffer size")
+	} else {
+		index -= 6
 	}
-	bits -= 6
 	buf = buf[:cap(buf)]
 
 	//nolint
 	//lint:ignore SA6002 ignore temporarily
-	switch bits {
+	switch index {
 	case 0:
-		alloc.buffers[bits].Put((*[1 << 6]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 6]byte)(buf))
 	case 1:
-		alloc.buffers[bits].Put((*[1 << 7]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 7]byte)(buf))
 	case 2:
-		alloc.buffers[bits].Put((*[1 << 8]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 8]byte)(buf))
 	case 3:
-		alloc.buffers[bits].Put((*[1 << 9]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 9]byte)(buf))
 	case 4:
-		alloc.buffers[bits].Put((*[1 << 10]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 10]byte)(buf))
 	case 5:
-		alloc.buffers[bits].Put((*[1 << 11]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 11]byte)(buf))
 	case 6:
-		alloc.buffers[bits].Put((*[1 << 12]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 12]byte)(buf))
 	case 7:
-		alloc.buffers[bits].Put((*[1 << 13]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 13]byte)(buf))
 	case 8:
-		alloc.buffers[bits].Put((*[1 << 14]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 14]byte)(buf))
 	case 9:
-		alloc.buffers[bits].Put((*[1 << 15]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 15]byte)(buf))
 	case 10:
-		alloc.buffers[bits].Put((*[1 << 16]byte)(buf))
+		alloc.buffers[index].Put((*[1 << 16]byte)(buf))
+	case 11:
+		alloc.buffers[11].Put((*[MaxPooledBufferSize]byte)(buf))
 	default:
 		panic("invalid pool index")
 	}
 	return nil
 }
 
-// msb return the pos of most significant bit
 func msb(size int) uint16 {
 	return uint16(bits.Len32(uint32(size)) - 1)
 }
