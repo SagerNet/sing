@@ -40,14 +40,16 @@ func NewPacket() *Buffer {
 func NewSize(size int) *Buffer {
 	if size == 0 {
 		return &Buffer{}
-	} else if size > 65535 {
+	}
+	data := Get(size)
+	if data == nil {
 		return &Buffer{
 			data:     make([]byte, size),
 			capacity: size,
 		}
 	}
 	return &Buffer{
-		data:     Get(size),
+		data:     data,
 		capacity: size,
 		managed:  true,
 	}

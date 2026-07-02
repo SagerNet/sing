@@ -36,7 +36,10 @@ func (o ReadWaitOptions) NeedHeadroom() bool {
 func (o ReadWaitOptions) Copy(buffer *buf.Buffer) *buf.Buffer {
 	if o.FrontHeadroom > buffer.Start() ||
 		o.RearHeadroom > buffer.FreeLen() {
-		newBuffer := o.newBuffer(buf.UDPBufferSize, false)
+		newBuffer := buf.NewSize(buffer.Len() + o.FrontHeadroom + o.RearHeadroom)
+		if o.FrontHeadroom > 0 {
+			newBuffer.Resize(o.FrontHeadroom, 0)
+		}
 		newBuffer.Write(buffer.Bytes())
 		buffer.Release()
 		return newBuffer
@@ -46,31 +49,62 @@ func (o ReadWaitOptions) Copy(buffer *buf.Buffer) *buf.Buffer {
 }
 
 func (o ReadWaitOptions) NewBuffer() *buf.Buffer {
-	return o.newBuffer(buf.BufferSize, true)
-}
-
-func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
-	return o.newBuffer(buf.UDPBufferSize, true)
-}
-
-func (o ReadWaitOptions) NewBufferSize(bufferSize int) *buf.Buffer {
-	return o.newBuffer(bufferSize+o.FrontHeadroom+o.RearHeadroom, true)
-}
-
-func (o ReadWaitOptions) newBuffer(defaultBufferSize int, reserve bool) *buf.Buffer {
-	var bufferSize int
+	bufferSize := buf.BufferSize
 	if o.IncreaseBuffer {
-		bufferSize = 65535
+		if o.MTU > 0 {
+			bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
+		} else {
+			bufferSize = 65535
+		}
+		if bufferSize > buf.MaxPooledBufferSize {
+			bufferSize = buf.MaxPooledBufferSize
+		}
 	} else if o.MTU > 0 {
-		bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
-	} else {
-		bufferSize = defaultBufferSize
+		mtuBufferSize := o.MTU + o.FrontHeadroom + o.RearHeadroom
+		if mtuBufferSize < bufferSize {
+			bufferSize = mtuBufferSize
+		}
+	}
+	minimumBufferSize := o.FrontHeadroom + o.RearHeadroom + 1
+	if bufferSize < minimumBufferSize {
+		bufferSize = minimumBufferSize
 	}
 	buffer := buf.NewSize(bufferSize)
 	if o.FrontHeadroom > 0 {
 		buffer.Resize(o.FrontHeadroom, 0)
 	}
-	if o.RearHeadroom > 0 && reserve {
+	if o.RearHeadroom > 0 {
+		buffer.Reserve(o.RearHeadroom)
+	}
+	return buffer
+}
+
+func (o ReadWaitOptions) NewPacketBuffer() *buf.Buffer {
+	bufferSize := buf.UDPBufferSize
+	if o.MTU > 0 {
+		bufferSize = o.MTU + o.FrontHeadroom + o.RearHeadroom
+	}
+	minimumBufferSize := o.FrontHeadroom + o.RearHeadroom + 1
+	if bufferSize < minimumBufferSize {
+		bufferSize = minimumBufferSize
+	}
+	buffer := buf.NewSize(bufferSize)
+	if o.FrontHeadroom > 0 {
+		buffer.Resize(o.FrontHeadroom, 0)
+	}
+	if o.RearHeadroom > 0 {
+		buffer.Reserve(o.RearHeadroom)
+	}
+	return buffer
+}
+
+func (o ReadWaitOptions) NewBufferSize(bufferSize int) *buf.Buffer {
+	bufferSize += o.FrontHeadroom + o.RearHeadroom
+	buffer := buf.NewSize(bufferSize)
+	if o.FrontHeadroom > 0 {
+		buffer.Resize(o.FrontHeadroom, 0)
+	}
+	if o.RearHeadroom > 0 {
 		buffer.Reserve(o.RearHeadroom)
 	}
 	return buffer
