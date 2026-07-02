@@ -21,6 +21,9 @@ func NewVectorisedWriter(writer io.Writer) N.VectorisedWriter {
 }
 
 func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
+	if vectorisedCreator, isVectorisedCreator := writer.(N.VectorisedWriteCreator); isVectorisedCreator {
+		return vectorisedCreator.CreateVectorisedWriter()
+	}
 	if runtime.GOOS == "windows" {
 		switch conn := writer.(type) {
 		case N.VectorisedWriter:
@@ -46,6 +49,14 @@ func CreateVectorisedWriter(writer any) (N.VectorisedWriter, bool) {
 			return &SyscallVectorisedWriter{upstream: writer, rawConn: rawConn}, true
 		case syscall.RawConn:
 			return &SyscallVectorisedWriter{upstream: writer, rawConn: conn}, true
+		}
+	}
+	if u, ok := writer.(N.WriterWithUpstream); ok && u.WriterReplaceable() {
+		if u, ok := writer.(N.WithUpstreamWriter); ok {
+			return CreateVectorisedWriter(u.UpstreamWriter())
+		}
+		if u, ok := writer.(common.WithUpstream); ok {
+			return CreateVectorisedWriter(u.Upstream())
 		}
 	}
 	return nil, false
