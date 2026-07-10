@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync/atomic"
+	"time"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -218,10 +220,53 @@ func copyExtendedWithPool(session *CopySession, destination N.ExtendedWriter, so
 	}
 }
 
+// connDoneTimeoutOverride lets tests shorten the teardown deadline. It is nil in
+// production, where the default 30s below is used. Reads are atomic so a test
+// override is race-free even if other CopyConn calls run concurrently.
+var connDoneTimeoutOverride atomic.Pointer[time.Duration]
+
+const defaultConnDoneTimeout = 30 * time.Second
+
+func connDoneDuration() time.Duration {
+	if d := connDoneTimeoutOverride.Load(); d != nil {
+		return *d
+	}
+	return defaultConnDoneTimeout
+}
+
+// setConnDoneDeadline arms a teardown deadline on the conn the surviving copy
+// direction is blocked reading. CopyConn runs two relay goroutines: upload
+// (source -> destination) and download (destination -> source). When one
+// finishes, the other may be parked in the runtime netpoller (epoll_wait) on a
+// Read that never completes: the duplex teardown half-closes the conn's write
+// side via CloseWrite, which leaves the read side open, so a peer that
+// half-closed but never sends FIN keeps the surviving Read parked forever.
+// Nothing else wakes it -- the finished direction returned nil on EOF, so
+// group.Run keeps waiting for the surviving direction, the connection is never
+// closed, and the relay goroutine and its fds leak. The deadline wakes that
+// surviving Read within connDoneDuration.
+//
+// Only the duplex branches call this: CloseWrite half-closes write only, so the
+// surviving Read stays parked. The non-duplex branches call common.Close, which
+// fully closes the conn and wakes the surviving Read immediately, so they need
+// no deadline.
+//
+// Only the conn the surviving direction READS is deadline'd, never the conn it
+// writes: the writer of the deadline'd conn is the just-finished goroutine, so
+// the write portion of SetDeadline is harmless, and deadlining the written conn
+// would truncate a legitimate slow reverse stream. Go deadlines are absolute --
+// a successful Read does not reset them -- so this only affects a direction that
+// has already stalled, not one that completes before the deadline elapses.
+func setConnDoneDeadline(conn net.Conn) {
+	conn.SetDeadline(time.Now().Add(connDoneDuration()))
+}
+
 func CopyConn(ctx context.Context, source net.Conn, destination net.Conn) error {
 	var group task.Group
 	if _, dstDuplex := common.Cast[N.WriteCloser](destination); dstDuplex {
 		group.Append("upload", func(ctx context.Context) error {
+			// Surviving download reads destination; arm its teardown deadline.
+			defer setConnDoneDeadline(destination)
 			err := common.Error(Copy(destination, source))
 			if err == nil {
 				N.CloseWrite(destination)
@@ -238,6 +283,8 @@ func CopyConn(ctx context.Context, source net.Conn, destination net.Conn) error 
 	}
 	if _, srcDuplex := common.Cast[N.WriteCloser](source); srcDuplex {
 		group.Append("download", func(ctx context.Context) error {
+			// Surviving upload reads source; arm its teardown deadline.
+			defer setConnDoneDeadline(source)
 			err := common.Error(Copy(source, destination))
 			if err == nil {
 				N.CloseWrite(source)
