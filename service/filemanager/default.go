@@ -42,6 +42,10 @@ func (m *defaultManager) BasePath(name string) string {
 	return filepath.Join(m.basePath, name)
 }
 
+func (m *defaultManager) TempPath() string {
+	return m.tempPath
+}
+
 func (m *defaultManager) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
 	name = m.BasePath(name)
 	willCreate := flag&os.O_CREATE != 0 && !rw.IsFile(name)
@@ -173,6 +177,12 @@ func (m *defaultManager) Remove(path string) error {
 func (m *defaultManager) RemoveAll(path string) error {
 	path = m.BasePath(path)
 	return os.RemoveAll(path)
+}
+
+func (m *defaultManager) Rename(oldPath string, newPath string) error {
+	oldPath = m.BasePath(oldPath)
+	newPath = m.BasePath(newPath)
+	return os.Rename(oldPath, newPath)
 }
 
 func fixRootDirectory(p string) string {
