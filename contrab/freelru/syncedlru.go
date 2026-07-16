@@ -135,10 +135,7 @@ func (lru *SyncedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, boo
 	hash := lru.lru.hash(key)
 
 	lru.mu.Lock()
-	value, updated, ok = lru.lru.getAndRefreshOrAdd(hash, key, constructor)
-	if !updated && ok {
-		lru.lru.PurgeExpired()
-	}
+	value, updated, ok, _ = lru.lru.getAndRefreshOrAdd(hash, key, constructor)
 	lru.mu.Unlock()
 
 	return
