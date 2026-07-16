@@ -15,7 +15,7 @@ import (
 )
 
 type Service struct {
-	cache   *freelru.ConcurrentLRU[netip.AddrPort, *natConn]
+	cache   *freelru.Cache[netip.AddrPort, *natConn]
 	handler N.UDPConnectionHandlerEx
 	prepare PrepareFunc
 }
@@ -26,7 +26,7 @@ func New(handler N.UDPConnectionHandlerEx, prepare PrepareFunc, timeout time.Dur
 	if timeout == 0 {
 		panic("invalid timeout")
 	}
-	cache := common.Must1(freelru.NewConcurrent[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32, shared))
+	cache := common.Must1(freelru.New[netip.AddrPort, *natConn](1024, maphash.NewHasher[netip.AddrPort]().Hash32, shared))
 	cache.SetLifetime(timeout)
 	cache.SetHealthCheck(func(port netip.AddrPort, conn *natConn) bool {
 		select {

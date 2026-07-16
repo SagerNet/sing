@@ -10,8 +10,6 @@ type SyncedLRU[K comparable, V comparable] struct {
 	lru *LRU[K, V]
 }
 
-var _ Cache[int, int] = (*SyncedLRU[int, int])(nil)
-
 // SetLifetime sets the default lifetime of LRU elements.
 // Lifetime 0 means "forever".
 func (lru *SyncedLRU[K, V]) SetLifetime(lifetime time.Duration) {
@@ -34,17 +32,16 @@ func (lru *SyncedLRU[K, V]) SetHealthCheck(healthCheck HealthCheckCallback[K, V]
 	lru.mu.Unlock()
 }
 
-// NewSynced creates a new thread-safe LRU hashmap with the given capacity.
-func NewSynced[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*SyncedLRU[K, V],
+func newSynced[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*SyncedLRU[K, V],
 	error,
 ) {
-	return NewSyncedWithSize[K, V](capacity, capacity, hash)
+	return newSyncedWithSize[K, V](capacity, capacity, hash)
 }
 
-func NewSyncedWithSize[K comparable, V comparable](capacity, size uint32,
+func newSyncedWithSize[K comparable, V comparable](capacity, size uint32,
 	hash HashKeyCallback[K],
 ) (*SyncedLRU[K, V], error) {
-	lru, err := NewWithSize[K, V](capacity, size, hash)
+	lru, err := newLRUWithSize[K, V](capacity, size, hash)
 	if err != nil {
 		return nil, err
 	}

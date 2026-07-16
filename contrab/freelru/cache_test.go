@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConcurrentLRU(t *testing.T) {
+func TestCache(t *testing.T) {
 	for _, sharded := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sharded=%v", sharded), func(t *testing.T) {
-			cache, err := freelru.NewConcurrent[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
+			cache, err := freelru.New[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
 			require.NoError(t, err)
 			cache.SetLifetime(time.Minute)
 
@@ -39,10 +39,10 @@ func TestConcurrentLRU(t *testing.T) {
 	}
 }
 
-func TestConcurrentLRUConstructorDoesNotEscape(t *testing.T) {
+func TestCacheConstructorDoesNotEscape(t *testing.T) {
 	for _, sharded := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sharded=%v", sharded), func(t *testing.T) {
-			cache, err := freelru.NewConcurrent[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
+			cache, err := freelru.New[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
 			require.NoError(t, err)
 			cache.Add(1, 2)
 			state := [24]uint64{}
@@ -59,10 +59,10 @@ func TestConcurrentLRUConstructorDoesNotEscape(t *testing.T) {
 	}
 }
 
-func TestConcurrentLRUConstructorRunsOnce(t *testing.T) {
+func TestCacheConstructorRunsOnce(t *testing.T) {
 	for _, sharded := range []bool{false, true} {
 		t.Run(fmt.Sprintf("sharded=%v", sharded), func(t *testing.T) {
-			cache, err := freelru.NewConcurrent[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
+			cache, err := freelru.New[int, int](16, maphash.NewHasher[int]().Hash32, sharded)
 			require.NoError(t, err)
 
 			var constructorCalls atomic.Int32
@@ -89,35 +89,22 @@ func TestConcurrentLRUConstructorRunsOnce(t *testing.T) {
 	}
 }
 
-func BenchmarkConcurrentLRUGetAndRefreshOrAdd(b *testing.B) {
-	hasher := maphash.NewHasher[int]()
-	synced, err := freelru.NewSynced[int, int](1024, hasher.Hash32)
-	require.NoError(b, err)
-	b.Run("synced", func(b *testing.B) {
-		benchmarkSyncedLRUGetAndRefreshOrAdd(b, synced)
-	})
-	concurrentSynced, err := freelru.NewConcurrent[int, int](1024, hasher.Hash32, false)
-	require.NoError(b, err)
-	b.Run("concurrent_synced", func(b *testing.B) {
-		benchmarkConcurrentLRUGetAndRefreshOrAdd(b, concurrentSynced)
-	})
-	sharded, err := freelru.NewSharded[int, int](1024, hasher.Hash32)
-	require.NoError(b, err)
-	b.Run("sharded", func(b *testing.B) {
-		benchmarkShardedLRUGetAndRefreshOrAdd(b, sharded)
-	})
-	concurrentSharded, err := freelru.NewConcurrent[int, int](1024, hasher.Hash32, true)
-	require.NoError(b, err)
-	b.Run("concurrent_sharded", func(b *testing.B) {
-		benchmarkConcurrentLRUGetAndRefreshOrAdd(b, concurrentSharded)
-	})
-}
-
-func BenchmarkConcurrentLRUGetAndRefreshOrAddMiss(b *testing.B) {
+func BenchmarkCacheGetAndRefreshOrAdd(b *testing.B) {
 	hasher := maphash.NewHasher[int]()
 	for _, sharded := range []bool{false, true} {
 		b.Run(fmt.Sprintf("sharded=%v", sharded), func(b *testing.B) {
-			cache, err := freelru.NewConcurrent[int, int](4096, hasher.Hash32, sharded)
+			cache, err := freelru.New[int, int](1024, hasher.Hash32, sharded)
+			require.NoError(b, err)
+			benchmarkCacheGetAndRefreshOrAdd(b, cache)
+		})
+	}
+}
+
+func BenchmarkCacheGetAndRefreshOrAddMiss(b *testing.B) {
+	hasher := maphash.NewHasher[int]()
+	for _, sharded := range []bool{false, true} {
+		b.Run(fmt.Sprintf("sharded=%v", sharded), func(b *testing.B) {
+			cache, err := freelru.New[int, int](4096, hasher.Hash32, sharded)
 			require.NoError(b, err)
 			cache.SetLifetime(time.Hour)
 			for key := 0; key < 4096; key++ {
@@ -139,11 +126,11 @@ func BenchmarkConcurrentLRUGetAndRefreshOrAddMiss(b *testing.B) {
 	}
 }
 
-func BenchmarkConcurrentLRUGetAndRefreshOrAddRefresh(b *testing.B) {
+func BenchmarkCacheGetAndRefreshOrAddRefresh(b *testing.B) {
 	hasher := maphash.NewHasher[int]()
 	for _, sharded := range []bool{false, true} {
 		b.Run(fmt.Sprintf("sharded=%v", sharded), func(b *testing.B) {
-			cache, err := freelru.NewConcurrent[int, int](4096, hasher.Hash32, sharded)
+			cache, err := freelru.New[int, int](4096, hasher.Hash32, sharded)
 			require.NoError(b, err)
 			cache.SetLifetime(time.Hour)
 			cache.Add(1, 2)
@@ -158,29 +145,7 @@ func BenchmarkConcurrentLRUGetAndRefreshOrAddRefresh(b *testing.B) {
 	}
 }
 
-func benchmarkSyncedLRUGetAndRefreshOrAdd(b *testing.B, cache *freelru.SyncedLRU[int, int]) {
-	cache.Add(1, 2)
-	state := [24]uint64{}
-	b.ReportAllocs()
-	for b.Loop() {
-		_, _, _ = cache.GetAndRefreshOrAdd(1, func() (int, bool) {
-			return int(state[0]), true
-		})
-	}
-}
-
-func benchmarkShardedLRUGetAndRefreshOrAdd(b *testing.B, cache *freelru.ShardedLRU[int, int]) {
-	cache.Add(1, 2)
-	state := [24]uint64{}
-	b.ReportAllocs()
-	for b.Loop() {
-		_, _, _ = cache.GetAndRefreshOrAdd(1, func() (int, bool) {
-			return int(state[0]), true
-		})
-	}
-}
-
-func benchmarkConcurrentLRUGetAndRefreshOrAdd(b *testing.B, cache *freelru.ConcurrentLRU[int, int]) {
+func benchmarkCacheGetAndRefreshOrAdd(b *testing.B, cache *freelru.Cache[int, int]) {
 	cache.Add(1, 2)
 	state := [24]uint64{}
 	b.ReportAllocs()

@@ -15,7 +15,7 @@ import (
 
 func TestUpdateLifetimeOnGet(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.AddWithLifetime("hello", "world", 2*time.Second)
 	time.Sleep(time.Second)
@@ -28,7 +28,7 @@ func TestUpdateLifetimeOnGet(t *testing.T) {
 
 func TestUpdateLifetimeOnGet1(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.AddWithLifetime("hello", "world", 2*time.Second)
 	time.Sleep(time.Second)
@@ -40,7 +40,7 @@ func TestUpdateLifetimeOnGet1(t *testing.T) {
 
 func TestUpdateLifetime(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.Add("hello", "world")
 	require.True(t, lru.UpdateLifetime("hello", "world", 2*time.Second))
@@ -54,7 +54,7 @@ func TestUpdateLifetime(t *testing.T) {
 
 func TestUpdateLifetime1(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.Add("hello", "world")
 	require.False(t, lru.UpdateLifetime("hello", "not world", 2*time.Second))
@@ -65,7 +65,7 @@ func TestUpdateLifetime1(t *testing.T) {
 
 func TestUpdateLifetime2(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.AddWithLifetime("hello", "world", 2*time.Second)
 	time.Sleep(time.Second)
@@ -80,7 +80,7 @@ func TestUpdateLifetime2(t *testing.T) {
 
 func TestUpdateLifetimePersistsAcrossRefresh(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.AddWithLifetime("hello", "world", 50*time.Millisecond)
 	require.True(t, lru.UpdateLifetime("hello", "world", 500*time.Millisecond))
@@ -98,7 +98,7 @@ func TestUpdateLifetimePersistsAcrossRefresh(t *testing.T) {
 
 func TestPurgeExpired(t *testing.T) {
 	t.Parallel()
-	lru, err := freelru.New[string, *string](1024, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, *string](1024, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.SetLifetime(time.Second)
 	lru.SetOnEvict(func(s string, s2 *string) {
@@ -118,7 +118,7 @@ func TestPurgeExpired(t *testing.T) {
 }
 
 func TestGetAndRefreshOrAddPurgesBeforeEviction(t *testing.T) {
-	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 
 	var evicted []string
@@ -141,7 +141,7 @@ func TestGetAndRefreshOrAddPurgesBeforeEviction(t *testing.T) {
 }
 
 func TestGetAndRefreshOrAddKeepsRefreshedExpiredEntry(t *testing.T) {
-	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32)
+	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32, false)
 	require.NoError(t, err)
 	lru.SetLifetime(20 * time.Millisecond)
 	lru.Add("revived", "value")
@@ -165,7 +165,7 @@ func TestGetAndRefreshOrAddKeepsRefreshedExpiredEntry(t *testing.T) {
 }
 
 func TestPurgeExpiredAfterDenseCompaction(t *testing.T) {
-	lru, err := freelru.New[int, int](64, maphash.NewHasher[int]().Hash32)
+	lru, err := freelru.New[int, int](64, maphash.NewHasher[int]().Hash32, false)
 	require.NoError(t, err)
 	lru.AddWithLifetime(0, 0, time.Minute)
 	for key := 1; key <= 32; key++ {
@@ -176,29 +176,4 @@ func TestPurgeExpiredAfterDenseCompaction(t *testing.T) {
 	lru.PurgeExpired()
 	require.Equal(t, 1, lru.Len())
 	require.Equal(t, []int{0}, lru.Keys())
-}
-
-func TestShardedGetAndRefreshOrAddSweepsExpiredShards(t *testing.T) {
-	hash := func(key int) uint32 {
-		if key >= 1000 {
-			return uint32(key - 1000)
-		}
-		return uint32(key) << 16
-	}
-	lru, err := freelru.NewShardedWithSize[int, int](4, 64, 64, hash)
-	require.NoError(t, err)
-	for key := 0; key < 4; key++ {
-		lru.AddWithLifetime(key, key, 10*time.Millisecond)
-	}
-	time.Sleep(20 * time.Millisecond)
-
-	for key := 1000; key < 1003; key++ {
-		value, updated, ok := lru.GetAndRefreshOrAdd(key, func() (int, bool) {
-			return key, true
-		})
-		require.Equal(t, key, value)
-		require.False(t, updated)
-		require.True(t, ok)
-	}
-	require.Equal(t, 3, lru.Len())
 }
