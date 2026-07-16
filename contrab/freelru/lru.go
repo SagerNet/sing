@@ -64,7 +64,9 @@ type element[K comparable, V comparable] struct {
 
 const emptyBucket = math.MaxUint32
 
-// LRU implements a non-thread safe fixed size LRU cache.
+const defaultInitialCapacity = 1024
+
+// LRU implements a non-thread safe, growable LRU cache.
 type LRU[K comparable, V comparable] struct {
 	buckets     []uint32 // contains positions of bucket lists or 'emptyBucket'
 	elements    []element[K, V]
@@ -83,9 +85,14 @@ type LRU[K comparable, V comparable] struct {
 
 	head uint32 // index of the newest element in the cache
 	len  uint32 // current number of elements in the cache
-	cap  uint32 // max number of elements in the cache
+	cap  uint32 // current number of allocated element slots
 	size uint32 // size of the element array (X% larger than cap)
 	mask uint32 // bitmask to avoid the costly idiv in hashToPos() if size is a 2^n value
+
+	minCap  uint32 // capacity to return to after the cache is purged
+	minSize uint32 // element array size to return to after the cache is purged
+	maxCap  uint32 // max number of elements in the cache
+	maxSize uint32 // max size of the element array
 }
 
 // Metrics contains metrics about the cache.
@@ -97,8 +104,6 @@ type Metrics struct {
 	Hits       uint64
 	Misses     uint64
 }
-
-var _ Cache[int, int] = (*LRU[int, int])(nil)
 
 // SetLifetime sets the default lifetime of LRU elements.
 // Lifetime 0 means "forever".
@@ -121,18 +126,16 @@ func (lru *LRU[K, V]) SetHealthCheck(healthCheck HealthCheckCallback[K, V]) {
 	lru.healthCheck = healthCheck
 }
 
-// New constructs an LRU with the given capacity of elements.
-// The hash function calculates a hash value from the keys.
-func New[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*LRU[K, V], error) {
-	return NewWithSize[K, V](capacity, capacity, hash)
+func newLRU[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*LRU[K, V], error) {
+	return newLRUWithSize[K, V](capacity, capacity, hash)
 }
 
-// NewWithSize constructs an LRU with the given capacity and size.
+// newLRUWithSize constructs an LRU with the given maximum capacity and size.
 // The hash function calculates a hash value from the keys.
 // A size greater than the capacity increases memory consumption and decreases the CPU consumption
 // by reducing the chance of collisions.
 // Size must not be lower than the capacity.
-func NewWithSize[K comparable, V comparable](capacity, size uint32, hash HashKeyCallback[K]) (
+func newLRUWithSize[K comparable, V comparable](capacity, size uint32, hash HashKeyCallback[K]) (
 	*LRU[K, V], error,
 ) {
 	if capacity == 0 {
@@ -148,20 +151,26 @@ func NewWithSize[K comparable, V comparable](capacity, size uint32, hash HashKey
 		return nil, errors.New("hash function must be set")
 	}
 
-	buckets := make([]uint32, size)
-	elements := make([]element[K, V], size)
+	initialCapacity := min(capacity, uint32(defaultInitialCapacity))
+	initialSize := sizeForCapacity(initialCapacity, capacity, size)
+	buckets := make([]uint32, initialSize)
+	elements := make([]element[K, V], initialSize)
 
 	var lru LRU[K, V]
-	initLRU(&lru, capacity, size, hash, buckets, elements)
+	initLRU(&lru, initialCapacity, initialSize, capacity, size, hash, buckets, elements)
 
 	return &lru, nil
 }
 
-func initLRU[K comparable, V comparable](lru *LRU[K, V], capacity, size uint32, hash HashKeyCallback[K],
+func initLRU[K comparable, V comparable](lru *LRU[K, V], capacity, size, maxCapacity, maxSize uint32, hash HashKeyCallback[K],
 	buckets []uint32, elements []element[K, V],
 ) {
 	lru.cap = capacity
 	lru.size = size
+	lru.minCap = capacity
+	lru.minSize = size
+	lru.maxCap = maxCapacity
+	lru.maxSize = maxSize
 	lru.hash = hash
 	lru.buckets = buckets
 	lru.elements = elements
@@ -174,6 +183,73 @@ func initLRU[K comparable, V comparable](lru *LRU[K, V], capacity, size uint32, 
 	// Mark all slots as free.
 	for i := range lru.buckets {
 		lru.buckets[i] = emptyBucket
+	}
+}
+
+func sizeForCapacity(capacity, maxCapacity, maxSize uint32) uint32 {
+	size := uint32((uint64(maxSize)*uint64(capacity) + uint64(maxCapacity) - 1) / uint64(maxCapacity))
+	return max(size, capacity)
+}
+
+func (lru *LRU[K, V]) grow() bool {
+	if lru.cap >= lru.maxCap {
+		return false
+	}
+	newCapacity := lru.cap * 2
+	if newCapacity < lru.cap+1 {
+		newCapacity = lru.cap + 1
+	}
+	newCapacity = min(newCapacity, lru.maxCap)
+	lru.resize(newCapacity, sizeForCapacity(newCapacity, lru.maxCap, lru.maxSize))
+	return true
+}
+
+func (lru *LRU[K, V]) shrink() {
+	newCapacity := lru.cap
+	for newCapacity > lru.minCap && lru.len <= newCapacity/4 {
+		newCapacity = max(newCapacity/2, lru.minCap)
+	}
+	if newCapacity == lru.cap {
+		return
+	}
+	newSize := sizeForCapacity(newCapacity, lru.maxCap, lru.maxSize)
+	if newCapacity == lru.minCap {
+		newSize = lru.minSize
+	}
+	lru.resize(newCapacity, newSize)
+}
+
+func (lru *LRU[K, V]) resize(capacity, size uint32) {
+	buckets := make([]uint32, size)
+	for index := range buckets {
+		buckets[index] = emptyBucket
+	}
+	elements := make([]element[K, V], size)
+	copy(elements[:lru.len], lru.elements[:lru.len])
+	lru.cap = capacity
+	lru.size = size
+	lru.mask = 0
+	lru.buckets = buckets
+	lru.elements = elements
+	if bits.OnesCount32(size) == 1 {
+		lru.mask = size - 1
+	}
+	for pos := uint32(0); pos < lru.len; pos++ {
+		bucketPos := lru.hashToBucketPos(lru.hash(lru.elements[pos].key))
+		startPos := lru.buckets[bucketPos]
+		lru.elements[pos].bucketPos = bucketPos
+		if startPos == emptyBucket {
+			lru.buckets[bucketPos] = pos
+			lru.elements[pos].nextBucket = pos
+			lru.elements[pos].prevBucket = pos
+			continue
+		}
+		previousPos := lru.elements[startPos].prevBucket
+		lru.buckets[bucketPos] = pos
+		lru.elements[pos].nextBucket = startPos
+		lru.elements[pos].prevBucket = previousPos
+		lru.elements[previousPos].nextBucket = pos
+		lru.elements[startPos].prevBucket = pos
 	}
 }
 
@@ -427,6 +503,9 @@ func (lru *LRU[K, V]) addWithLifetimeAt(hash uint32, key K, value V,
 		pos := lru.len
 
 		if pos == lru.cap {
+			if lru.grow() {
+				return lru.addWithLifetimeAt(hash, key, value, lifetime, currentTime)
+			}
 			// Capacity reached, evict the oldest entry and
 			// store the new entry at evicted position.
 			pos = lru.elements[lru.head].next
@@ -473,6 +552,9 @@ func (lru *LRU[K, V]) addWithLifetimeAt(hash uint32, key K, value V,
 
 	pos = lru.len
 	if pos == lru.cap {
+		if lru.grow() {
+			return lru.addWithLifetimeAt(hash, key, value, lifetime, currentTime)
+		}
 		// Capacity reached, evict the oldest entry and
 		// store the new entry at evicted position.
 		pos = lru.elements[lru.head].next
@@ -757,6 +839,9 @@ func (lru *LRU[K, V]) Purge() {
 
 	lru.nextExpire = 0
 	lru.metrics = Metrics{}
+	if lru.cap != lru.minCap || lru.size != lru.minSize {
+		lru.resize(lru.minCap, lru.minSize)
+	}
 }
 
 // PurgeExpired purges all expired items from the LRU.
@@ -782,6 +867,7 @@ func (lru *LRU[K, V]) purgeExpiredAt(currentTime int64) {
 		pos++
 	}
 	lru.nextExpire = nextExpire
+	lru.shrink()
 }
 
 // Metrics returns the metrics of the cache.

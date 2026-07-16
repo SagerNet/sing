@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// ShardedLRU is a thread-safe, sharded, fixed size LRU cache.
+// ShardedLRU is a thread-safe, sharded, growable LRU cache.
 // Sharding is used to reduce lock contention on high concurrency.
 // The downside is that exact LRU behavior is not given (as for the LRU and SynchedLRU types).
 type ShardedLRU[K comparable, V comparable] struct {
@@ -21,8 +21,6 @@ type ShardedLRU[K comparable, V comparable] struct {
 	mask   uint32
 	sweep  atomic.Uint32
 }
-
-var _ Cache[int, int] = (*ShardedLRU[int, int])(nil)
 
 // SetLifetime sets the default lifetime of LRU elements.
 // Lifetime 0 means "forever".
@@ -59,16 +57,15 @@ func nextPowerOfTwo(val uint32) uint32 {
 	return val
 }
 
-// NewSharded creates a new thread-safe sharded LRU hashmap with the given capacity.
-func NewSharded[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*ShardedLRU[K, V],
+func newSharded[K comparable, V comparable](capacity uint32, hash HashKeyCallback[K]) (*ShardedLRU[K, V],
 	error,
 ) {
 	size := uint32(float64(capacity) * 1.25) // 25% extra space for fewer collisions
 
-	return NewShardedWithSize[K, V](uint32(runtime.GOMAXPROCS(0)*16), capacity, size, hash)
+	return newShardedWithSize[K, V](uint32(runtime.GOMAXPROCS(0)*16), capacity, size, hash)
 }
 
-func NewShardedWithSize[K comparable, V comparable](shards, capacity, size uint32,
+func newShardedWithSize[K comparable, V comparable](shards, capacity, size uint32,
 	hash HashKeyCallback[K]) (
 	*ShardedLRU[K, V], error,
 ) {
@@ -94,26 +91,22 @@ func NewShardedWithSize[K comparable, V comparable](shards, capacity, size uint3
 		shards = 1
 	}
 
-	size /= shards // size per LRU
-	if size == 0 {
-		size = 1
-	}
-
-	capacity = (capacity + shards - 1) / shards // size per LRU
-	if capacity == 0 {
-		capacity = 1
-	}
+	maxSize := size / shards
+	maxCapacity := (capacity + shards - 1) / shards
+	initialCapacity := (min(capacity, uint32(defaultInitialCapacity)) + shards - 1) / shards
+	initialCapacity = max(initialCapacity, 1)
+	initialSize := sizeForCapacity(initialCapacity, maxCapacity, maxSize)
 
 	lrus := make([]LRU[K, V], shards)
-	buckets := make([]uint32, size*shards)
-	elements := make([]element[K, V], size*shards)
+	buckets := make([]uint32, initialSize*shards)
+	elements := make([]element[K, V], initialSize*shards)
 
 	from := 0
-	to := int(size)
+	to := int(initialSize)
 	for i := range lrus {
-		initLRU(&lrus[i], capacity, size, hash, buckets[from:to], elements[from:to])
+		initLRU(&lrus[i], initialCapacity, initialSize, maxCapacity, maxSize, hash, buckets[from:to], elements[from:to])
 		from = to
-		to += int(size)
+		to += int(initialSize)
 	}
 
 	return &ShardedLRU[K, V]{
@@ -327,7 +320,7 @@ func (lru *ShardedLRU[K, V]) RemoveOldest() (key K, value V, removed bool) {
 // Expired entries are not included.
 // The evict function is called for each expired item.
 func (lru *ShardedLRU[K, V]) Keys() []K {
-	keys := make([]K, 0, lru.shards*lru.lrus[0].cap)
+	keys := make([]K, 0, lru.Len())
 	for shard := range lru.lrus {
 		lru.mus[shard].Lock()
 		keys = append(keys, lru.lrus[shard].Keys()...)
