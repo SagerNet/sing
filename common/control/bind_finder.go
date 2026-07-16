@@ -7,6 +7,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
+	"github.com/sagernet/sing/common/x/list"
 )
 
 type InterfaceFinder interface {
@@ -15,7 +16,11 @@ type InterfaceFinder interface {
 	ByName(name string) (*Interface, error)
 	ByIndex(index int) (*Interface, error)
 	ByAddr(addr netip.Addr) (*Interface, error)
+	RegisterInterfaceUpdateCallback(callback InterfaceUpdateCallback) *list.Element[InterfaceUpdateCallback]
+	UnregisterInterfaceUpdateCallback(element *list.Element[InterfaceUpdateCallback])
 }
+
+type InterfaceUpdateCallback = func(interfaces []Interface)
 
 type Interface struct {
 	Index        int
