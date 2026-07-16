@@ -1,8 +1,6 @@
 package canceler
 
 import (
-	"time"
-
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -54,16 +52,16 @@ func (w *timeoutPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions
 
 func (w *timeoutPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
 	for {
-		err = w.PacketConn.SetReadDeadline(time.Now().Add(w.timeout))
+		err = w.setReadDeadline()
 		if err != nil {
 			return
 		}
 		buffer, destination, err = w.readWaiter.WaitReadPacket()
 		if err == nil {
-			w.active = time.Now()
+			w.updateActive()
 			return
 		} else if E.IsTimeout(err) {
-			if time.Since(w.active) > w.timeout {
+			if w.isInactive() {
 				w.cancel(err)
 				return
 			}

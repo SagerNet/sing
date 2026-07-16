@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -12,36 +13,49 @@ type Instance struct {
 	cancelFunc context.CancelCauseFunc
 	timer      *time.Timer
 	timeout    time.Duration
+	access     sync.Mutex
+	closed     bool
 }
 
 func New(ctx context.Context, cancelFunc context.CancelCauseFunc, timeout time.Duration) *Instance {
 	instance := &Instance{
-		ctx,
-		cancelFunc,
-		time.NewTimer(timeout),
-		timeout,
+		ctx:        ctx,
+		cancelFunc: cancelFunc,
+		timer:      time.NewTimer(timeout),
+		timeout:    timeout,
 	}
 	go instance.wait()
 	return instance
 }
 
 func (i *Instance) Update() bool {
+	i.access.Lock()
+	defer i.access.Unlock()
+	return i.update()
+}
+
+func (i *Instance) update() bool {
+	if i.closed {
+		return false
+	}
 	if !i.timer.Stop() {
 		return false
 	}
-	if !i.timer.Reset(i.timeout) {
-		return false
-	}
+	i.timer.Reset(i.timeout)
 	return true
 }
 
 func (i *Instance) Timeout() time.Duration {
+	i.access.Lock()
+	defer i.access.Unlock()
 	return i.timeout
 }
 
 func (i *Instance) SetTimeout(timeout time.Duration) bool {
+	i.access.Lock()
+	defer i.access.Unlock()
 	i.timeout = timeout
-	return i.Update()
+	return i.update()
 }
 
 func (i *Instance) wait() {
@@ -58,6 +72,13 @@ func (i *Instance) Close() error {
 }
 
 func (i *Instance) CloseWithError(err error) {
+	i.access.Lock()
+	if i.closed {
+		i.access.Unlock()
+		return
+	}
+	i.closed = true
 	i.timer.Stop()
+	i.access.Unlock()
 	i.cancelFunc(err)
 }
