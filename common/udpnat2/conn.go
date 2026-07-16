@@ -30,7 +30,7 @@ var (
 )
 
 type natConn struct {
-	cache           freelru.Cache[netip.AddrPort, *natConn]
+	cache           *freelru.ConcurrentLRU[netip.AddrPort, *natConn]
 	writer          N.PacketWriter
 	localAddr       M.Socksaddr
 	handlerAccess   sync.RWMutex
