@@ -116,3 +116,89 @@ func TestPurgeExpired(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAndRefreshOrAddPurgesBeforeEviction(t *testing.T) {
+	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+
+	var evicted []string
+	lru.SetOnEvict(func(key string, _ string) {
+		evicted = append(evicted, key)
+	})
+	lru.AddWithLifetime("live", "live", time.Minute)
+	lru.AddWithLifetime("expired", "expired", 10*time.Millisecond)
+	time.Sleep(20 * time.Millisecond)
+
+	value, updated, ok := lru.GetAndRefreshOrAdd("new", func() (string, bool) {
+		return "new", true
+	})
+	require.Equal(t, "new", value)
+	require.False(t, updated)
+	require.True(t, ok)
+	require.Equal(t, 2, lru.Len())
+	require.ElementsMatch(t, []string{"live", "new"}, lru.Keys())
+	require.Equal(t, []string{"expired"}, evicted)
+}
+
+func TestGetAndRefreshOrAddKeepsRefreshedExpiredEntry(t *testing.T) {
+	lru, err := freelru.New[string, string](2, maphash.NewHasher[string]().Hash32)
+	require.NoError(t, err)
+	lru.SetLifetime(20 * time.Millisecond)
+	lru.Add("revived", "value")
+	time.Sleep(40 * time.Millisecond)
+
+	value, updated, ok := lru.GetAndRefreshOrAdd("revived", func() (string, bool) {
+		t.Fatal("constructor should not be called when an expired entry is refreshed")
+		return "", false
+	})
+	require.Equal(t, "value", value)
+	require.True(t, updated)
+	require.True(t, ok)
+	require.True(t, lru.UpdateLifetime("revived", "value", time.Minute))
+
+	_, updated, ok = lru.GetAndRefreshOrAdd("new", func() (string, bool) {
+		return "new", true
+	})
+	require.False(t, updated)
+	require.True(t, ok)
+	require.ElementsMatch(t, []string{"revived", "new"}, lru.Keys())
+}
+
+func TestPurgeExpiredAfterDenseCompaction(t *testing.T) {
+	lru, err := freelru.New[int, int](64, maphash.NewHasher[int]().Hash32)
+	require.NoError(t, err)
+	lru.AddWithLifetime(0, 0, time.Minute)
+	for key := 1; key <= 32; key++ {
+		lru.AddWithLifetime(key, key, 10*time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	lru.PurgeExpired()
+	require.Equal(t, 1, lru.Len())
+	require.Equal(t, []int{0}, lru.Keys())
+}
+
+func TestShardedGetAndRefreshOrAddSweepsExpiredShards(t *testing.T) {
+	hash := func(key int) uint32 {
+		if key >= 1000 {
+			return uint32(key - 1000)
+		}
+		return uint32(key) << 16
+	}
+	lru, err := freelru.NewShardedWithSize[int, int](4, 64, 64, hash)
+	require.NoError(t, err)
+	for key := 0; key < 4; key++ {
+		lru.AddWithLifetime(key, key, 10*time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	for key := 1000; key < 1003; key++ {
+		value, updated, ok := lru.GetAndRefreshOrAdd(key, func() (int, bool) {
+			return key, true
+		})
+		require.Equal(t, key, value)
+		require.False(t, updated)
+		require.True(t, ok)
+	}
+	require.Equal(t, 3, lru.Len())
+}

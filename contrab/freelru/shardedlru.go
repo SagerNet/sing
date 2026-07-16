@@ -6,6 +6,7 @@ import (
 	"math/bits"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type ShardedLRU[K comparable, V comparable] struct {
 	hash   HashKeyCallback[K]
 	shards uint32
 	mask   uint32
+	sweep  atomic.Uint32
 }
 
 var _ Cache[int, int] = (*ShardedLRU[int, int])(nil)
@@ -217,13 +219,32 @@ func (lru *ShardedLRU[K, V]) GetAndRefreshOrAdd(key K, constructor func() (V, bo
 	shard := (hash >> 16) & lru.mask
 
 	lru.mus[shard].Lock()
-	value, updated, ok = lru.lrus[shard].getAndRefreshOrAdd(hash, key, constructor)
+	var currentTime int64
+	value, updated, ok, currentTime = lru.lrus[shard].getAndRefreshOrAdd(hash, key, constructor)
 	lru.mus[shard].Unlock()
 
 	if !updated && ok {
-		lru.PurgeExpired()
+		lru.sweepExpired(shard, currentTime)
 	}
 	return
+}
+
+func (lru *ShardedLRU[K, V]) sweepExpired(skipShard uint32, currentTime int64) {
+	if lru.shards <= 1 {
+		return
+	}
+	// The insertion already swept its own shard. Sweep one more shard to keep
+	// idle shards bounded without walking and locking every shard on each miss.
+	var shard uint32
+	for {
+		shard = (lru.sweep.Add(1) - 1) & lru.mask
+		if shard != skipShard {
+			break
+		}
+	}
+	lru.mus[shard].Lock()
+	lru.lrus[shard].purgeExpiredAt(currentTime)
+	lru.mus[shard].Unlock()
 }
 
 // Peek looks up a key's value from the cache, without changing its recent-ness.
@@ -330,9 +351,10 @@ func (lru *ShardedLRU[K, V]) Purge() {
 // PurgeExpired purges all expired items from the LRU.
 // The evict function is called for each expired item.
 func (lru *ShardedLRU[K, V]) PurgeExpired() {
+	currentTime := now()
 	for shard := range lru.lrus {
 		lru.mus[shard].Lock()
-		lru.lrus[shard].PurgeExpired()
+		lru.lrus[shard].purgeExpiredAt(currentTime)
 		lru.mus[shard].Unlock()
 	}
 }
