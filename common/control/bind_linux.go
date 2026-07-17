@@ -40,3 +40,19 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 		return unix.BindToDevice(int(fd), interfaceName)
 	})
 }
+
+func unbindFromInterface(conn syscall.RawConn, network string, address string) error {
+	return Raw(conn, func(fd uintptr) error {
+		if !ifIndexDisabled.Load() {
+			err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_BINDTOIFINDEX, 0)
+			if err == nil {
+				return nil
+			} else if E.IsMulti(err, unix.ENOPROTOOPT, unix.EINVAL) {
+				ifIndexDisabled.Store(true)
+			} else {
+				return err
+			}
+		}
+		return unix.BindToDevice(int(fd), "")
+	})
+}
