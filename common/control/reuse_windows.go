@@ -11,3 +11,7 @@ func ReuseAddr() Func {
 		})
 	}
 }
+
+func ReuseAddrOnly() Func {
+	return nil
+}

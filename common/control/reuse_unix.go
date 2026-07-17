@@ -20,3 +20,11 @@ func ReuseAddr() Func {
 		})
 	}
 }
+
+func ReuseAddrOnly() Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		return Raw(conn, func(fileDescriptor uintptr) error {
+			return unix.SetsockoptInt(int(fileDescriptor), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
+		})
+	}
+}
