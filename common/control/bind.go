@@ -24,6 +24,12 @@ func BindToInterfaceFunc(finder InterfaceFinder, block func(network string, addr
 	}
 }
 
+func UnbindFromInterface() Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		return unbindFromInterface(conn, network, address)
+	}
+}
+
 func BindToInterface0(finder InterfaceFinder, conn syscall.RawConn, network string, address string, interfaceName string, interfaceIndex int, preferInterfaceName bool) error {
 	if interfaceName == "" && interfaceIndex == -1 {
 		return E.New("interface not found: ", interfaceName)
