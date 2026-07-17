@@ -40,6 +40,10 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 	})
 }
 
+func unbindFromInterface(conn syscall.RawConn, network string, address string) error {
+	return bindToInterface(conn, network, address, nil, "", 0, false)
+}
+
 const (
 	IP_UNICAST_IF   = 31
 	IPV6_UNICAST_IF = 31
