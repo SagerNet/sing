@@ -58,7 +58,7 @@ func NewClient(options Options) *Client {
 	return client
 }
 
-func (c *Client) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+func (c *Client) DialContext(ctx context.Context, network string, destination M.Socksaddr) (result net.Conn, err error) {
 	network = N.NetworkName(network)
 	switch network {
 	case N.NetworkTCP:
@@ -67,10 +67,21 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	default:
 		return nil, E.Extend(N.ErrUnknownNetwork, network)
 	}
-	var conn net.Conn
 	conn, err := c.dialer.DialContext(ctx, N.NetworkTCP, c.serverAddr)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Done() != nil {
+		handshakeConn := conn
+		stopContext := context.AfterFunc(ctx, func() {
+			_ = handshakeConn.Close()
+		})
+		defer func() {
+			if !stopContext() {
+				result = nil
+				err = ctx.Err()
+			}
+		}()
 	}
 	request := &http.Request{
 		Method: http.MethodConnect,
