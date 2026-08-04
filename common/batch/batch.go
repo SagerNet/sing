@@ -46,9 +46,7 @@ type Batch[T any] struct {
 }
 
 func (b *Batch[T]) Go(key string, fn func() (T, error)) {
-	b.wg.Add(1)
-	go func() {
-		defer b.wg.Done()
+	b.wg.Go(func() {
 		if b.queue != nil {
 			<-b.queue
 			defer func() {
@@ -70,7 +68,7 @@ func (b *Batch[T]) Go(key string, fn func() (T, error)) {
 		b.mux.Lock()
 		defer b.mux.Unlock()
 		b.result[key] = ret
-	}()
+	})
 }
 
 func (b *Batch[T]) Wait() *Error {
