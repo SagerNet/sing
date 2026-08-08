@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"math/bits"
@@ -122,10 +123,15 @@ func readUint64Slice(reader varbin.Reader) ([]uint64, error) {
 	if length == 0 {
 		return nil, nil
 	}
-	result := make([]uint64, length)
-	err = binary.Read(reader, binary.BigEndian, result)
-	if err != nil {
-		return nil, err
+	// length is untrusted; grow via append so a crafted huge length hits EOF while reading
+	// the elements instead of OOMing the process on the allocation.
+	result := make([]uint64, 0, min(length, 64))
+	for i := uint64(0); i < length; i++ {
+		var value uint64
+		if err = binary.Read(reader, binary.BigEndian, &value); err != nil {
+			return nil, err
+		}
+		result = append(result, value)
 	}
 	return result, nil
 }
@@ -149,12 +155,17 @@ func readByteSlice(reader varbin.Reader) ([]byte, error) {
 	if length == 0 {
 		return nil, nil
 	}
-	result := make([]byte, length)
-	_, err = io.ReadFull(reader, result)
+	// length is untrusted; read through io.CopyN so the buffer grows only as bytes actually
+	// arrive, instead of pre-allocating make([]byte, length) and OOMing on a crafted length.
+	var buffer bytes.Buffer
+	_, err = io.CopyN(&buffer, reader, int64(length))
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	if uint64(buffer.Len()) != length {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return buffer.Bytes(), nil
 }
 
 func writeByteSlice(writer varbin.Writer, value []byte) error {
