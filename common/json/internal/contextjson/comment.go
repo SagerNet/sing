@@ -211,6 +211,11 @@ func skipJSONString(data []byte, start int) int {
 			i++
 		}
 	}
+	// A trailing backslash escape (i += 2 on the last byte) can push i past the end; clamp so
+	// callers that slice data[:skipJSONString(...)] cannot go out of range.
+	if i > len(data) {
+		i = len(data)
+	}
 	return i
 }
 
