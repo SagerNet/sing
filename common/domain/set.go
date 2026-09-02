@@ -14,6 +14,83 @@ type succinctSet struct {
 	leaves, labelBitmap []uint64
 	labels              []byte
 	ranks, selects      []int32
+	storage             any
+}
+
+type Mmap struct {
+	Leaves      []uint64
+	LabelBitmap []uint64
+	Labels      []byte
+	Ranks       []int32
+	Selects     []int32
+	Storage     any
+}
+
+func (ss *succinctSet) mmap() Mmap {
+	return Mmap{
+		Leaves:      ss.leaves,
+		LabelBitmap: ss.labelBitmap,
+		Labels:      ss.labels,
+		Ranks:       ss.ranks,
+		Selects:     ss.selects,
+		Storage:     ss.storage,
+	}
+}
+
+func newSuccinctSetFromMmap(data Mmap) (*succinctSet, error) {
+	onesCount, zerosCount := countLabelBitmap(data.LabelBitmap)
+	if onesCount != zerosCount+1 || len(data.Labels) != zerosCount {
+		return nil, E.New("domain: malformed succinct set")
+	}
+	if len(data.Leaves) < (onesCount+63)>>6 {
+		return nil, E.New("domain: malformed succinct set leaves")
+	}
+	if len(data.Ranks) != len(data.LabelBitmap)+1 {
+		return nil, E.New("domain: malformed succinct set ranks")
+	}
+	rank := int32(0)
+	for i, word := range data.LabelBitmap {
+		if data.Ranks[i] != rank {
+			return nil, E.New("domain: malformed succinct set ranks")
+		}
+		rank += int32(bits.OnesCount64(word))
+	}
+	if data.Ranks[len(data.LabelBitmap)] != rank {
+		return nil, E.New("domain: malformed succinct set ranks")
+	}
+	if len(data.Selects) != (onesCount+31)>>5 {
+		return nil, E.New("domain: malformed succinct set selects")
+	}
+	ith := -1
+	for i := range len(data.LabelBitmap) << 6 {
+		if data.LabelBitmap[i>>6]&(1<<uint(i&63)) == 0 {
+			continue
+		}
+		ith++
+		if ith&31 == 0 && data.Selects[ith>>5] != int32(i) {
+			return nil, E.New("domain: malformed succinct set selects")
+		}
+	}
+	return &succinctSet{
+		leaves:      data.Leaves,
+		labelBitmap: data.LabelBitmap,
+		labels:      data.Labels,
+		ranks:       data.Ranks,
+		selects:     data.Selects,
+		storage:     data.Storage,
+	}, nil
+}
+
+func countLabelBitmap(labelBitmap []uint64) (onesCount int, zerosCount int) {
+	lastOneIndex := -1
+	for wordIndex, word := range labelBitmap {
+		onesCount += bits.OnesCount64(word)
+		if word != 0 {
+			lastOneIndex = wordIndex<<6 | (63 - bits.LeadingZeros64(word))
+		}
+	}
+	zerosCount = lastOneIndex + 1 - onesCount
+	return
 }
 
 func newSuccinctSet(keys []string) *succinctSet {
@@ -92,15 +169,7 @@ func readSuccinctSet(reader varbin.Reader) (*succinctSet, error) {
 	if err != nil {
 		return nil, err
 	}
-	onesCount := 0
-	lastOneIndex := -1
-	for wordIndex, word := range labelBitmap {
-		onesCount += bits.OnesCount64(word)
-		if word != 0 {
-			lastOneIndex = wordIndex<<6 | (63 - bits.LeadingZeros64(word))
-		}
-	}
-	zerosCount := lastOneIndex + 1 - onesCount
+	onesCount, zerosCount := countLabelBitmap(labelBitmap)
 	if onesCount != zerosCount+1 || len(labels) != zerosCount {
 		return nil, E.New("domain: malformed succinct set")
 	}
