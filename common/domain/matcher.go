@@ -56,6 +56,18 @@ func ReadMatcher(reader varbin.Reader) (*Matcher, error) {
 	return &Matcher{set}, nil
 }
 
+func NewMatcherFromMmap(data Mmap) (*Matcher, error) {
+	set, err := newSuccinctSetFromMmap(data)
+	if err != nil {
+		return nil, err
+	}
+	return &Matcher{set}, nil
+}
+
+func (m *Matcher) Mmap() Mmap {
+	return m.set.mmap()
+}
+
 func (m *Matcher) Write(writer varbin.Writer) error {
 	return m.set.Write(writer)
 }
