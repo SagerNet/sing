@@ -60,6 +60,18 @@ func ReadAdGuardMatcher(reader varbin.Reader) (*AdGuardMatcher, error) {
 	return &AdGuardMatcher{set}, nil
 }
 
+func NewAdGuardMatcherFromMmap(data Mmap) (*AdGuardMatcher, error) {
+	set, err := newSuccinctSetFromMmap(data)
+	if err != nil {
+		return nil, err
+	}
+	return &AdGuardMatcher{set}, nil
+}
+
+func (m *AdGuardMatcher) Mmap() Mmap {
+	return m.set.mmap()
+}
+
 func (m *AdGuardMatcher) Write(writer varbin.Writer) error {
 	return m.set.Write(writer)
 }
