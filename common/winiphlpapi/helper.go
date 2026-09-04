@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"runtime"
 	"slices"
 	"syscall"
 	"time"
@@ -68,59 +67,118 @@ func LoadExtendedTable() error {
 	if err != nil {
 		return err
 	}
-	return nil
+	err = procGetOwnerModuleFromTcpEntry.Find()
+	if err != nil {
+		return err
+	}
+	err = procGetOwnerModuleFromTcp6Entry.Find()
+	if err != nil {
+		return err
+	}
+	err = procGetOwnerModuleFromUdpEntry.Find()
+	if err != nil {
+		return err
+	}
+	err = procGetOwnerModuleFromUdp6Entry.Find()
+	if err != nil {
+		return err
+	}
+	// GetOwnerModuleFrom*Entry resolves service tags through advapi32 without loading it and fails with ERROR_MOD_NOT_FOUND until the process has.
+	return procI_QueryTagInformation.Find()
+}
+
+type SocketOwner struct {
+	Pid         uint32
+	ServiceName string
 }
 
 func FindPid(network string, source netip.AddrPort) (uint32, error) {
+	owner, err := FindSocketOwner(network, source)
+	if err != nil {
+		return 0, err
+	}
+	return owner.Pid, nil
+}
+
+func FindSocketOwner(network string, source netip.AddrPort) (SocketOwner, error) {
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		if source.Addr().Is4() {
-			tcpTable, err := GetExtendedTcpTable()
+			tcpTable, err := GetExtendedTcpTableOwnerModule()
 			if err != nil {
-				return 0, err
+				return SocketOwner{}, err
 			}
-			for _, row := range tcpTable {
-				if source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort)) {
-					return row.DwOwningPid, nil
-				}
+			index := slices.IndexFunc(tcpTable, func(row MibTcpRowOwnerModule) bool {
+				return source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort))
+			})
+			if index != -1 {
+				row := &tcpTable[index]
+				return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+					return GetOwnerModuleFromTcpEntry(row)
+				}), nil
 			}
 		} else {
-			tcpTable, err := GetExtendedTcp6Table()
+			tcpTable, err := GetExtendedTcp6TableOwnerModule()
 			if err != nil {
-				return 0, err
+				return SocketOwner{}, err
 			}
-			for _, row := range tcpTable {
-				if source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort)) {
-					return row.DwOwningPid, nil
-				}
+			index := slices.IndexFunc(tcpTable, func(row MibTcp6RowOwnerModule) bool {
+				return source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort))
+			})
+			if index != -1 {
+				row := &tcpTable[index]
+				return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+					return GetOwnerModuleFromTcp6Entry(row)
+				}), nil
 			}
 		}
 	case N.NetworkUDP:
 		if source.Addr().Is4() {
-			udpTable, err := GetExtendedUdpTable()
+			udpTable, err := GetExtendedUdpTableOwnerModule()
 			if err != nil {
-				return 0, err
+				return SocketOwner{}, err
 			}
-			for _, row := range udpTable {
-				if source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort)) ||
-					runtime.GOOS == "windows" && DwordToAddr(row.DwLocalAddr) == netip.IPv4Unspecified() && source.Port() == DwordToPort(row.DwLocalPort) {
-					return row.DwOwningPid, nil
-				}
+			index := slices.IndexFunc(udpTable, func(row MibUdpRowOwnerModule) bool {
+				return source == netip.AddrPortFrom(DwordToAddr(row.DwLocalAddr), DwordToPort(row.DwLocalPort)) ||
+					DwordToAddr(row.DwLocalAddr) == netip.IPv4Unspecified() && source.Port() == DwordToPort(row.DwLocalPort)
+			})
+			if index != -1 {
+				row := &udpTable[index]
+				return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+					return GetOwnerModuleFromUdpEntry(row)
+				}), nil
 			}
 		} else {
-			udpTable, err := GetExtendedUdp6Table()
+			udpTable, err := GetExtendedUdp6TableOwnerModule()
 			if err != nil {
-				return 0, err
+				return SocketOwner{}, err
 			}
-			for _, row := range udpTable {
-				if source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort)) ||
-					runtime.GOOS == "windows" && netip.AddrFrom16(row.UcLocalAddr) == netip.IPv6Unspecified() && source.Port() == DwordToPort(row.DwLocalPort) {
-					return row.DwOwningPid, nil
-				}
+			index := slices.IndexFunc(udpTable, func(row MibUdp6RowOwnerModule) bool {
+				return source == netip.AddrPortFrom(netip.AddrFrom16(row.UcLocalAddr), DwordToPort(row.DwLocalPort)) ||
+					netip.AddrFrom16(row.UcLocalAddr) == netip.IPv6Unspecified() && source.Port() == DwordToPort(row.DwLocalPort)
+			})
+			if index != -1 {
+				row := &udpTable[index]
+				return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+					return GetOwnerModuleFromUdp6Entry(row)
+				}), nil
 			}
 		}
 	}
-	return 0, E.New("process not found for ", source)
+	return SocketOwner{}, E.New("process not found for ", source)
+}
+
+func socketOwner(pid uint32, serviceTag uint64, queryModule func() (*TcpipOwnerModuleBasicInfo, error)) SocketOwner {
+	owner := SocketOwner{Pid: pid}
+	if serviceTag == 0 {
+		return owner
+	}
+	moduleInfo, err := queryModule()
+	if err != nil {
+		return owner
+	}
+	owner.ServiceName = moduleInfo.ModuleName
+	return owner
 }
 
 func WriteAndWaitAck(ctx context.Context, conn net.Conn, payload []byte) error {
