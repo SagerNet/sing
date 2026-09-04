@@ -5,6 +5,7 @@ package winiphlpapi
 import (
 	"errors"
 	"os"
+	"runtime"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -122,6 +123,65 @@ type MibUdp6RowOwnerPid struct {
 	DwOwningPid    uint32
 }
 
+type MibTcpRowOwnerModule struct {
+	DwState           uint32
+	DwLocalAddr       uint32
+	DwLocalPort       uint32
+	DwRemoteAddr      uint32
+	DwRemotePort      uint32
+	DwOwningPid       uint32
+	LiCreateTimestamp int64
+	OwningModuleInfo  [16]uint64
+}
+
+type MibTcp6RowOwnerModule struct {
+	UcLocalAddr       [16]byte
+	DwLocalScopeId    uint32
+	DwLocalPort       uint32
+	UcRemoteAddr      [16]byte
+	DwRemoteScopeId   uint32
+	DwRemotePort      uint32
+	DwState           uint32
+	DwOwningPid       uint32
+	LiCreateTimestamp int64
+	OwningModuleInfo  [16]uint64
+}
+
+type MibUdpRowOwnerModule struct {
+	DwLocalAddr       uint32
+	DwLocalPort       uint32
+	DwOwningPid       uint32
+	_                 uint32
+	LiCreateTimestamp int64
+	DwFlags           int32
+	_                 uint32
+	OwningModuleInfo  [16]uint64
+}
+
+type MibUdp6RowOwnerModule struct {
+	UcLocalAddr       [16]byte
+	DwLocalScopeId    uint32
+	DwLocalPort       uint32
+	DwOwningPid       uint32
+	_                 uint32
+	LiCreateTimestamp int64
+	DwFlags           int32
+	_                 uint32
+	OwningModuleInfo  [16]uint64
+}
+
+const TcpipOwnerModuleInfoBasic uint32 = 0
+
+type TcpipOwnerModuleBasicInfo struct {
+	ModuleName string
+	ModulePath string
+}
+
+type tcpipOwnerModuleBasicInfo struct {
+	pModuleName *uint16
+	pModulePath *uint16
+}
+
 type TcpEstatsSendBufferRodV0 struct {
 	CurRetxQueue uint64
 	MaxRetxQueue uint64
@@ -140,6 +200,7 @@ const (
 	offsetOfMibTcp6TableOwnerPid   = unsafe.Offsetof(MibTcpTableOwnerPid{}.Table)
 	offsetOfMibUdpTableOwnerPid    = unsafe.Offsetof(MibUdpTableOwnerPid{}.Table)
 	offsetOfMibUdp6TableOwnerPid   = unsafe.Offsetof(MibUdp6TableOwnerPid{}.Table)
+	offsetOfMibTableOwnerModule    = 8
 	sizeOfTcpEstatsSendBuffRwV0    = unsafe.Sizeof(TcpEstatsSendBuffRwV0{})
 	sizeOfTcpEstatsSendBufferRodV0 = unsafe.Sizeof(TcpEstatsSendBufferRodV0{})
 )
@@ -262,6 +323,130 @@ func GetExtendedUdp6Table() ([]MibUdp6RowOwnerPid, error) {
 		dwNumEntries := int(*(*uint32)(unsafe.Pointer(&table[0])))
 		return unsafe.Slice((*MibUdp6RowOwnerPid)(unsafe.Pointer(&table[offsetOfMibUdp6TableOwnerPid])), dwNumEntries), nil
 	}
+}
+
+func GetExtendedTcpTableOwnerModule() ([]MibTcpRowOwnerModule, error) {
+	var size uint32
+	err := getExtendedTcpTable(nil, &size, false, windows.AF_INET, TcpTableOwnerModuleConnections, 0)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, os.NewSyscallError("GetExtendedTcpTable", err)
+	}
+	for {
+		table := make([]byte, size)
+		err = getExtendedTcpTable(&table[0], &size, false, windows.AF_INET, TcpTableOwnerModuleConnections, 0)
+		if err != nil {
+			if errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+				continue
+			}
+			return nil, os.NewSyscallError("GetExtendedTcpTable", err)
+		}
+		dwNumEntries := int(*(*uint32)(unsafe.Pointer(&table[0])))
+		return unsafe.Slice((*MibTcpRowOwnerModule)(unsafe.Pointer(&table[offsetOfMibTableOwnerModule])), dwNumEntries), nil
+	}
+}
+
+func GetExtendedTcp6TableOwnerModule() ([]MibTcp6RowOwnerModule, error) {
+	var size uint32
+	err := getExtendedTcpTable(nil, &size, false, windows.AF_INET6, TcpTableOwnerModuleConnections, 0)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, os.NewSyscallError("GetExtendedTcpTable", err)
+	}
+	for {
+		table := make([]byte, size)
+		err = getExtendedTcpTable(&table[0], &size, false, windows.AF_INET6, TcpTableOwnerModuleConnections, 0)
+		if err != nil {
+			if errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+				continue
+			}
+			return nil, os.NewSyscallError("GetExtendedTcpTable", err)
+		}
+		dwNumEntries := int(*(*uint32)(unsafe.Pointer(&table[0])))
+		return unsafe.Slice((*MibTcp6RowOwnerModule)(unsafe.Pointer(&table[offsetOfMibTableOwnerModule])), dwNumEntries), nil
+	}
+}
+
+func GetExtendedUdpTableOwnerModule() ([]MibUdpRowOwnerModule, error) {
+	var size uint32
+	err := getExtendedUdpTable(nil, &size, false, windows.AF_INET, UdpTableOwnerModule, 0)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, os.NewSyscallError("GetExtendedUdpTable", err)
+	}
+	for {
+		table := make([]byte, size)
+		err = getExtendedUdpTable(&table[0], &size, false, windows.AF_INET, UdpTableOwnerModule, 0)
+		if err != nil {
+			if errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+				continue
+			}
+			return nil, os.NewSyscallError("GetExtendedUdpTable", err)
+		}
+		dwNumEntries := int(*(*uint32)(unsafe.Pointer(&table[0])))
+		return unsafe.Slice((*MibUdpRowOwnerModule)(unsafe.Pointer(&table[offsetOfMibTableOwnerModule])), dwNumEntries), nil
+	}
+}
+
+func GetExtendedUdp6TableOwnerModule() ([]MibUdp6RowOwnerModule, error) {
+	var size uint32
+	err := getExtendedUdpTable(nil, &size, false, windows.AF_INET6, UdpTableOwnerModule, 0)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, os.NewSyscallError("GetExtendedUdpTable", err)
+	}
+	for {
+		table := make([]byte, size)
+		err = getExtendedUdpTable(&table[0], &size, false, windows.AF_INET6, UdpTableOwnerModule, 0)
+		if err != nil {
+			if errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+				continue
+			}
+			return nil, os.NewSyscallError("GetExtendedUdpTable", err)
+		}
+		dwNumEntries := int(*(*uint32)(unsafe.Pointer(&table[0])))
+		return unsafe.Slice((*MibUdp6RowOwnerModule)(unsafe.Pointer(&table[offsetOfMibTableOwnerModule])), dwNumEntries), nil
+	}
+}
+
+func GetOwnerModuleFromTcpEntry(row *MibTcpRowOwnerModule) (*TcpipOwnerModuleBasicInfo, error) {
+	return queryOwnerModuleBasicInfo("GetOwnerModuleFromTcpEntry", func(buffer *byte, size *uint32) error {
+		return getOwnerModuleFromTcpEntry(row, TcpipOwnerModuleInfoBasic, buffer, size)
+	})
+}
+
+func GetOwnerModuleFromTcp6Entry(row *MibTcp6RowOwnerModule) (*TcpipOwnerModuleBasicInfo, error) {
+	return queryOwnerModuleBasicInfo("GetOwnerModuleFromTcp6Entry", func(buffer *byte, size *uint32) error {
+		return getOwnerModuleFromTcp6Entry(row, TcpipOwnerModuleInfoBasic, buffer, size)
+	})
+}
+
+func GetOwnerModuleFromUdpEntry(row *MibUdpRowOwnerModule) (*TcpipOwnerModuleBasicInfo, error) {
+	return queryOwnerModuleBasicInfo("GetOwnerModuleFromUdpEntry", func(buffer *byte, size *uint32) error {
+		return getOwnerModuleFromUdpEntry(row, TcpipOwnerModuleInfoBasic, buffer, size)
+	})
+}
+
+func GetOwnerModuleFromUdp6Entry(row *MibUdp6RowOwnerModule) (*TcpipOwnerModuleBasicInfo, error) {
+	return queryOwnerModuleBasicInfo("GetOwnerModuleFromUdp6Entry", func(buffer *byte, size *uint32) error {
+		return getOwnerModuleFromUdp6Entry(row, TcpipOwnerModuleInfoBasic, buffer, size)
+	})
+}
+
+func queryOwnerModuleBasicInfo(name string, query func(buffer *byte, size *uint32) error) (*TcpipOwnerModuleBasicInfo, error) {
+	var size uint32
+	err := query(nil, &size)
+	if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {
+		return nil, os.NewSyscallError(name, err)
+	}
+	buffer := make([]byte, size)
+	err = query(&buffer[0], &size)
+	if err != nil {
+		return nil, os.NewSyscallError(name, err)
+	}
+	rawInfo := (*tcpipOwnerModuleBasicInfo)(unsafe.Pointer(&buffer[0]))
+	info := &TcpipOwnerModuleBasicInfo{
+		ModuleName: windows.UTF16PtrToString(rawInfo.pModuleName),
+		ModulePath: windows.UTF16PtrToString(rawInfo.pModulePath),
+	}
+	runtime.KeepAlive(buffer)
+	return info, nil
 }
 
 func GetPerTcpConnectionEStatsSendBuffer(row *MibTcpRow) (*TcpEstatsSendBufferRodV0, error) {
