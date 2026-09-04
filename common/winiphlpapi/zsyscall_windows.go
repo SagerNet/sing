@@ -38,24 +38,38 @@ func errnoErr(e syscall.Errno) error {
 }
 
 var (
+	modadvapi32 = windows.NewLazySystemDLL("advapi32.dll")
 	modiphlpapi = windows.NewLazySystemDLL("iphlpapi.dll")
 
-	procGetExtendedTcpTable        = modiphlpapi.NewProc("GetExtendedTcpTable")
-	procGetExtendedUdpTable        = modiphlpapi.NewProc("GetExtendedUdpTable")
-	procGetPerTcp6ConnectionEStats = modiphlpapi.NewProc("GetPerTcp6ConnectionEStats")
-	procGetPerTcpConnectionEStats  = modiphlpapi.NewProc("GetPerTcpConnectionEStats")
-	procGetTcp6Table               = modiphlpapi.NewProc("GetTcp6Table")
-	procGetTcpTable                = modiphlpapi.NewProc("GetTcpTable")
-	procSetPerTcp6ConnectionEStats = modiphlpapi.NewProc("SetPerTcp6ConnectionEStats")
-	procSetPerTcpConnectionEStats  = modiphlpapi.NewProc("SetPerTcpConnectionEStats")
+	procI_QueryTagInformation       = modadvapi32.NewProc("I_QueryTagInformation")
+	procGetExtendedTcpTable         = modiphlpapi.NewProc("GetExtendedTcpTable")
+	procGetExtendedUdpTable         = modiphlpapi.NewProc("GetExtendedUdpTable")
+	procGetOwnerModuleFromTcp6Entry = modiphlpapi.NewProc("GetOwnerModuleFromTcp6Entry")
+	procGetOwnerModuleFromTcpEntry  = modiphlpapi.NewProc("GetOwnerModuleFromTcpEntry")
+	procGetOwnerModuleFromUdp6Entry = modiphlpapi.NewProc("GetOwnerModuleFromUdp6Entry")
+	procGetOwnerModuleFromUdpEntry  = modiphlpapi.NewProc("GetOwnerModuleFromUdpEntry")
+	procGetPerTcp6ConnectionEStats  = modiphlpapi.NewProc("GetPerTcp6ConnectionEStats")
+	procGetPerTcpConnectionEStats   = modiphlpapi.NewProc("GetPerTcpConnectionEStats")
+	procGetTcp6Table                = modiphlpapi.NewProc("GetTcp6Table")
+	procGetTcpTable                 = modiphlpapi.NewProc("GetTcpTable")
+	procSetPerTcp6ConnectionEStats  = modiphlpapi.NewProc("SetPerTcp6ConnectionEStats")
+	procSetPerTcpConnectionEStats   = modiphlpapi.NewProc("SetPerTcpConnectionEStats")
 )
+
+func queryTagInformation(machineName *uint16, infoLevel uint32, tagInfo unsafe.Pointer) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procI_QueryTagInformation.Addr(), uintptr(unsafe.Pointer(machineName)), uintptr(infoLevel), uintptr(tagInfo))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
 
 func getExtendedTcpTable(pTcpTable *byte, pdwSize *uint32, bOrder bool, ulAf uint64, tableClass uint32, reserved uint64) (errcode error) {
 	var _p0 uint32
 	if bOrder {
 		_p0 = 1
 	}
-	r0, _, _ := syscall.Syscall6(procGetExtendedTcpTable.Addr(), 6, uintptr(unsafe.Pointer(pTcpTable)), uintptr(unsafe.Pointer(pdwSize)), uintptr(_p0), uintptr(ulAf), uintptr(tableClass), uintptr(reserved))
+	r0, _, _ := syscall.SyscallN(procGetExtendedTcpTable.Addr(), uintptr(unsafe.Pointer(pTcpTable)), uintptr(unsafe.Pointer(pdwSize)), uintptr(_p0), uintptr(ulAf), uintptr(tableClass), uintptr(reserved))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -67,7 +81,39 @@ func getExtendedUdpTable(pUdpTable *byte, pdwSize *uint32, bOrder bool, ulAf uin
 	if bOrder {
 		_p0 = 1
 	}
-	r0, _, _ := syscall.Syscall6(procGetExtendedUdpTable.Addr(), 6, uintptr(unsafe.Pointer(pUdpTable)), uintptr(unsafe.Pointer(pdwSize)), uintptr(_p0), uintptr(ulAf), uintptr(tableClass), uintptr(reserved))
+	r0, _, _ := syscall.SyscallN(procGetExtendedUdpTable.Addr(), uintptr(unsafe.Pointer(pUdpTable)), uintptr(unsafe.Pointer(pdwSize)), uintptr(_p0), uintptr(ulAf), uintptr(tableClass), uintptr(reserved))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
+
+func getOwnerModuleFromTcp6Entry(pTcpEntry *MibTcp6RowOwnerModule, class uint32, pBuffer *byte, pdwSize *uint32) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procGetOwnerModuleFromTcp6Entry.Addr(), uintptr(unsafe.Pointer(pTcpEntry)), uintptr(class), uintptr(unsafe.Pointer(pBuffer)), uintptr(unsafe.Pointer(pdwSize)))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
+
+func getOwnerModuleFromTcpEntry(pTcpEntry *MibTcpRowOwnerModule, class uint32, pBuffer *byte, pdwSize *uint32) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procGetOwnerModuleFromTcpEntry.Addr(), uintptr(unsafe.Pointer(pTcpEntry)), uintptr(class), uintptr(unsafe.Pointer(pBuffer)), uintptr(unsafe.Pointer(pdwSize)))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
+
+func getOwnerModuleFromUdp6Entry(pUdpEntry *MibUdp6RowOwnerModule, class uint32, pBuffer *byte, pdwSize *uint32) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procGetOwnerModuleFromUdp6Entry.Addr(), uintptr(unsafe.Pointer(pUdpEntry)), uintptr(class), uintptr(unsafe.Pointer(pBuffer)), uintptr(unsafe.Pointer(pdwSize)))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
+
+func getOwnerModuleFromUdpEntry(pUdpEntry *MibUdpRowOwnerModule, class uint32, pBuffer *byte, pdwSize *uint32) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procGetOwnerModuleFromUdpEntry.Addr(), uintptr(unsafe.Pointer(pUdpEntry)), uintptr(class), uintptr(unsafe.Pointer(pBuffer)), uintptr(unsafe.Pointer(pdwSize)))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -75,7 +121,7 @@ func getExtendedUdpTable(pUdpTable *byte, pdwSize *uint32, bOrder bool, ulAf uin
 }
 
 func getPerTcp6ConnectionEStats(row *MibTcp6Row, estatsType uint32, rw uintptr, rwVersion uint64, rwSize uint64, ros uintptr, rosVersion uint64, rosSize uint64, rod uintptr, rodVersion uint64, rodSize uint64) (errcode error) {
-	r0, _, _ := syscall.Syscall12(procGetPerTcp6ConnectionEStats.Addr(), 11, uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(ros), uintptr(rosVersion), uintptr(rosSize), uintptr(rod), uintptr(rodVersion), uintptr(rodSize), 0)
+	r0, _, _ := syscall.SyscallN(procGetPerTcp6ConnectionEStats.Addr(), uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(ros), uintptr(rosVersion), uintptr(rosSize), uintptr(rod), uintptr(rodVersion), uintptr(rodSize))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -83,7 +129,7 @@ func getPerTcp6ConnectionEStats(row *MibTcp6Row, estatsType uint32, rw uintptr, 
 }
 
 func getPerTcpConnectionEStats(row *MibTcpRow, estatsType uint32, rw uintptr, rwVersion uint64, rwSize uint64, ros uintptr, rosVersion uint64, rosSize uint64, rod uintptr, rodVersion uint64, rodSize uint64) (errcode error) {
-	r0, _, _ := syscall.Syscall12(procGetPerTcpConnectionEStats.Addr(), 11, uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(ros), uintptr(rosVersion), uintptr(rosSize), uintptr(rod), uintptr(rodVersion), uintptr(rodSize), 0)
+	r0, _, _ := syscall.SyscallN(procGetPerTcpConnectionEStats.Addr(), uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(ros), uintptr(rosVersion), uintptr(rosSize), uintptr(rod), uintptr(rodVersion), uintptr(rodSize))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -95,7 +141,7 @@ func getTcp6Table(tcpTable *byte, sizePointer *uint32, order bool) (errcode erro
 	if order {
 		_p0 = 1
 	}
-	r0, _, _ := syscall.Syscall(procGetTcp6Table.Addr(), 3, uintptr(unsafe.Pointer(tcpTable)), uintptr(unsafe.Pointer(sizePointer)), uintptr(_p0))
+	r0, _, _ := syscall.SyscallN(procGetTcp6Table.Addr(), uintptr(unsafe.Pointer(tcpTable)), uintptr(unsafe.Pointer(sizePointer)), uintptr(_p0))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -107,7 +153,7 @@ func getTcpTable(tcpTable *byte, sizePointer *uint32, order bool) (errcode error
 	if order {
 		_p0 = 1
 	}
-	r0, _, _ := syscall.Syscall(procGetTcpTable.Addr(), 3, uintptr(unsafe.Pointer(tcpTable)), uintptr(unsafe.Pointer(sizePointer)), uintptr(_p0))
+	r0, _, _ := syscall.SyscallN(procGetTcpTable.Addr(), uintptr(unsafe.Pointer(tcpTable)), uintptr(unsafe.Pointer(sizePointer)), uintptr(_p0))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -115,7 +161,7 @@ func getTcpTable(tcpTable *byte, sizePointer *uint32, order bool) (errcode error
 }
 
 func setPerTcp6ConnectionEStats(row *MibTcp6Row, estatsType uint32, rw uintptr, rwVersion uint64, rwSize uint64, offset uint64) (errcode error) {
-	r0, _, _ := syscall.Syscall6(procSetPerTcp6ConnectionEStats.Addr(), 6, uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(offset))
+	r0, _, _ := syscall.SyscallN(procSetPerTcp6ConnectionEStats.Addr(), uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(offset))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
@@ -123,7 +169,7 @@ func setPerTcp6ConnectionEStats(row *MibTcp6Row, estatsType uint32, rw uintptr, 
 }
 
 func setPerTcpConnectionEStats(row *MibTcpRow, estatsType uint32, rw uintptr, rwVersion uint64, rwSize uint64, offset uint64) (errcode error) {
-	r0, _, _ := syscall.Syscall6(procSetPerTcpConnectionEStats.Addr(), 6, uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(offset))
+	r0, _, _ := syscall.SyscallN(procSetPerTcpConnectionEStats.Addr(), uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(offset))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
