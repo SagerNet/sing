@@ -376,7 +376,7 @@ func growSlice[T any](values []T, size int) []T {
 }
 
 func recvmmsg(fd int, msgvec []mmsghdr, flags int) (int, syscall.Errno) {
-	return mmsgSyscall(sysRecvmmsg, fd, msgvec, flags)
+	return mmsgSyscall(unix.SYS_RECVMMSG, fd, msgvec, flags)
 }
 
 func sendmmsg(fd int, msgvec []mmsghdr, flags int) (int, syscall.Errno) {
