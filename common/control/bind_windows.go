@@ -6,6 +6,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -23,12 +24,14 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 		}
 		handle := syscall.Handle(fd)
 		if M.ParseSocksaddr(address).AddrString() == "" {
-			err := bind4(handle, interfaceIndex)
-			if err != nil {
-				return err
+			// IP_UNICAST_IF fails with WSAEINVAL on IPV6_V6ONLY sockets, and IPV6_UNICAST_IF
+			// fails with WSAEADDRNOTAVAIL on AF_INET sockets and when the interface has IPv6
+			// disabled.
+			err4 := bind4(handle, interfaceIndex)
+			err6 := bind6(handle, interfaceIndex)
+			if err4 != nil && err6 != nil {
+				return E.Errors(err4, err6)
 			}
-			// try bind ipv6, if failed, ignore. it's a workaround for windows disable interface ipv6
-			bind6(handle, interfaceIndex)
 			return nil
 		}
 		switch network {
