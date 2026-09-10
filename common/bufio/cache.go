@@ -179,15 +179,12 @@ func NewCachedPacketConn(conn N.PacketConn, buffer *buf.Buffer, destination M.So
 }
 
 func (c *CachedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	if c.buffer != nil {
-		_, err = buffer.ReadOnceFrom(c.buffer)
-		if err != nil {
-			return M.Socksaddr{}, err
-		}
-		c.buffer.DecRef()
-		c.buffer.Release()
-		c.buffer = nil
-		return c.destination, nil
+	packet := c.ReadCachedPacket()
+	if packet != nil {
+		defer packet.Buffer.Release()
+		defer N.PutPacketBuffer(packet)
+		_, err = buffer.Write(packet.Buffer.Bytes())
+		return packet.Destination, err
 	}
 	return c.PacketConn.ReadPacket(buffer)
 }
@@ -198,9 +195,10 @@ func (c *CachedPacketConn) ReadCachedPacket() *N.PacketBuffer {
 	}
 	buffer := c.buffer
 	c.buffer = nil
-	if buffer != nil {
-		buffer.DecRef()
+	if buffer == nil {
+		return nil
 	}
+	buffer.DecRef()
 	packet := N.NewPacketBuffer()
 	*packet = N.PacketBuffer{
 		Buffer:      buffer,
@@ -214,7 +212,7 @@ func (c *CachedPacketConn) Upstream() any {
 }
 
 func (c *CachedPacketConn) ReaderReplaceable() bool {
-	return c.buffer == nil
+	return c.taken.Load()
 }
 
 func (c *CachedPacketConn) WriterReplaceable() bool {
