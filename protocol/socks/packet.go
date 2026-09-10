@@ -94,6 +94,7 @@ func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Sock
 	common.Must(header.WriteZeroN(3))
 	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
 	if err != nil {
+		buffer.Release()
 		return err
 	}
 	return c.conn.WriteBuffer(buffer)

@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/protocol/socks/socks4"
 	"github.com/sagernet/sing/protocol/socks/socks5"
@@ -107,11 +106,7 @@ type LazyAssociatePacketConn struct {
 
 func NewLazyAssociatePacketConn(conn net.Conn, underlying net.Conn) *LazyAssociatePacketConn {
 	return &LazyAssociatePacketConn{
-		AssociatePacketConn: AssociatePacketConn{
-			AbstractConn: conn,
-			conn:         bufio.NewExtendedConn(conn),
-			underlying:   underlying,
-		},
+		AssociatePacketConn: *NewAssociatePacketConn(conn, M.Socksaddr{}, underlying),
 	}
 }
 
