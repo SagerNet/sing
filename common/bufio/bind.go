@@ -61,10 +61,8 @@ func (c *bindPacketConn) Upstream() any {
 }
 
 var (
-	_ N.NetPacketConn                       = (*UnbindPacketConn)(nil)
-	_ N.PacketReadWaitCreator               = (*UnbindPacketConn)(nil)
-	_ N.ConnectedPacketBatchReadWaitCreator = (*UnbindPacketConn)(nil)
-	_ N.ConnectedPacketBatchWriteCreator    = (*UnbindPacketConn)(nil)
+	_ N.NetPacketConn         = (*UnbindPacketConn)(nil)
+	_ N.PacketReadWaitCreator = (*UnbindPacketConn)(nil)
 )
 
 type UnbindPacketConn struct {
@@ -117,14 +115,6 @@ func (c *UnbindPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
 		return nil, false
 	}
 	return &unbindPacketReadWaiter{readWaiter, c.addr}, true
-}
-
-func (c *UnbindPacketConn) CreateConnectedPacketBatchReadWaiter() (N.ConnectedPacketBatchReadWaiter, bool) {
-	return createSyscallConnectedPacketBatchReadWaiter(c.ExtendedConn, c.addr)
-}
-
-func (c *UnbindPacketConn) CreateConnectedPacketBatchWriter() (N.ConnectedPacketBatchWriter, bool) {
-	return createSyscallConnectedPacketBatchWriter(c.ExtendedConn)
 }
 
 func (c *UnbindPacketConn) Upstream() any {

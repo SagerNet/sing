@@ -1,7 +1,6 @@
 package bufio
 
 import (
-	"os"
 	"sync/atomic"
 
 	"github.com/sagernet/sing/common"
@@ -84,10 +83,6 @@ type counterPacketBatchWriter struct {
 }
 
 func (w *counterPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
-	if len(buffers) == 0 || len(buffers) != len(destinations) {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	dataLens := make([]int64, len(buffers))
 	for index, buffer := range buffers {
 		dataLens[index] = int64(buffer.Len())
@@ -120,10 +115,6 @@ type counterConnectedPacketBatchWriter struct {
 }
 
 func (w *counterConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buffer) error {
-	if len(buffers) == 0 {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	dataLens := make([]int64, len(buffers))
 	for index, buffer := range buffers {
 		dataLens[index] = int64(buffer.Len())
