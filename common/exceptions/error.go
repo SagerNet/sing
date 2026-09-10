@@ -51,17 +51,19 @@ func IsClosedOrCanceled(err error) bool {
 	return IsClosed(err) || IsCanceled(err) || IsTimeout(err)
 }
 
+var closedErrors = []error{
+	io.EOF,
+	net.ErrClosed,
+	io.ErrClosedPipe,
+	os.ErrClosed,
+	syscall.EPIPE,
+	syscall.ECONNRESET,
+	syscall.ENOTCONN,
+	http.ErrServerClosed,
+}
+
 func IsClosed(err error) bool {
-	return IsMulti(err,
-		io.EOF,
-		net.ErrClosed,
-		io.ErrClosedPipe,
-		os.ErrClosed,
-		syscall.EPIPE,
-		syscall.ECONNRESET,
-		syscall.ENOTCONN,
-		http.ErrServerClosed,
-	)
+	return IsMulti(err, closedErrors...)
 }
 
 func IsCanceled(err error) bool {
