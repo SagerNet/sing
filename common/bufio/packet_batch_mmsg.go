@@ -71,6 +71,7 @@ func createSyscallConnectedPacketBatchReadWaiter(reader any, destination M.Socks
 }
 
 func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	w.releaseBuffers()
 	if options.BatchSize <= 0 {
 		options.BatchSize = DefaultPacketReadBatchSize
 	}
@@ -108,9 +109,11 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 			case syscall.EINTR:
 				continue
 			case syscall.EAGAIN:
+				w.releaseBuffers()
 				return false
 			default:
 				if errno == syscall.EWOULDBLOCK {
+					w.releaseBuffers()
 					return false
 				}
 				w.readErr = os.NewSyscallError("recvmmsg", errno)
@@ -134,12 +137,7 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 }
 
 func (w *syscallPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
-	if w.connected {
-		return nil, nil, os.ErrInvalid
-	}
-	if w.readFunc == nil {
-		return nil, nil, os.ErrInvalid
-	}
+	defer w.releaseBuffers()
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
 		return
@@ -162,12 +160,7 @@ func (w *syscallPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer,
 }
 
 func (w *syscallPacketBatchReadWaiter) WaitReadConnectedPackets() (buffers []*buf.Buffer, destination M.Socksaddr, err error) {
-	if !w.connected {
-		return nil, M.Socksaddr{}, os.ErrInvalid
-	}
-	if w.readFunc == nil {
-		return nil, M.Socksaddr{}, os.ErrInvalid
-	}
+	defer w.releaseBuffers()
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
 		return
@@ -194,9 +187,9 @@ var (
 )
 
 type syscallPacketBatchWriter struct {
+	offload   syscallPacketBatchOffload
 	upstream  any
 	rawConn   syscall.RawConn
-	connected bool
 	access    sync.Mutex
 	localAddr netip.AddrPort
 	names     []unix.RawSockaddrAny
@@ -223,20 +216,13 @@ func createSyscallConnectedPacketBatchWriter(writer any) (N.ConnectedPacketBatch
 	if _, isConnected := syscallPacketBatchPeerDestination(rawConn); !isConnected {
 		return nil, false
 	}
-	return &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn, connected: true}, true
+	return &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}, true
 }
 
 func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
-	if w.connected {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	if len(buffers) == 0 || len(buffers) != len(destinations) {
-		return os.ErrInvalid
-	}
 	if !w.localAddr.IsValid() {
 		err := control.Raw(w.rawConn, func(fd uintptr) error {
 			name, err := unix.Getsockname(int(fd))
@@ -254,6 +240,7 @@ func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, desti
 	iovecs := growSlice(w.iovecs, len(buffers))
 	msgvec := growSlice(w.msgvec, len(buffers))
 	defer func() {
+		w.offload.reset()
 		clear(iovecs)
 		clear(msgvec)
 		w.names = names[:0]
@@ -276,7 +263,7 @@ func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, desti
 	var innerErr syscall.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		for len(writeMsgvec) > 0 {
-			n, errno := sendmmsg(int(fd), writeMsgvec, 0)
+			n, errno := w.offload.send(int(fd), writeMsgvec, 0)
 			switch errno {
 			case 0:
 			case syscall.EINTR:
@@ -305,19 +292,13 @@ func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, desti
 }
 
 func (w *syscallPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buffer) error {
-	if !w.connected {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	if len(buffers) == 0 {
-		return os.ErrInvalid
-	}
 	iovecs := growSlice(w.iovecs, len(buffers))
 	msgvec := growSlice(w.msgvec, len(buffers))
 	defer func() {
+		w.offload.reset()
 		clear(iovecs)
 		clear(msgvec)
 		w.iovecs = iovecs[:0]
@@ -336,7 +317,7 @@ func (w *syscallPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buff
 	var innerErr syscall.Errno
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		for len(writeMsgvec) > 0 {
-			n, errno := sendmmsg(int(fd), writeMsgvec, 0)
+			n, errno := w.offload.send(int(fd), writeMsgvec, 0)
 			switch errno {
 			case 0:
 			case syscall.EINTR:
