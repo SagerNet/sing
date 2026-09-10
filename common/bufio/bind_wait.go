@@ -57,6 +57,6 @@ func (w *serverPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error
 	if err != nil {
 		return
 	}
-	w.remoteAddr = destination
+	w.updateRemoteAddr(destination)
 	return
 }

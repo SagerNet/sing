@@ -5,6 +5,8 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -294,6 +296,110 @@ func TestConnectedPacketBatchUDP(t *testing.T) {
 			}
 			require.Equal(t, [][]byte{[]byte("a"), []byte("bc")}, payloads)
 		})
+	}
+}
+
+func TestPacketBatchUDPMultipleDestinations(t *testing.T) {
+	t.Parallel()
+	for _, network := range []string{"udp4", "udp6"} {
+		t.Run(network, func(t *testing.T) {
+			t.Parallel()
+			input := listenPacketBatchUDP(t, network)
+			outputA := listenPacketBatchUDP(t, network)
+			outputB := listenPacketBatchUDP(t, network)
+			writer, created := CreatePacketBatchWriter(NewPacketConn(input))
+			requirePacketBatchWriteBackend(t, created)
+			addressA := M.SocksaddrFromNet(outputA.LocalAddr()).Unwrap()
+			addressB := M.SocksaddrFromNet(outputB.LocalAddr()).Unwrap()
+			for range 2 {
+				require.NoError(t, writer.WritePacketBatch(testBuffers("a", "", "bc"), []M.Socksaddr{addressA, addressB, addressA}))
+				for _, payload := range []string{"a", "bc"} {
+					packet := make([]byte, 10)
+					n, _, err := outputA.ReadFromUDP(packet)
+					require.NoError(t, err)
+					require.Equal(t, payload, string(packet[:n]))
+				}
+				n, _, err := outputB.ReadFromUDP(make([]byte, 10))
+				require.NoError(t, err)
+				require.Zero(t, n)
+			}
+		})
+	}
+}
+
+func TestPacketBatchUDPWriteErrors(t *testing.T) {
+	t.Parallel()
+	for _, connected := range []bool{false, true} {
+		t.Run(strconv.FormatBool(connected), func(t *testing.T) {
+			t.Parallel()
+			server := listenPacketBatchUDP(t, "udp4")
+			var conn *net.UDPConn
+			var write func([]*buf.Buffer) error
+			if connected {
+				var err error
+				conn, err = net.DialUDP("udp4", nil, server.LocalAddr().(*net.UDPAddr))
+				require.NoError(t, err)
+				t.Cleanup(func() { conn.Close() })
+				writer, created := CreateConnectedPacketBatchWriter(NewUnbindPacketConn(conn))
+				requirePacketBatchWriteBackend(t, created)
+				write = writer.WriteConnectedPacketBatch
+			} else {
+				conn = listenPacketBatchUDP(t, "udp4")
+				writer, created := CreatePacketBatchWriter(NewPacketConn(conn))
+				requirePacketBatchWriteBackend(t, created)
+				write = func(buffers []*buf.Buffer) error {
+					destinations := make([]M.Socksaddr, len(buffers))
+					for index := range destinations {
+						destinations[index] = M.SocksaddrFromNet(server.LocalAddr()).Unwrap()
+					}
+					return writer.WritePacketBatch(buffers, destinations)
+				}
+			}
+			require.NoError(t, write(testBuffers("", "a", "", "bc", "")))
+			for _, payload := range []string{"", "a", "", "bc", ""} {
+				packet := make([]byte, 10)
+				n, _, err := server.ReadFromUDP(packet)
+				require.NoError(t, err)
+				require.Equal(t, payload, string(packet[:n]))
+			}
+			require.NoError(t, conn.SetWriteDeadline(time.Now().Add(-time.Second)))
+			buffers := testBuffers("deadline", "unsent")
+			require.ErrorIs(t, write(buffers), os.ErrDeadlineExceeded)
+			for _, buffer := range buffers {
+				require.Zero(t, buffer.Cap())
+			}
+			require.NoError(t, conn.SetWriteDeadline(time.Time{}))
+			require.NoError(t, conn.Close())
+			buffers = testBuffers("closed", "unsent")
+			require.ErrorIs(t, write(buffers), net.ErrClosed)
+			for _, buffer := range buffers {
+				require.Zero(t, buffer.Cap())
+			}
+		})
+	}
+}
+
+func listenPacketBatchUDP(t *testing.T, network string) *net.UDPConn {
+	t.Helper()
+	ip := net.ParseIP("127.0.0.1")
+	if network == "udp6" {
+		ip = net.ParseIP("::1")
+	}
+	conn, err := net.ListenUDP(network, &net.UDPAddr{IP: ip})
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+	require.NoError(t, conn.SetDeadline(time.Now().Add(3*time.Second)))
+	return conn
+}
+
+func requirePacketBatchWriteBackend(t *testing.T, created bool) {
+	t.Helper()
+	switch runtime.GOOS {
+	case "linux", "darwin", "netbsd", "android", "ios":
+		require.True(t, created)
+	default:
+		require.False(t, created)
+		t.Skip("packet batch backend is not available")
 	}
 }
 

@@ -14,37 +14,32 @@ import (
 )
 
 func syscallPacketBatchRawConnForRead(reader any) syscall.RawConn {
+	var rawConn syscall.RawConn
 	if syscallConn, isSyscallConn := reader.(syscall.Conn); isSyscallConn {
-		rawConn, err := syscallConn.SyscallConn()
-		if err == nil {
-			return rawConn
+		rawConn, _ = syscallConn.SyscallConn()
+	}
+	if rawConn == nil {
+		if ioReader, isReader := reader.(io.Reader); isReader {
+			_, rawConn = N.SyscallConnForRead(ioReader)
 		}
 	}
-	if ioReader, isReader := reader.(io.Reader); isReader {
-		_, rawConn := N.SyscallConnForRead(ioReader)
-		return rawConn
-	}
-	return nil
+	return rawConn
 }
 
 func syscallPacketBatchRawConnForWrite(writer any) syscall.RawConn {
+	var rawConn syscall.RawConn
 	if syscallConn, isSyscallConn := writer.(syscall.Conn); isSyscallConn {
-		rawConn, err := syscallConn.SyscallConn()
-		if err == nil {
-			return rawConn
+		rawConn, _ = syscallConn.SyscallConn()
+	}
+	if rawConn == nil {
+		if ioWriter, isWriter := writer.(io.Writer); isWriter {
+			_, rawConn = N.SyscallConnForWrite(ioWriter)
 		}
 	}
-	if ioWriter, isWriter := writer.(io.Writer); isWriter {
-		_, rawConn := N.SyscallConnForWrite(ioWriter)
-		return rawConn
-	}
-	return nil
+	return rawConn
 }
 
 func syscallPacketBatchPeerDestination(rawConn syscall.RawConn) (M.Socksaddr, bool) {
-	if rawConn == nil {
-		return M.Socksaddr{}, false
-	}
 	var destination M.Socksaddr
 	err := control.Raw(rawConn, func(fd uintptr) error {
 		peer, err := unix.Getpeername(int(fd))

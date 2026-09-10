@@ -258,10 +258,18 @@ func HandleConnectionEx(
 			if udpTimeout > 0 {
 				udpConn.SetReadDeadline(time.Now().Add(udpTimeout))
 			}
-			firstPacket := buf.NewPacket()
+			var firstPacket *buf.Buffer
 			var destination M.Socksaddr
-			destination, err = socksPacketConn.ReadPacket(firstPacket)
+			readWaiter, hasReadWaiter := bufio.CreatePacketReadWaiter(socksPacketConn)
+			if hasReadWaiter {
+				readWaiter.InitializeReadWaiter(N.ReadWaitOptions{})
+				firstPacket, destination, err = readWaiter.WaitReadPacket()
+			} else {
+				firstPacket = buf.NewPacket()
+				destination, err = socksPacketConn.ReadPacket(firstPacket)
+			}
 			if err != nil {
+				firstPacket.Release()
 				_ = socksPacketConn.Close()
 				return E.Cause(err, "socks5: read first packet")
 			}
