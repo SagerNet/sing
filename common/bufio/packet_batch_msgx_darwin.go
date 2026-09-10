@@ -75,6 +75,7 @@ func createSyscallConnectedPacketBatchReadWaiter(reader any, destination M.Socks
 }
 
 func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	w.releaseBuffers()
 	if options.BatchSize <= 0 {
 		options.BatchSize = DefaultPacketReadBatchSize
 	}
@@ -113,9 +114,11 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 			case syscall.EINTR:
 				continue
 			case syscall.EAGAIN:
+				w.releaseBuffers()
 				return false
 			default:
 				if errno == syscall.EWOULDBLOCK {
+					w.releaseBuffers()
 					return false
 				}
 				w.readErr = os.NewSyscallError("recvmsg_x", errno)
@@ -139,12 +142,7 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 }
 
 func (w *syscallPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
-	if w.connected {
-		return nil, nil, os.ErrInvalid
-	}
-	if w.readFunc == nil {
-		return nil, nil, os.ErrInvalid
-	}
+	defer w.releaseBuffers()
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
 		return
@@ -167,12 +165,7 @@ func (w *syscallPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer,
 }
 
 func (w *syscallPacketBatchReadWaiter) WaitReadConnectedPackets() (buffers []*buf.Buffer, destination M.Socksaddr, err error) {
-	if !w.connected {
-		return nil, M.Socksaddr{}, os.ErrInvalid
-	}
-	if w.readFunc == nil {
-		return nil, M.Socksaddr{}, os.ErrInvalid
-	}
+	defer w.releaseBuffers()
 	err = w.rawConn.Read(w.readFunc)
 	if err != nil {
 		return
@@ -203,10 +196,6 @@ type syscallConnectedPacketBatchWriter struct {
 	msgvec   []msghdrX
 }
 
-func createSyscallPacketBatchWriter(writer any) (N.PacketBatchWriter, bool) {
-	return nil, false
-}
-
 func createSyscallConnectedPacketBatchWriter(writer any) (N.ConnectedPacketBatchWriter, bool) {
 	rawConn := syscallPacketBatchRawConnForWrite(writer)
 	if rawConn == nil {
@@ -222,9 +211,6 @@ func (w *syscallConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []
 	w.access.Lock()
 	defer w.access.Unlock()
 	defer buf.ReleaseMulti(buffers)
-	if len(buffers) == 0 {
-		return os.ErrInvalid
-	}
 	iovecs := growSlice(w.iovecs, len(buffers))
 	msgvec := growSlice(w.msgvec, len(buffers))
 	defer func() {
@@ -245,10 +231,28 @@ func (w *syscallConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []
 	writeMsgvec := msgvec
 	maxBatchSize := len(writeMsgvec)
 	var innerErr syscall.Errno
+	var innerErrName string
 	err := w.rawConn.Write(func(fd uintptr) (done bool) {
 		for len(writeMsgvec) > 0 {
 			batchSize := min(maxBatchSize, len(writeMsgvec))
-			n, errno := sendmsgX(int(fd), writeMsgvec[:batchSize], 0)
+			// The connected sendmsg_x path cannot send empty datagrams. Send
+			// those with sendto, batching the nonempty runs without reordering.
+			for index, message := range writeMsgvec[:batchSize] {
+				if message.iovlen == 0 {
+					batchSize = index
+					break
+				}
+			}
+			var n int
+			var errno syscall.Errno
+			syscallName := "sendmsg_x"
+			if batchSize == 0 {
+				syscallName = "sendto"
+				errno = sendto(int(fd), nil, nil, 0)
+				n = 1
+			} else {
+				n, errno = sendmsgX(int(fd), writeMsgvec[:batchSize], 0)
+			}
 			switch {
 			case errno == 0:
 			case errno == syscall.EINTR:
@@ -260,10 +264,12 @@ func (w *syscallConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []
 				return false
 			default:
 				innerErr = errno
+				innerErrName = syscallName
 				return true
 			}
 			if n == 0 {
 				innerErr = syscall.EIO
+				innerErrName = syscallName
 				return true
 			}
 			writeMsgvec = writeMsgvec[n:]
@@ -271,7 +277,7 @@ func (w *syscallConnectedPacketBatchWriter) WriteConnectedPacketBatch(buffers []
 		return true
 	})
 	if innerErr != 0 {
-		err = os.NewSyscallError("sendmsg_x", innerErr)
+		err = os.NewSyscallError(innerErrName, innerErr)
 	}
 	return err
 }
