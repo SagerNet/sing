@@ -3,7 +3,6 @@ package bufio
 import (
 	"net"
 	"net/netip"
-	"os"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -86,10 +85,6 @@ type unidirectionalNATPacketBatchWriter struct {
 }
 
 func (w *unidirectionalNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
-	if len(buffers) == 0 || len(buffers) != len(destinations) {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	for index, destination := range destinations {
 		if socksaddrWithoutPort(destination) == w.destination {
 			destinations[index] = M.Socksaddr{
@@ -193,10 +188,6 @@ type bidirectionalNATPacketBatchWriter struct {
 }
 
 func (w *bidirectionalNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
-	if len(buffers) == 0 || len(buffers) != len(destinations) {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	for index, destination := range destinations {
 		if socksaddrWithoutPort(destination) == w.destination {
 			destinations[index] = M.Socksaddr{
@@ -281,10 +272,6 @@ type destinationNATPacketBatchWriter struct {
 }
 
 func (w *destinationNATPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
-	if len(buffers) == 0 || len(buffers) != len(destinations) {
-		buf.ReleaseMulti(buffers)
-		return os.ErrInvalid
-	}
 	for index, destination := range destinations {
 		if destination == w.destination {
 			destinations[index] = w.origin

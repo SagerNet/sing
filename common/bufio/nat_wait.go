@@ -6,7 +6,15 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-func (c *bidirectionalNATPacketConn) CreatePacketReadWaiter() (N.PacketReadWaiter, bool) {
+func (c *unidirectionalNATPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
+	return CreatePacketReadWaiter(c.NetPacketConn)
+}
+
+func (c *unidirectionalNATPacketConn) CreatePacketBatchReadWaiter() (N.PacketBatchReadWaiter, bool) {
+	return CreatePacketBatchReadWaiter(c.NetPacketConn)
+}
+
+func (c *bidirectionalNATPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
 	waiter, created := CreatePacketReadWaiter(c.NetPacketConn)
 	if !created {
 		return nil, false
@@ -20,6 +28,22 @@ func (c *bidirectionalNATPacketConn) CreatePacketBatchReadWaiter() (N.PacketBatc
 		return nil, false
 	}
 	return &batchWaitBidirectionalNATPacketConn{c, waiter}, true
+}
+
+func (c *destinationNATPacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
+	waiter, created := CreatePacketReadWaiter(c.NetPacketConn)
+	if !created {
+		return nil, false
+	}
+	return &waitDestinationNATPacketConn{c, waiter}, true
+}
+
+func (c *destinationNATPacketConn) CreatePacketBatchReadWaiter() (N.PacketBatchReadWaiter, bool) {
+	waiter, created := CreatePacketBatchReadWaiter(c.NetPacketConn)
+	if !created {
+		return nil, false
+	}
+	return &batchWaitDestinationNATPacketConn{c, waiter}, true
 }
 
 func (c *unidirectionalNATPacketConn) CreateConnectedPacketBatchReadWaiter() (N.ConnectedPacketBatchReadWaiter, bool) {
@@ -61,6 +85,48 @@ func (c *waitBidirectionalNATPacketConn) WaitReadPacket() (buffer *buf.Buffer, d
 			Addr: c.destination.Addr,
 			Fqdn: c.destination.Fqdn,
 			Port: destination.Port,
+		}
+	}
+	return
+}
+
+type waitDestinationNATPacketConn struct {
+	*destinationNATPacketConn
+	readWaiter N.PacketReadWaiter
+}
+
+func (c *waitDestinationNATPacketConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return c.readWaiter.InitializeReadWaiter(options)
+}
+
+func (c *waitDestinationNATPacketConn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, err error) {
+	buffer, destination, err = c.readWaiter.WaitReadPacket()
+	if err != nil {
+		return
+	}
+	if destination == c.origin {
+		destination = c.destination
+	}
+	return
+}
+
+type batchWaitDestinationNATPacketConn struct {
+	*destinationNATPacketConn
+	readWaiter N.PacketBatchReadWaiter
+}
+
+func (c *batchWaitDestinationNATPacketConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
+	return c.readWaiter.InitializeReadWaiter(options)
+}
+
+func (c *batchWaitDestinationNATPacketConn) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
+	buffers, destinations, err = c.readWaiter.WaitReadPackets()
+	if err != nil {
+		return
+	}
+	for index, destination := range destinations {
+		if destination == c.origin {
+			destinations[index] = c.destination
 		}
 	}
 	return

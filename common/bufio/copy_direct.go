@@ -3,7 +3,6 @@ package bufio
 import (
 	"errors"
 	"io"
-	"os"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -149,10 +148,6 @@ func copyPacketBatchWaitWithPool(session *packetCopySession, destinationConn N.P
 			}
 			return handled, n, err
 		}
-		if len(buffers) == 0 || len(buffers) != len(destinations) {
-			buf.ReleaseMulti(buffers)
-			return handled, n, os.ErrInvalid
-		}
 		dataLens := make([]int, len(buffers))
 		for index, buffer := range buffers {
 			dataLens[index] = buffer.Len()
@@ -180,20 +175,13 @@ func copyPacketBatchWaitWithPool(session *packetCopySession, destinationConn N.P
 func copyPacketBatchToConnectedWaitWithPool(session *packetCopySession, destinationConn N.ConnectedPacketBatchWriter, source N.PacketBatchReadWaiter, notFirstTime bool) (handled bool, n int64, err error) {
 	handled = true
 	for {
-		var (
-			buffers      []*buf.Buffer
-			destinations []M.Socksaddr
-		)
-		buffers, destinations, err = source.WaitReadPackets()
+		var buffers []*buf.Buffer
+		buffers, _, err = source.WaitReadPackets()
 		if err != nil {
 			if errors.Is(err, errMessageTooLong) {
 				continue
 			}
 			return handled, n, err
-		}
-		if len(buffers) == 0 || len(buffers) != len(destinations) {
-			buf.ReleaseMulti(buffers)
-			return handled, n, os.ErrInvalid
 		}
 		dataLens := make([]int, len(buffers))
 		for index, buffer := range buffers {
@@ -233,10 +221,6 @@ func copyConnectedPacketBatchWaitWithPool(session *packetCopySession, destinatio
 			}
 			return handled, n, err
 		}
-		if len(buffers) == 0 {
-			buf.ReleaseMulti(buffers)
-			return handled, n, os.ErrInvalid
-		}
 		destinations := make([]M.Socksaddr, len(buffers))
 		dataLens := make([]int, len(buffers))
 		for index, buffer := range buffers {
@@ -273,10 +257,6 @@ func copyConnectedPacketBatchToConnectedWaitWithPool(session *packetCopySession,
 				continue
 			}
 			return handled, n, err
-		}
-		if len(buffers) == 0 {
-			buf.ReleaseMulti(buffers)
-			return handled, n, os.ErrInvalid
 		}
 		dataLens := make([]int, len(buffers))
 		for index, buffer := range buffers {
