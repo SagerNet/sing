@@ -2,6 +2,5 @@
 
 package control
 
-func setSocketBuffer(fd uintptr, size int) error {
-	return nil
+func setSocketBuffer(fd uintptr, size int) {
 }
