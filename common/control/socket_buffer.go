@@ -12,7 +12,8 @@ func UDPSocketBuffer(size int) Func {
 			return nil
 		}
 		return Raw(conn, func(fd uintptr) error {
-			return setSocketBuffer(fd, size)
+			setSocketBuffer(fd, size)
+			return nil
 		})
 	}
 }
