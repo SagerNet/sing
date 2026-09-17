@@ -50,7 +50,7 @@ func availableNative() uint64 {
 	if ok {
 		return available
 	}
-	return procMemAvailable()
+	return procMeminfo("MemAvailable:")
 }
 
 func availableAvailable() bool {
@@ -66,24 +66,41 @@ func availableAvailable() bool {
 	return true
 }
 
-func cgroupAvailable() (uint64, bool) {
-	max, err := readCgroupUint("/sys/fs/cgroup/memory.max")
-	if err == nil && max != math.MaxUint64 {
-		current, err := readCgroupUint("/sys/fs/cgroup/memory.current")
-		if err == nil && max > current {
-			return max - current, true
-		}
-		return 0, true
+func limitNative() uint64 {
+	total := procMeminfo("MemTotal:")
+	limit, _, found := cgroupLimit()
+	if found && (total == 0 || limit < total) {
+		return limit
 	}
-	limit, err := readCgroupUint("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+	return total
+}
+
+func limitAvailable() bool {
+	return limitNative() != 0
+}
+
+func cgroupLimit() (uint64, string, bool) {
+	limit, err := readCgroupUint("/sys/fs/cgroup/memory.max")
 	if err == nil && limit != math.MaxUint64 {
-		usage, err := readCgroupUint("/sys/fs/cgroup/memory/memory.usage_in_bytes")
-		if err == nil && limit > usage {
-			return limit - usage, true
-		}
-		return 0, true
+		return limit, "/sys/fs/cgroup/memory.current", true
 	}
-	return 0, false
+	limit, err = readCgroupUint("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+	if err == nil && limit != math.MaxUint64 {
+		return limit, "/sys/fs/cgroup/memory/memory.usage_in_bytes", true
+	}
+	return 0, "", false
+}
+
+func cgroupAvailable() (uint64, bool) {
+	limit, usagePath, found := cgroupLimit()
+	if !found {
+		return 0, false
+	}
+	usage, err := readCgroupUint(usagePath)
+	if err == nil && limit > usage {
+		return limit - usage, true
+	}
+	return 0, true
 }
 
 func readCgroupUint(path string) (uint64, error) {
@@ -98,7 +115,7 @@ func readCgroupUint(path string) (uint64, error) {
 	return strconv.ParseUint(text, 10, 64)
 }
 
-func procMemAvailable() uint64 {
+func procMeminfo(field string) uint64 {
 	file, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return 0
@@ -107,16 +124,18 @@ func procMemAvailable() uint64 {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "MemAvailable:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				value, err := strconv.ParseUint(fields[1], 10, 64)
-				if err == nil {
-					return value * 1024
-				}
-			}
-			break
+		if !strings.HasPrefix(line, field) {
+			continue
 		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			return 0
+		}
+		value, parseErr := strconv.ParseUint(fields[1], 10, 64)
+		if parseErr != nil {
+			return 0
+		}
+		return value * 1024
 	}
 	return 0
 }
