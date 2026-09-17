@@ -5,6 +5,7 @@ package winiphlpapi_test
 import (
 	"context"
 	"net"
+	"net/netip"
 	"syscall"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestFindPidTcp4(t *testing.T) {
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
-	pid, err := winiphlpapi.FindPid(N.NetworkTCP, M.AddrPortFromNet(conn.LocalAddr()))
+	pid, err := winiphlpapi.FindPid(N.NetworkTCP, M.AddrPortFromNet(conn.LocalAddr()), netip.AddrPort{})
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
 }
@@ -38,7 +39,7 @@ func TestFindPidTcp6(t *testing.T) {
 	conn, err := net.Dial("tcp", listener.Addr().String())
 	require.NoError(t, err)
 	defer conn.Close()
-	pid, err := winiphlpapi.FindPid(N.NetworkTCP, M.AddrPortFromNet(conn.LocalAddr()))
+	pid, err := winiphlpapi.FindPid(N.NetworkTCP, M.AddrPortFromNet(conn.LocalAddr()), netip.AddrPort{})
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
 }
@@ -49,7 +50,7 @@ func TestFindPidUdp4(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 	conn.Write([]byte("test"))
-	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()))
+	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()), netip.AddrPort{})
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
 }
@@ -60,7 +61,7 @@ func TestFindPidUdp6(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 	conn.Write([]byte("test"))
-	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()))
+	pid, err := winiphlpapi.FindPid(N.NetworkUDP, M.AddrPortFromNet(conn.LocalAddr()), netip.AddrPort{})
 	require.NoError(t, err)
 	require.Equal(t, uint32(syscall.Getpid()), pid)
 }
