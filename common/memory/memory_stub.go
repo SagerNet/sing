@@ -10,6 +10,14 @@ func totalAvailable() bool {
 	return false
 }
 
+func limitNative() uint64 {
+	return 0
+}
+
+func limitAvailable() bool {
+	return false
+}
+
 func availableNative() uint64 {
 	return 0
 }
