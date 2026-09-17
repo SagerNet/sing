@@ -18,6 +18,14 @@ func AvailableAvailable() bool {
 	return availableAvailable()
 }
 
+func Limit() uint64 {
+	return limitNative()
+}
+
+func LimitAvailable() bool {
+	return limitAvailable()
+}
+
 func Inuse() uint64 {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

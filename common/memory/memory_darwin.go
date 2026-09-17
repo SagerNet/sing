@@ -30,7 +30,12 @@ package memory
 //     return fn != NULL;
 // }
 import "C"
-import "unsafe"
+
+import (
+	"unsafe"
+
+	"golang.org/x/sys/unix"
+)
 
 func totalNative() uint64 {
 	var vmInfo C.task_vm_info_data_t
@@ -42,6 +47,18 @@ func totalNative() uint64 {
 }
 
 func totalAvailable() bool {
+	return true
+}
+
+func limitNative() uint64 {
+	size, err := unix.SysctlUint64("hw.memsize")
+	if err != nil {
+		return 0
+	}
+	return size
+}
+
+func limitAvailable() bool {
 	return true
 }
 
