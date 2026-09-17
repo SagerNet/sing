@@ -84,7 +84,11 @@ func LoadExtendedTable() error {
 		return err
 	}
 	// GetOwnerModuleFrom*Entry resolves service tags through advapi32 without loading it and fails with ERROR_MOD_NOT_FOUND until the process has.
-	return procI_QueryTagInformation.Find()
+	err = procI_QueryTagInformation.Find()
+	if err != nil {
+		return err
+	}
+	return procNsiGetParameter.Find()
 }
 
 type SocketOwner struct {
@@ -92,15 +96,44 @@ type SocketOwner struct {
 	ServiceName string
 }
 
-func FindPid(network string, source netip.AddrPort) (uint32, error) {
-	owner, err := FindSocketOwner(network, source)
+func FindPid(network string, source netip.AddrPort, destination netip.AddrPort) (uint32, error) {
+	owner, err := FindSocketOwner(network, source, destination)
 	if err != nil {
 		return 0, err
 	}
 	return owner.Pid, nil
 }
 
-func FindSocketOwner(network string, source netip.AddrPort) (SocketOwner, error) {
+func FindSocketOwner(network string, source netip.AddrPort, destination netip.AddrPort) (SocketOwner, error) {
+	if N.NetworkName(network) == N.NetworkTCP && destination.IsValid() {
+		owner, found := findTCPSocketOwnerKeyed(source, destination)
+		if found {
+			return owner, nil
+		}
+	}
+	return findSocketOwnerInTable(network, source)
+}
+
+func findTCPSocketOwnerKeyed(source netip.AddrPort, destination netip.AddrPort) (SocketOwner, bool) {
+	connection, err := nsiGetTCPConnection(source, destination)
+	if err != nil {
+		return SocketOwner{}, false
+	}
+	if source.Addr().Is4() {
+		row := MibTcpRowOwnerModule{DwOwningPid: connection.OwningPid}
+		row.OwningModuleInfo[0] = connection.OwningModuleInfo
+		return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+			return GetOwnerModuleFromTcpEntry(&row)
+		}), true
+	}
+	row := MibTcp6RowOwnerModule{DwOwningPid: connection.OwningPid}
+	row.OwningModuleInfo[0] = connection.OwningModuleInfo
+	return socketOwner(row.DwOwningPid, row.OwningModuleInfo[0], func() (*TcpipOwnerModuleBasicInfo, error) {
+		return GetOwnerModuleFromTcp6Entry(&row)
+	}), true
+}
+
+func findSocketOwnerInTable(network string, source netip.AddrPort) (SocketOwner, error) {
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		if source.Addr().Is4() {
