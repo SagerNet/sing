@@ -39,3 +39,6 @@ package winiphlpapi
 //sys getOwnerModuleFromUdp6Entry(pUdpEntry *MibUdp6RowOwnerModule, class uint32, pBuffer *byte, pdwSize *uint32) (errcode error) = iphlpapi.GetOwnerModuleFromUdp6Entry
 
 //sys queryTagInformation(machineName *uint16, infoLevel uint32, tagInfo unsafe.Pointer) (errcode error) = advapi32.I_QueryTagInformation
+
+// Undocumented; signature from Wine dlls/nsi/nsi.c
+//sys nsiGetParameter(store uint32, module *npiModuleID, table uint32, key *byte, keySize uint32, parameterType uint32, data unsafe.Pointer, dataSize uint32, dataOffset uint32) (errcode error) = nsi.NsiGetParameter
