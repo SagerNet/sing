@@ -40,6 +40,7 @@ func errnoErr(e syscall.Errno) error {
 var (
 	modadvapi32 = windows.NewLazySystemDLL("advapi32.dll")
 	modiphlpapi = windows.NewLazySystemDLL("iphlpapi.dll")
+	modnsi      = windows.NewLazySystemDLL("nsi.dll")
 
 	procI_QueryTagInformation       = modadvapi32.NewProc("I_QueryTagInformation")
 	procGetExtendedTcpTable         = modiphlpapi.NewProc("GetExtendedTcpTable")
@@ -54,6 +55,7 @@ var (
 	procGetTcpTable                 = modiphlpapi.NewProc("GetTcpTable")
 	procSetPerTcp6ConnectionEStats  = modiphlpapi.NewProc("SetPerTcp6ConnectionEStats")
 	procSetPerTcpConnectionEStats   = modiphlpapi.NewProc("SetPerTcpConnectionEStats")
+	procNsiGetParameter             = modnsi.NewProc("NsiGetParameter")
 )
 
 func queryTagInformation(machineName *uint16, infoLevel uint32, tagInfo unsafe.Pointer) (errcode error) {
@@ -170,6 +172,14 @@ func setPerTcp6ConnectionEStats(row *MibTcp6Row, estatsType uint32, rw uintptr, 
 
 func setPerTcpConnectionEStats(row *MibTcpRow, estatsType uint32, rw uintptr, rwVersion uint64, rwSize uint64, offset uint64) (errcode error) {
 	r0, _, _ := syscall.SyscallN(procSetPerTcpConnectionEStats.Addr(), uintptr(unsafe.Pointer(row)), uintptr(estatsType), uintptr(rw), uintptr(rwVersion), uintptr(rwSize), uintptr(offset))
+	if r0 != 0 {
+		errcode = syscall.Errno(r0)
+	}
+	return
+}
+
+func nsiGetParameter(store uint32, module *npiModuleID, table uint32, key *byte, keySize uint32, parameterType uint32, data unsafe.Pointer, dataSize uint32, dataOffset uint32) (errcode error) {
+	r0, _, _ := syscall.SyscallN(procNsiGetParameter.Addr(), uintptr(store), uintptr(unsafe.Pointer(module)), uintptr(table), uintptr(unsafe.Pointer(key)), uintptr(keySize), uintptr(parameterType), uintptr(data), uintptr(dataSize), uintptr(dataOffset))
 	if r0 != 0 {
 		errcode = syscall.Errno(r0)
 	}
