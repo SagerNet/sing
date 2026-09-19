@@ -17,6 +17,18 @@ func Contains(err error, msgList ...string) bool {
 	return false
 }
 
+// x/net http2 (clientConnReadLoop.run, serverConn.processFrameFromReader) and grpc-go
+// (http2Client.reader, http2Server.HandleStreams) type-assert err.(http2.StreamError) on every
+// error their Framer returns and keep reading instead of closing the connection, so an HTTP/2
+// stream error leaking through an inner tunnel's Read spins the outer reader forever.
+type protocolError struct {
+	error
+}
+
+func (e *protocolError) Unwrap() error {
+	return e.error
+}
+
 func WrapH2(err error) error {
 	if err == nil {
 		return nil
@@ -26,6 +38,9 @@ func WrapH2(err error) error {
 	}
 	if Contains(err, "client disconnected", "body closed by handler", "response body closed", "; CANCEL") {
 		return net.ErrClosed
+	}
+	if Contains(err, "stream error:", "connection error:", "http2: server sent GOAWAY") {
+		return &protocolError{err}
 	}
 	return err
 }
