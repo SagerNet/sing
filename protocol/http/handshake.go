@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
@@ -155,6 +156,12 @@ func handleHTTPConnection(
 		return responseWith(request, http.StatusBadRequest).Write(conn)
 	}
 
+	var body *requestBody
+	if request.Body != http.NoBody {
+		body = &requestBody{body: request.Body}
+		request.Body = body
+	}
+
 	var innerErr common.TypedValue[error]
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -198,10 +205,50 @@ func handleHTTPConnection(
 	}
 
 	cancel()
+	if keepAlive && body != nil {
+		var drained bool
+		drained, err = body.discard()
+		if err != nil {
+			return E.Cause(err, "http: discard request body")
+		}
+		keepAlive = drained
+	}
 	if !keepAlive {
 		return conn.Close()
 	}
 	return nil
+}
+
+const maxDiscardRequestBody = 256 << 10
+
+type requestBody struct {
+	access sync.Mutex
+	body   io.ReadCloser
+	closed bool
+}
+
+func (b *requestBody) Read(p []byte) (int, error) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	if b.closed {
+		return 0, http.ErrBodyReadAfterClose
+	}
+	return b.body.Read(p)
+}
+
+func (b *requestBody) Close() error {
+	return nil
+}
+
+func (b *requestBody) discard() (bool, error) {
+	b.access.Lock()
+	defer b.access.Unlock()
+	b.closed = true
+	_, err := io.CopyN(io.Discard, b.body, maxDiscardRequestBody)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
 }
 
 func removeHopByHopHeaders(header http.Header) {
