@@ -36,7 +36,14 @@ func WrapH2(err error) error {
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return io.EOF
 	}
-	if Contains(err, "client disconnected", "body closed by handler", "response body closed", "; CANCEL") {
+	if Contains(
+		err,
+		"client disconnected",
+		"body closed by handler",
+		"response body closed",
+		"; CANCEL",
+		"; NO_ERROR",
+	) {
 		return net.ErrClosed
 	}
 	if Contains(err, "stream error:", "connection error:", "http2: server sent GOAWAY") {
