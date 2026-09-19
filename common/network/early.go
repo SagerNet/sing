@@ -38,11 +38,11 @@ func NeedHandshakeForWrite(writer io.Writer) bool {
 }
 
 func NeedHandshakeForWriteAny(writer any) bool {
-	if //goland:noinspection GoDeprecation
-	earlyConn, isEarlyConn := writer.(EarlyConn); isEarlyConn {
-		return earlyConn.NeedHandshake()
-	}
 	if earlyWriter, isEarlyWriter := common.Cast[EarlyWriter](writer); isEarlyWriter && earlyWriter.NeedHandshakeForWrite() {
+		return true
+	}
+	if //goland:noinspection GoDeprecation
+	earlyConn, isEarlyConn := common.Cast[EarlyConn](writer); isEarlyConn && earlyConn.NeedHandshake() {
 		return true
 	}
 	return false
