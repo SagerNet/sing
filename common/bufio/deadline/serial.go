@@ -42,6 +42,10 @@ func (c *SerialConn) Upstream() any {
 	return c.ExtendedConn
 }
 
+func (c *SerialConn) WriterReplaceable() bool {
+	return true
+}
+
 type SerialPacketConn struct {
 	N.NetPacketConn
 	access sync.Mutex
@@ -72,4 +76,8 @@ func (c *SerialPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksad
 
 func (c *SerialPacketConn) Upstream() any {
 	return c.NetPacketConn
+}
+
+func (c *SerialPacketConn) WriterReplaceable() bool {
+	return true
 }
