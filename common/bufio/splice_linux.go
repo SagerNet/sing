@@ -75,21 +75,24 @@ func splice(source syscall.RawConn, sourceReader N.SyscallReader, destination sy
 		if readN == 0 {
 			return
 		}
+		for _, readCounter := range readCounters {
+			readCounter(int64(readN))
+		}
 		writeSize = readN
 		err = destination.Write(writeFunc)
 		if writeErr != nil {
 			err = writeErr
 		}
+		written := int64(readN - writeSize)
+		if written > 0 {
+			n += written
+			for _, writeCounter := range writeCounters {
+				writeCounter(written)
+			}
+		}
 		if err != nil {
 			err = E.Cause(err, "splice write")
 			return
-		}
-		n += int64(readN)
-		for _, readCounter := range readCounters {
-			readCounter(int64(readN))
-		}
-		for _, writeCounter := range writeCounters {
-			writeCounter(int64(readN))
 		}
 		notFirstTime = true
 	}
