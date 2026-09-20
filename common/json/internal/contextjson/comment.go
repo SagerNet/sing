@@ -211,6 +211,9 @@ func skipJSONString(data []byte, start int) int {
 			i++
 		}
 	}
+	if i > len(data) {
+		i = len(data)
+	}
 	return i
 }
 
