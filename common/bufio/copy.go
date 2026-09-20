@@ -220,38 +220,42 @@ func copyExtendedWithPool(session *CopySession, destination N.ExtendedWriter, so
 
 func CopyConn(ctx context.Context, source net.Conn, destination net.Conn) error {
 	var group task.Group
-	if _, dstDuplex := common.Cast[N.WriteCloser](destination); dstDuplex {
-		group.Append("upload", func(ctx context.Context) error {
-			err := common.Error(Copy(destination, source))
-			if err == nil {
-				N.CloseWrite(destination)
-			} else {
-				common.Close(destination)
-			}
+	group.Append("upload", func(ctx context.Context) error {
+		err := common.Error(Copy(destination, source))
+		if err != nil {
+			common.Close(destination)
 			return err
-		})
-	} else {
-		group.Append("upload", func(ctx context.Context) error {
-			defer common.Close(destination)
-			return common.Error(Copy(destination, source))
-		})
-	}
-	if _, srcDuplex := common.Cast[N.WriteCloser](source); srcDuplex {
-		group.Append("download", func(ctx context.Context) error {
-			err := common.Error(Copy(source, destination))
-			if err == nil {
-				N.CloseWrite(source)
-			} else {
-				common.Close(source)
-			}
+		}
+		destinationWriter, _ := N.UnwrapCountWriter(destination, nil)
+		writeCloser, isWriteCloser := N.UnwrapWriter(destinationWriter).(N.WriteCloser)
+		if !isWriteCloser {
+			common.Close(destination)
+			return nil
+		}
+		err = writeCloser.CloseWrite()
+		if err != nil {
+			common.Close(destination)
+		}
+		return err
+	})
+	group.Append("download", func(ctx context.Context) error {
+		err := common.Error(Copy(source, destination))
+		if err != nil {
+			common.Close(source)
 			return err
-		})
-	} else {
-		group.Append("download", func(ctx context.Context) error {
-			defer common.Close(source)
-			return common.Error(Copy(source, destination))
-		})
-	}
+		}
+		sourceWriter, _ := N.UnwrapCountWriter(source, nil)
+		writeCloser, isWriteCloser := N.UnwrapWriter(sourceWriter).(N.WriteCloser)
+		if !isWriteCloser {
+			common.Close(source)
+			return nil
+		}
+		err = writeCloser.CloseWrite()
+		if err != nil {
+			common.Close(source)
+		}
+		return err
+	})
 	group.Cleanup(func() {
 		common.Close(source, destination)
 	})
