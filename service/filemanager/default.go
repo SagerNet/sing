@@ -36,7 +36,7 @@ func WithDefault(ctx context.Context, basePath string, tempPath string, userID i
 }
 
 func (m *defaultManager) BasePath(name string) string {
-	if m.basePath == "" || strings.HasPrefix(name, "/") {
+	if m.basePath == "" || filepath.IsAbs(name) || strings.HasPrefix(name, "/") {
 		return name
 	}
 	return filepath.Join(m.basePath, name)
