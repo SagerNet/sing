@@ -21,13 +21,18 @@ func (c *conn) WaitReadPacket() (buffer *buf.Buffer, destination M.Socksaddr, er
 	case p := <-c.data:
 		if c.readWaitOptions.NeedHeadroom() {
 			buffer = c.readWaitOptions.NewPacketBuffer()
-			_, err = buffer.Write(p.data.Bytes())
+			var n int
+			n, err = buffer.Write(p.data.Bytes())
+			if err == nil && n != p.data.Len() {
+				err = io.ErrShortBuffer
+			}
+			p.data.Release()
 			if err != nil {
 				buffer.Release()
+				buffer = nil
 				return
 			}
 			c.readWaitOptions.PostReturn(buffer)
-			p.data.Release()
 		} else {
 			buffer = p.data
 		}
