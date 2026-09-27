@@ -52,3 +52,32 @@ func DisableUDPFragment() Func {
 		})
 	}
 }
+
+func EnableUDPFragment() Func {
+	return func(network, address string, conn syscall.RawConn) error {
+		if N.NetworkName(network) != N.NetworkUDP {
+			return nil
+		}
+		return Raw(conn, func(fd uintptr) error {
+			if network == "udp" || network == "udp4" {
+				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, IP_MTU_DISCOVER, IP_PMTUDISC_DONT)
+				if err != nil {
+					if errors.Is(err, windows.WSAENOPROTOOPT) {
+						return nil
+					}
+					return os.NewSyscallError("SETSOCKOPT IP_MTU_DISCOVER IP_PMTUDISC_DONT", err)
+				}
+			}
+			if network == "udp" || network == "udp6" {
+				err := windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IPV6, IPV6_MTU_DISCOVER, IP_PMTUDISC_DONT)
+				if err != nil {
+					if errors.Is(err, windows.WSAENOPROTOOPT) {
+						return nil
+					}
+					return os.NewSyscallError("SETSOCKOPT IPV6_MTU_DISCOVER IP_PMTUDISC_DONT", err)
+				}
+			}
+			return nil
+		})
+	}
+}
