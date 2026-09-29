@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"slices"
 	"sort"
 	"unicode/utf8"
 
@@ -45,6 +46,7 @@ func NewMatcher(domains []string, domainSuffix []string, generateLegacy bool) *M
 		domainList = append(domainList, reverseDomain(domain))
 	}
 	sort.Strings(domainList)
+	domainList = slices.Compact(domainList)
 	return &Matcher{newSuccinctSet(domainList)}
 }
 
