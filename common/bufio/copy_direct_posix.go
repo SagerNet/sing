@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -42,7 +43,12 @@ func (w *syscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions) (nee
 	w.readFunc = func(fd uintptr) (done bool) {
 		buffer := w.options.NewBuffer()
 		var readN int
-		readN, w.readErr = unix.Read(int(fd), buffer.FreeBytes())
+		for {
+			readN, w.readErr = unix.Read(int(fd), buffer.FreeBytes())
+			if readN != 0 || w.readErr != nil || !isEmptyDatagram(fd) {
+				break
+			}
+		}
 		if readN > 0 {
 			buffer.Truncate(readN)
 			w.options.PostReturn(buffer)
@@ -120,8 +126,13 @@ func (w *vectorisedSyscallReadWaiter) InitializeReadWaiter(options N.ReadWaitOpt
 			readN     uintptr
 			readErrno unix.Errno
 		)
-		//nolint:staticcheck
-		readN, _, readErrno = unix.Syscall(unix.SYS_READV, fd, uintptr(unsafe.Pointer(&w.iovecList[0])), uintptr(len(w.iovecList)))
+		for {
+			//nolint:staticcheck
+			readN, _, readErrno = unix.Syscall(unix.SYS_READV, fd, uintptr(unsafe.Pointer(&w.iovecList[0])), uintptr(len(w.iovecList)))
+			if readN != 0 || readErrno != 0 || !isEmptyDatagram(fd) {
+				break
+			}
+		}
 		//goland:noinspection GoDirectComparisonOfErrors
 		if readErrno == unix.EAGAIN || readErrno == unix.EWOULDBLOCK {
 			return false
@@ -209,6 +220,11 @@ func (w *syscallPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions
 			buffer.Release()
 			return w.readErr != syscall.EAGAIN
 		}
+		if readN == 0 && control.IsUDPEOF(fd) {
+			buffer.Release()
+			w.readErr = io.EOF
+			return true
+		}
 		if readN > 0 {
 			buffer.Truncate(readN)
 		}
@@ -234,6 +250,9 @@ func (w *syscallPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destinat
 		return
 	}
 	if w.readErr != nil {
+		if w.readErr == io.EOF {
+			return nil, M.Socksaddr{}, io.EOF
+		}
 		err = E.Cause(w.readErr, "raw read")
 		return
 	}
@@ -241,4 +260,9 @@ func (w *syscallPacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destinat
 	w.buffer = nil
 	destination = w.readFrom
 	return
+}
+
+func isEmptyDatagram(fd uintptr) bool {
+	socketType, err := unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_TYPE)
+	return err == nil && socketType == unix.SOCK_DGRAM && !control.IsUDPEOF(fd)
 }
