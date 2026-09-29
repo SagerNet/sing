@@ -252,6 +252,26 @@ func (c *LruCache[K, V]) Delete(key K) {
 	c.mu.Unlock()
 }
 
+// DeleteIf removes the current value only if match accepts it. The match is
+// evaluated under the cache lock; the eviction callback runs after unlocking.
+// match must not call back into the cache.
+func (c *LruCache[K, V]) DeleteIf(key K, match func(V) bool) bool {
+	c.mu.Lock()
+	le, ok := c.cache[key]
+	if !ok || !match(le.Value.value) {
+		c.mu.Unlock()
+		return false
+	}
+	e := le.Value
+	c.lru.Remove(le)
+	delete(c.cache, key)
+	c.mu.Unlock()
+	if c.onEvict != nil {
+		c.onEvict(e.key, e.value)
+	}
+	return true
+}
+
 func (c *LruCache[K, V]) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
