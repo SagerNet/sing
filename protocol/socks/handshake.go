@@ -155,7 +155,7 @@ func HandleConnectionEx(
 				}
 				return E.New("socks4: authentication failed, username=", request.Username)
 			}
-			handler.NewConnectionEx(auth.ContextWithUser(ctx, request.Username), NewLazyConn(conn, version), source, request.Destination, onClose)
+			handler.NewConnectionEx(auth.ContextWithUser(ctx, request.Username), cachedConn(NewLazyConn(conn, version), reader), source, request.Destination, onClose)
 			return nil
 		/*case CommandTorResolve, CommandTorResolvePTR:
 		if resolver == nil {
@@ -225,7 +225,7 @@ func HandleConnectionEx(
 		}
 		switch request.Command {
 		case socks5.CommandConnect:
-			handler.NewConnectionEx(ctx, NewLazyConn(conn, version), source, request.Destination, onClose)
+			handler.NewConnectionEx(ctx, cachedConn(NewLazyConn(conn, version), reader), source, request.Destination, onClose)
 			return nil
 		case socks5.CommandUDPAssociate:
 			var (
@@ -290,4 +290,13 @@ func HandleConnectionEx(
 		}
 	}
 	return os.ErrInvalid
+}
+
+func cachedConn(conn net.Conn, reader *std_bufio.Reader) net.Conn {
+	if reader.Buffered() == 0 {
+		return conn
+	}
+	buffer := buf.NewSize(reader.Buffered())
+	common.Must1(buffer.ReadFullFrom(reader, buffer.FreeLen()))
+	return bufio.NewCachedConn(conn, buffer)
 }
