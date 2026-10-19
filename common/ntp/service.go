@@ -40,6 +40,7 @@ type Service struct {
 	server        M.Socksaddr
 	writeToSystem bool
 	ticker        *time.Ticker
+	updateRequest chan struct{}
 	interval      time.Duration
 	timeout       time.Duration
 	clockOffset   time.Duration
@@ -84,6 +85,7 @@ func NewService(options Options) *Service {
 		logger:        options.Logger,
 		writeToSystem: options.WriteToSystem,
 		server:        destination,
+		updateRequest: make(chan struct{}, 1),
 		interval:      interval,
 		timeout:       options.Timeout,
 		pause:         service.FromContext[pause.Manager](ctx),
@@ -100,7 +102,7 @@ func (s *Service) Start() error {
 	s.ticker = time.NewTicker(s.interval)
 	go s.loopUpdate()
 	if s.pause != nil {
-		s.pauseCallback = pause.RegisterTicker(s.pause, s.ticker, s.interval, s.updateOnce)
+		s.pauseCallback = pause.RegisterTicker(s.pause, s.ticker, s.interval, s.requestUpdate)
 	}
 	return nil
 }
@@ -125,8 +127,16 @@ func (s *Service) loopUpdate() {
 		case <-s.ctx.Done():
 			return
 		case <-s.ticker.C:
+		case <-s.updateRequest:
 		}
 		s.updateOnce()
+	}
+}
+
+func (s *Service) requestUpdate() {
+	select {
+	case s.updateRequest <- struct{}{}:
+	default:
 	}
 }
 
