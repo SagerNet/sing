@@ -1,6 +1,7 @@
 package control
 
 import (
+	"errors"
 	"os"
 	"syscall"
 
@@ -17,7 +18,8 @@ func DisableUDPFragment() Func {
 		return Raw(conn, func(fd uintptr) error {
 			if network == "udp" || network == "udp4" {
 				err := unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, unix.IP_MTU_DISCOVER, unix.IP_PMTUDISC_DO)
-				if err != nil {
+				// gVisor from 2024-05 to 2026-04 rejects IP_PMTUDISC_DO with EOPNOTSUPP
+				if err != nil && !errors.Is(err, unix.EOPNOTSUPP) {
 					return os.NewSyscallError("SETSOCKOPT IP_MTU_DISCOVER IP_PMTUDISC_DO", err)
 				}
 			}
