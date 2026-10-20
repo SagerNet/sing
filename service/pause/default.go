@@ -12,10 +12,9 @@ import (
 type defaultManager struct {
 	ctx           context.Context
 	access        sync.Mutex
-	devicePause   chan struct{}
 	devicePaused  atomic.Bool
-	networkPause  chan struct{}
 	networkPaused atomic.Bool
+	active        atomic.Pointer[chan struct{}]
 	callbacks     list.List[Callback]
 }
 
@@ -23,63 +22,69 @@ func WithDefaultManager(ctx context.Context) context.Context {
 	if service.FromContext[Manager](ctx) != nil {
 		return ctx
 	}
-	devicePauseChan := make(chan struct{})
-	networkPauseChan := make(chan struct{})
-	close(devicePauseChan)
-	close(networkPauseChan)
+	active := make(chan struct{})
+	close(active)
 	manager := &defaultManager{
-		ctx:          ctx,
-		devicePause:  devicePauseChan,
-		networkPause: networkPauseChan,
+		ctx: ctx,
 	}
+	manager.active.Store(&active)
 	return service.ContextWith[Manager](ctx, manager)
 }
 
 func (d *defaultManager) DevicePause() {
 	d.access.Lock()
 	defer d.access.Unlock()
-	select {
-	case <-d.devicePause:
-		d.devicePaused.Store(true)
-		d.devicePause = make(chan struct{})
-		d.emit(EventDevicePaused)
-	default:
+	if d.devicePaused.Load() {
+		return
 	}
+	d.pauseLocked()
+	d.devicePaused.Store(true)
+	d.emit(EventDevicePaused)
 }
 
 func (d *defaultManager) DeviceWake() {
 	d.access.Lock()
 	defer d.access.Unlock()
-	select {
-	case <-d.devicePause:
-	default:
-		d.devicePaused.Store(false)
-		close(d.devicePause)
-		d.emit(EventDeviceWake)
+	if !d.devicePaused.Swap(false) {
+		return
 	}
+	d.wakeLocked()
+	d.emit(EventDeviceWake)
 }
 
 func (d *defaultManager) NetworkPause() {
 	d.access.Lock()
 	defer d.access.Unlock()
-	select {
-	case <-d.networkPause:
-		d.networkPaused.Store(true)
-		d.networkPause = make(chan struct{})
-		d.emit(EventNetworkPause)
-	default:
+	if d.networkPaused.Load() {
+		return
 	}
+	d.pauseLocked()
+	d.networkPaused.Store(true)
+	d.emit(EventNetworkPause)
 }
 
 func (d *defaultManager) NetworkWake() {
 	d.access.Lock()
 	defer d.access.Unlock()
+	if !d.networkPaused.Swap(false) {
+		return
+	}
+	d.wakeLocked()
+	d.emit(EventNetworkWake)
+}
+
+func (d *defaultManager) pauseLocked() {
 	select {
-	case <-d.networkPause:
+	case <-*d.active.Load():
+		active := make(chan struct{})
+		d.active.Store(&active)
 	default:
-		d.networkPaused.Store(false)
-		close(d.networkPause)
-		d.emit(EventNetworkWake)
+	}
+}
+
+func (d *defaultManager) wakeLocked() {
+	if !d.devicePaused.Load() && !d.networkPaused.Load() {
+		close(*d.active.Load())
 	}
 }
 
@@ -105,28 +110,21 @@ func (d *defaultManager) IsNetworkPaused() bool {
 
 func (d *defaultManager) IsPaused() bool {
 	select {
-	case <-d.devicePause:
+	case <-*d.active.Load():
+		return false
 	default:
 		return true
 	}
-
-	select {
-	case <-d.networkPause:
-	default:
-		return true
-	}
-
-	return false
 }
 
 func (d *defaultManager) WaitActive() {
-	select {
-	case <-d.devicePause:
-	case <-d.ctx.Done():
-	}
+	d.WaitActiveContext(d.ctx)
+}
 
+func (d *defaultManager) WaitActiveContext(ctx context.Context) {
 	select {
-	case <-d.networkPause:
+	case <-*d.active.Load():
+	case <-ctx.Done():
 	case <-d.ctx.Done():
 	}
 }
