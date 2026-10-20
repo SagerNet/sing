@@ -466,6 +466,9 @@ func copyPacketWithPool(session *packetCopySession, destination N.PacketWriter, 
 		destinationAddress, err = source.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return
 		}
 		dataLen := buffer.Len()
@@ -473,6 +476,9 @@ func copyPacketWithPool(session *packetCopySession, destination N.PacketWriter, 
 		err = destination.WritePacket(buffer, destinationAddress)
 		if err != nil {
 			buffer.Leak()
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
@@ -502,6 +508,10 @@ func writePacketWithPool(originSource N.PacketReader, destination N.PacketWriter
 		N.PutPacketBuffer(packetBuffer)
 		if err != nil {
 			buffer.Leak()
+			if errors.Is(err, errMessageTooLong) {
+				err = nil
+				continue
+			}
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(originSource, err)
 				if handshakeErr != nil {
