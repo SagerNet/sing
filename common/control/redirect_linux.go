@@ -1,11 +1,11 @@
 package control
 
 import (
-	"encoding/binary"
 	"net"
 	"net/netip"
 	"os"
 	"syscall"
+	"unsafe"
 
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
@@ -30,9 +30,7 @@ func GetOriginalDestination(conn net.Conn) (netip.AddrPort, error) {
 			if err != nil {
 				return netip.AddrPort{}, err
 			}
-			var port [2]byte
-			binary.BigEndian.PutUint16(port[:], raw.Addr.Port)
-			return netip.AddrPortFrom(M.AddrFromIP(raw.Addr.Addr[:]), binary.LittleEndian.Uint16(port[:])), nil
+			return M.AddrPortFromRawSockaddr((*unix.RawSockaddr)(unsafe.Pointer(&raw.Addr))), nil
 		}
 	})
 }
