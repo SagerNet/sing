@@ -1,6 +1,10 @@
 package pause
 
-import "github.com/sagernet/sing/common/x/list"
+import (
+	"context"
+
+	"github.com/sagernet/sing/common/x/list"
+)
 
 type Manager interface {
 	DevicePause()
@@ -11,6 +15,7 @@ type Manager interface {
 	IsNetworkPaused() bool
 	IsPaused() bool
 	WaitActive()
+	WaitActiveContext(ctx context.Context)
 	RegisterCallback(callback Callback) *list.Element[Callback]
 	UnregisterCallback(element *list.Element[Callback])
 }
