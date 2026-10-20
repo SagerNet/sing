@@ -18,6 +18,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const errMessageTooLong = unix.EMSGSIZE
+
 var _ N.ReadWaiter = (*syscallReadWaiter)(nil)
 
 type syscallReadWaiter struct {

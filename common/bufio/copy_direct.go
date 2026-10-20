@@ -107,12 +107,18 @@ func copyPacketWaitWithPool(session *packetCopySession, destinationConn N.Packet
 	for {
 		buffer, destination, err = source.WaitReadPacket()
 		if err != nil {
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return
 		}
 		dataLen := buffer.Len()
 		err = destinationConn.WritePacket(buffer, destination)
 		if err != nil {
 			buffer.Leak()
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
@@ -138,6 +144,9 @@ func copyPacketBatchWaitWithPool(session *packetCopySession, destinationConn N.P
 		)
 		buffers, destinations, err = source.WaitReadPackets()
 		if err != nil {
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return handled, n, err
 		}
 		if len(buffers) == 0 || len(buffers) != len(destinations) {
@@ -149,7 +158,7 @@ func copyPacketBatchWaitWithPool(session *packetCopySession, destinationConn N.P
 			dataLens[index] = buffer.Len()
 		}
 		err = destinationConn.WritePacketBatch(buffers, destinations)
-		if err != nil {
+		if err != nil && !errors.Is(err, errMessageTooLong) {
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
@@ -177,6 +186,9 @@ func copyPacketBatchToConnectedWaitWithPool(session *packetCopySession, destinat
 		)
 		buffers, destinations, err = source.WaitReadPackets()
 		if err != nil {
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return handled, n, err
 		}
 		if len(buffers) == 0 || len(buffers) != len(destinations) {
@@ -188,7 +200,7 @@ func copyPacketBatchToConnectedWaitWithPool(session *packetCopySession, destinat
 			dataLens[index] = buffer.Len()
 		}
 		err = destinationConn.WriteConnectedPacketBatch(buffers)
-		if err != nil {
+		if err != nil && !errors.Is(err, errMessageTooLong) {
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
@@ -216,6 +228,9 @@ func copyConnectedPacketBatchWaitWithPool(session *packetCopySession, destinatio
 		)
 		buffers, destination, err = source.WaitReadConnectedPackets()
 		if err != nil {
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return handled, n, err
 		}
 		if len(buffers) == 0 {
@@ -229,7 +244,7 @@ func copyConnectedPacketBatchWaitWithPool(session *packetCopySession, destinatio
 			dataLens[index] = buffer.Len()
 		}
 		err = destinationConn.WritePacketBatch(buffers, destinations)
-		if err != nil {
+		if err != nil && !errors.Is(err, errMessageTooLong) {
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
@@ -254,6 +269,9 @@ func copyConnectedPacketBatchToConnectedWaitWithPool(session *packetCopySession,
 		var buffers []*buf.Buffer
 		buffers, _, err = source.WaitReadConnectedPackets()
 		if err != nil {
+			if errors.Is(err, errMessageTooLong) {
+				continue
+			}
 			return handled, n, err
 		}
 		if len(buffers) == 0 {
@@ -265,7 +283,7 @@ func copyConnectedPacketBatchToConnectedWaitWithPool(session *packetCopySession,
 			dataLens[index] = buffer.Len()
 		}
 		err = destinationConn.WriteConnectedPacketBatch(buffers)
-		if err != nil {
+		if err != nil && !errors.Is(err, errMessageTooLong) {
 			if !notFirstTime {
 				handshakeErr := N.ReportHandshakeFailure(session.originSource, err)
 				if handshakeErr != nil {
