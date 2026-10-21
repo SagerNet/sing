@@ -105,6 +105,8 @@ func (r *Reader) readAttributes() ([]xml.Attr, error) {
 		attr, err := r.readAttribute()
 		if err == io.EOF {
 			break
+		} else if err != nil {
+			return nil, err
 		}
 		attrs = append(attrs, attr)
 	}
@@ -114,14 +116,14 @@ func (r *Reader) readAttributes() ([]xml.Attr, error) {
 func (r *Reader) readAttribute() (xml.Attr, error) {
 	event, err := r.reader.ReadByte()
 	if err != nil {
-		return xml.Attr{}, nil
+		return xml.Attr{}, err
 	}
 	tokenType := event & 0x0f
 	eventType := event & 0xf0
 	if tokenType != ATTRIBUTE {
 		err = r.reader.UnreadByte()
 		if err != nil {
-			return xml.Attr{}, nil
+			return xml.Attr{}, err
 		}
 		return xml.Attr{}, io.EOF
 	}
