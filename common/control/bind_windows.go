@@ -23,23 +23,31 @@ func bindToInterface(conn syscall.RawConn, network string, address string, finde
 			interfaceIndex = iif.Index
 		}
 		handle := syscall.Handle(fd)
-		if M.ParseSocksaddr(address).AddrString() == "" {
-			// IP_UNICAST_IF fails with WSAEINVAL on IPV6_V6ONLY sockets, and IPV6_UNICAST_IF
-			// fails with WSAEADDRNOTAVAIL on AF_INET sockets and when the interface has IPv6
-			// disabled.
-			err4 := bind4(handle, interfaceIndex)
-			err6 := bind6(handle, interfaceIndex)
-			if err4 != nil && err6 != nil {
-				return E.Errors(err4, err6)
-			}
-			return nil
-		}
 		switch network {
 		case "tcp4", "udp4", "ip4":
 			return bind4(handle, interfaceIndex)
-		default:
+		}
+		ipv6Only, err := syscall.GetsockoptInt(handle, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY)
+		if err != nil {
+			return err
+		}
+		if ipv6Only != 0 {
 			return bind6(handle, interfaceIndex)
 		}
+		// IPV6_UNICAST_IF fails with WSAEADDRNOTAVAIL when the interface has IPv6 disabled.
+		err4 := bind4(handle, interfaceIndex)
+		err6 := bind6(handle, interfaceIndex)
+		socketAddress := M.ParseSocksaddr(address).Addr.Unmap()
+		if socketAddress.IsValid() && !socketAddress.IsUnspecified() {
+			if socketAddress.Is4() {
+				return err4
+			}
+			return err6
+		}
+		if err4 != nil && err6 != nil {
+			return E.Errors(err4, err6)
+		}
+		return nil
 	})
 }
 
