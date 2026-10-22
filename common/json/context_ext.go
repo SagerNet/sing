@@ -42,6 +42,7 @@ const (
 	CommentPlacementLeading  = json.CommentPlacementLeading
 	CommentPlacementTrailing = json.CommentPlacementTrailing
 	CommentPlacementInner    = json.CommentPlacementInner
+	CommentPlacementFooter   = json.CommentPlacementFooter
 	CommentPathKey           = json.CommentPathKey
 	CommentPathIndex         = json.CommentPathIndex
 )

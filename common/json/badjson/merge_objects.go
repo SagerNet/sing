@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	cJSON "github.com/sagernet/sing/common/json/internal/contextjson"
@@ -14,8 +15,9 @@ func MarshallObjects(objects ...any) ([]byte, error) {
 }
 
 func MarshallObjectsContext(ctx context.Context, objects ...any) ([]byte, error) {
+	objects = common.FilterNotNil(objects)
 	if len(objects) == 1 {
-		return json.Marshal(objects[0])
+		return json.MarshalContext(ctx, objects[0])
 	}
 	var content JSONObject
 	for _, object := range objects {

@@ -378,12 +378,14 @@ func appendIndent(dst, src []byte, prefix, indent string) ([]byte, error) {
 	depth := 0
 	atLineStart := true
 	lineHasContent := false
+	skippedLineBreak := false
+	tailStart := 0
 Input:
 	for i := 0; i < len(src); i++ {
 		c := src[i]
 		scan.bytes++
 		v := scan.step(scan, c)
-		if v == scanSkipSpace {
+		if v == scanSkipSpace || v == scanEnd && isSpace(c) {
 			if comment, ok := readJSONComment(src, i); ok {
 				for j := i + 1; j < comment.end; j++ {
 					scan.bytes++
@@ -400,13 +402,24 @@ Input:
 					atLineStart = true
 					lineHasContent = false
 					needIndent = false
+				} else if lineHasContent && skippedLineBreak {
+					dst = appendLineBreak(dst)
+					atLineStart = true
+					lineHasContent = false
 				}
+				skippedLineBreak = false
 				dst, atLineStart, lineHasContent = appendJSONComment(dst, comment, prefix, indent, depth, atLineStart, lineHasContent)
 				i = comment.end - 1
+				tailStart = comment.end
 				continue
+			}
+			if c == '\n' || c == '\r' {
+				skippedLineBreak = true
 			}
 			continue
 		}
+		skippedLineBreak = false
+		tailStart = i + 1
 		if v == scanError {
 			break
 		}
@@ -481,5 +494,9 @@ Input:
 	if scan.eof() == scanError {
 		return dst[:origLen], scan.err
 	}
-	return dst, nil
+	tail := src[tailStart:]
+	if len(dst) > origLen && dst[len(dst)-1] == '\n' {
+		tail = tail[consumeLineEnd(tail, 0):]
+	}
+	return append(dst, tail...), nil
 }

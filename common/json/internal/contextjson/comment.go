@@ -19,6 +19,7 @@ const (
 	CommentPlacementLeading  CommentPlacement = "leading"
 	CommentPlacementTrailing CommentPlacement = "trailing"
 	CommentPlacementInner    CommentPlacement = "inner"
+	CommentPlacementFooter   CommentPlacement = "footer"
 )
 
 type CommentPathKind byte
@@ -277,6 +278,9 @@ func classifyComment(data []byte, nodes []commentNode, comment Comment) (Comment
 	if containing != nil {
 		return CommentPlacementInner, cloneCommentPath(containing.path)
 	}
+	if previous != nil {
+		return CommentPlacementFooter, nil
+	}
 	return CommentPlacementLeading, nil
 }
 
@@ -482,18 +486,25 @@ func insertJSONComments(data []byte, comments *CommentSet) ([]byte, error) {
 		return data, nil
 	}
 	nodes := collectCommentNodes(data)
+	trailingInsertions := make(map[int][][]byte)
 	insertions := make(map[int][][]byte)
 	for _, comment := range comments.Comments {
-		offset := commentInsertOffset(data, nodes, comment)
-		insertions[offset] = append(insertions[offset], formatComment(comment))
+		var offset int
+		offset, comment.Placement = commentInsertOffset(data, nodes, comment)
+		if comment.Placement == CommentPlacementTrailing {
+			trailingInsertions[offset] = append(trailingInsertions[offset], formatComment(comment))
+		} else {
+			insertions[offset] = append(insertions[offset], formatComment(comment))
+		}
 	}
 	var out bytes.Buffer
 	out.Grow(len(data) + len(comments.Comments)*16)
 	for i := 0; i <= len(data); i++ {
-		if values := insertions[i]; len(values) > 0 {
-			for _, value := range values {
-				out.Write(value)
-			}
+		for _, value := range trailingInsertions[i] {
+			out.Write(value)
+		}
+		for _, value := range insertions[i] {
+			out.Write(value)
 		}
 		if i < len(data) {
 			out.WriteByte(data[i])
@@ -502,24 +513,31 @@ func insertJSONComments(data []byte, comments *CommentSet) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func commentInsertOffset(data []byte, nodes []commentNode, comment Comment) int {
-	node, ok := findCommentNode(nodes, comment.Path)
-	if !ok {
-		if comment.Placement == CommentPlacementTrailing {
-			return len(data)
-		}
-		return 0
+func commentInsertOffset(data []byte, nodes []commentNode, comment Comment) (int, CommentPlacement) {
+	placement := comment.Placement
+	path := comment.Path
+	node, found := findCommentNode(nodes, path)
+	for !found && len(path) > 0 {
+		path = path[:len(path)-1]
+		placement = CommentPlacementInner
+		node, found = findCommentNode(nodes, path)
 	}
-	switch comment.Placement {
+	if !found {
+		return 0, placement
+	}
+	switch placement {
 	case CommentPlacementTrailing:
-		return trailingCommentInsertOffset(data, node.end)
+		return trailingCommentInsertOffset(data, node.end), placement
+	case CommentPlacementFooter:
+		return len(data), placement
 	case CommentPlacementInner:
-		if node.end > node.start && (data[node.start] == '{' || data[node.start] == '[') {
-			return node.start + 1
+		closing := data[node.end-1]
+		if closing == '}' || closing == ']' {
+			return node.end - 1, placement
 		}
-		return node.start
+		return node.start, placement
 	default:
-		return node.start
+		return node.start, placement
 	}
 }
 
@@ -550,21 +568,18 @@ func findCommentNode(nodes []commentNode, path CommentPath) (commentNode, bool) 
 }
 
 func formatComment(comment Comment) []byte {
-	switch comment.Kind {
-	case CommentKindHash:
-		if comment.Placement == CommentPlacementTrailing {
-			return []byte(" #" + comment.Text + "\n")
-		}
-		return []byte("#" + comment.Text + "\n")
-	case CommentKindBlock:
-		if comment.Placement == CommentPlacementTrailing {
-			return []byte(" /*" + comment.Text + "*/")
-		}
-		return []byte("/*" + comment.Text + "*/\n")
-	default:
-		if comment.Placement == CommentPlacementTrailing {
-			return []byte(" //" + comment.Text + "\n")
-		}
-		return []byte("//" + comment.Text + "\n")
+	var content []byte
+	if comment.Placement == CommentPlacementTrailing {
+		content = append(content, ' ')
+	} else {
+		content = append(content, '\n')
 	}
+	content = appendCommentMarker(content, comment.Kind)
+	content = append(content, comment.Text...)
+	if comment.Kind == CommentKindBlock {
+		content = append(content, '*', '/')
+	} else {
+		content = append(content, '\n')
+	}
+	return content
 }
