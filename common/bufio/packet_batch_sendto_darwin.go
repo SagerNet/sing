@@ -18,12 +18,18 @@ import (
 var _ N.PacketBatchWriter = (*syscallPacketBatchWriter)(nil)
 
 type syscallPacketBatchWriter struct {
-	upstream  any
-	rawConn   syscall.RawConn
-	access    sync.Mutex
-	localAddr netip.AddrPort
-	names     []unix.RawSockaddrAny
-	nameLens  []uint32
+	upstream       any
+	rawConn        syscall.RawConn
+	writeFunc      func(fd uintptr) (done bool)
+	access         sync.Mutex
+	localAddr      netip.AddrPort
+	names          []unix.RawSockaddrAny
+	nameLens       []uint32
+	send           func(int, []byte, *unix.RawSockaddrAny, uint32) syscall.Errno
+	pending        []*buf.Buffer
+	index          int
+	writeErr       syscall.Errno
+	messageTooLong bool
 }
 
 func createSyscallPacketBatchWriter(writer any) (N.PacketBatchWriter, bool) {
@@ -34,7 +40,9 @@ func createSyscallPacketBatchWriter(writer any) (N.PacketBatchWriter, bool) {
 	if _, isConnected := syscallPacketBatchPeerDestination(rawConn); isConnected {
 		return nil, false
 	}
-	return &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}, true
+	w := &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}
+	w.writeFunc = w.write
+	return w, true
 }
 
 func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
@@ -63,43 +71,49 @@ func (w *syscallPacketBatchWriter) writePacketBatch(buffers []*buf.Buffer, desti
 	defer func() {
 		w.names = names[:0]
 		w.nameLens = nameLens[:0]
+		w.send = nil
+		w.pending = nil
 	}()
 	for index, destination := range destinations {
 		nameLens[index] = M.AddrPortToRawSockaddrAny(&names[index], destination.AddrPort(), w.localAddr.Addr().Is6())
 	}
+	w.names, w.nameLens = names, nameLens
+	w.send = send
+	w.pending = buffers
 	// Keep the cursor across poller wakeups so a partially sent batch is not replayed.
-	var index int
-	var innerErr syscall.Errno
-	var messageTooLong bool
-	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		for index < len(buffers) {
-			errno := send(int(fd), buffers[index].Bytes(), &names[index], nameLens[index])
-			switch errno {
-			case 0:
-				index++
-			case syscall.EINTR:
-				continue
-			case syscall.EAGAIN:
-				return false
-			case syscall.EMSGSIZE:
-				messageTooLong = true
-				index++
-			default:
-				if errno == syscall.EWOULDBLOCK {
-					return false
-				}
-				innerErr = errno
-				return true
-			}
-		}
-		return true
-	})
-	if innerErr != 0 {
-		err = os.NewSyscallError("sendto", innerErr)
-	} else if err == nil && messageTooLong {
+	w.index = 0
+	w.writeErr, w.messageTooLong = 0, false
+	err := w.rawConn.Write(w.writeFunc)
+	if w.writeErr != 0 {
+		err = os.NewSyscallError("sendto", w.writeErr)
+	} else if err == nil && w.messageTooLong {
 		err = os.NewSyscallError("sendto", syscall.EMSGSIZE)
 	}
 	return err
+}
+
+func (w *syscallPacketBatchWriter) write(fd uintptr) (done bool) {
+	for w.index < len(w.pending) {
+		errno := w.send(int(fd), w.pending[w.index].Bytes(), &w.names[w.index], w.nameLens[w.index])
+		switch errno {
+		case 0:
+			w.index++
+		case syscall.EINTR:
+			continue
+		case syscall.EAGAIN:
+			return false
+		case syscall.EMSGSIZE:
+			w.messageTooLong = true
+			w.index++
+		default:
+			if errno == syscall.EWOULDBLOCK {
+				return false
+			}
+			w.writeErr = errno
+			return true
+		}
+	}
+	return true
 }
 
 func (w *syscallPacketBatchWriter) Upstream() any {
