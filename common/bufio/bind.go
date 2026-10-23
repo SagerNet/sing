@@ -2,6 +2,7 @@ package bufio
 
 import (
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -137,7 +138,8 @@ func NewServerPacketConn(conn net.PacketConn) N.ExtendedConn {
 
 type serverPacketConn struct {
 	N.NetPacketConn
-	remoteAddr M.Socksaddr
+	remoteAccess sync.RWMutex
+	remoteAddr   M.Socksaddr
 }
 
 func (c *serverPacketConn) Read(p []byte) (n int, err error) {
@@ -145,7 +147,7 @@ func (c *serverPacketConn) Read(p []byte) (n int, err error) {
 	if err != nil {
 		return
 	}
-	c.remoteAddr = M.SocksaddrFromNet(addr)
+	c.updateRemoteAddr(M.SocksaddrFromNet(addr))
 	return
 }
 
@@ -154,20 +156,33 @@ func (c *serverPacketConn) ReadBuffer(buffer *buf.Buffer) error {
 	if err != nil {
 		return err
 	}
-	c.remoteAddr = destination
+	c.updateRemoteAddr(destination)
 	return nil
 }
 
 func (c *serverPacketConn) Write(p []byte) (n int, err error) {
-	return c.NetPacketConn.WriteTo(p, c.remoteAddr.UDPAddr())
+	return c.NetPacketConn.WriteTo(p, c.remoteDestination().UDPAddr())
 }
 
 func (c *serverPacketConn) WriteBuffer(buffer *buf.Buffer) error {
-	return c.NetPacketConn.WritePacket(buffer, c.remoteAddr)
+	return c.NetPacketConn.WritePacket(buffer, c.remoteDestination())
 }
 
 func (c *serverPacketConn) RemoteAddr() net.Addr {
-	return c.remoteAddr
+	return c.remoteDestination()
+}
+
+func (c *serverPacketConn) updateRemoteAddr(destination M.Socksaddr) {
+	c.remoteAccess.Lock()
+	c.remoteAddr = destination
+	c.remoteAccess.Unlock()
+}
+
+func (c *serverPacketConn) remoteDestination() M.Socksaddr {
+	c.remoteAccess.RLock()
+	destination := c.remoteAddr
+	c.remoteAccess.RUnlock()
+	return destination
 }
 
 func (c *serverPacketConn) Upstream() any {
