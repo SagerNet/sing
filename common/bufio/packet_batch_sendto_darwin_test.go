@@ -52,6 +52,7 @@ func TestPacketBatchSendtoResume(t *testing.T) {
 			t.Parallel()
 			rawConn := &testSendtoRawConn{pollErr: testCase.pollErr}
 			writer := &syscallPacketBatchWriter{rawConn: rawConn, localAddr: netip.MustParseAddrPort("127.0.0.1:1000")}
+			writer.writeFunc = writer.write
 			buffers := testBuffers("a", "b", "c")
 			destination := M.ParseSocksaddr("127.0.0.1:2000")
 			var attempts, sent []string
