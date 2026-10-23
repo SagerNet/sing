@@ -12,7 +12,6 @@ import (
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/control"
-	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -36,6 +35,9 @@ type syscallPacketBatchReadWaiter struct {
 	readErr      error
 	readN        int
 	readFunc     func(fd uintptr) (done bool)
+	probe        bool
+	probeBuffer  [1]byte
+	released     bool
 	buffers      []*buf.Buffer
 	destinations []M.Socksaddr
 	names        []unix.RawSockaddrAny
@@ -84,6 +86,17 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 	w.iovecs = make([]unix.Iovec, options.BatchSize)
 	w.msgvec = make([]mmsghdr, options.BatchSize)
 	w.readFunc = func(fd uintptr) (done bool) {
+		if w.probe {
+			w.probe = false
+			errno := peekPacket(int(fd), &w.probeBuffer)
+			if errno == syscall.EAGAIN || errno == syscall.EWOULDBLOCK {
+				return false
+			}
+			if errno != 0 {
+				w.readErr = os.NewSyscallError("recvfrom", errno)
+				return true
+			}
+		}
 		for i := range w.msgvec {
 			buffer := w.buffers[i]
 			if buffer == nil {
@@ -100,6 +113,7 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 			w.msgvec[i].msgHdr.Iov = &w.iovecs[i]
 			w.msgvec[i].msgHdr.SetIovlen(1)
 		}
+		w.released = false
 		for {
 			var errno syscall.Errno
 			w.readN, errno = recvmmsg(int(fd), w.msgvec, 0)
@@ -136,65 +150,24 @@ func (w *syscallPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOp
 	return false
 }
 
-func (w *syscallPacketBatchReadWaiter) WaitReadPackets() (buffers []*buf.Buffer, destinations []M.Socksaddr, err error) {
-	defer w.releaseBuffers()
-	err = w.rawConn.Read(w.readFunc)
-	if err != nil {
-		return
-	}
-	if w.readErr != nil {
-		if w.readErr == io.EOF {
-			return nil, nil, io.EOF
-		}
-		return nil, nil, E.Cause(w.readErr, "raw read")
-	}
-	buffers = make([]*buf.Buffer, w.readN)
-	destinations = make([]M.Socksaddr, w.readN)
-	for i := 0; i < w.readN; i++ {
-		buffers[i] = w.buffers[i]
-		w.buffers[i] = nil
-		destinations[i] = w.destinations[i]
-	}
-	w.readN = 0
-	return
-}
-
-func (w *syscallPacketBatchReadWaiter) WaitReadConnectedPackets() (buffers []*buf.Buffer, destination M.Socksaddr, err error) {
-	defer w.releaseBuffers()
-	err = w.rawConn.Read(w.readFunc)
-	if err != nil {
-		return
-	}
-	if w.readErr != nil {
-		if w.readErr == io.EOF {
-			return nil, M.Socksaddr{}, io.EOF
-		}
-		return nil, M.Socksaddr{}, E.Cause(w.readErr, "raw read")
-	}
-	buffers = make([]*buf.Buffer, w.readN)
-	for i := 0; i < w.readN; i++ {
-		buffers[i] = w.buffers[i]
-		w.buffers[i] = nil
-	}
-	w.readN = 0
-	destination = w.destination
-	return
-}
-
 var (
 	_ N.PacketBatchWriter          = (*syscallPacketBatchWriter)(nil)
 	_ N.ConnectedPacketBatchWriter = (*syscallPacketBatchWriter)(nil)
 )
 
 type syscallPacketBatchWriter struct {
-	offload   syscallPacketBatchOffload
-	upstream  any
-	rawConn   syscall.RawConn
-	access    sync.Mutex
-	localAddr netip.AddrPort
-	names     []unix.RawSockaddrAny
-	iovecs    []unix.Iovec
-	msgvec    []mmsghdr
+	offload        syscallPacketBatchOffload
+	upstream       any
+	rawConn        syscall.RawConn
+	writeFunc      func(fd uintptr) (done bool)
+	access         sync.Mutex
+	localAddr      netip.AddrPort
+	names          []unix.RawSockaddrAny
+	iovecs         []unix.Iovec
+	msgvec         []mmsghdr
+	pending        []mmsghdr
+	writeErr       syscall.Errno
+	messageTooLong bool
 }
 
 func createSyscallPacketBatchWriter(writer any) (N.PacketBatchWriter, bool) {
@@ -205,7 +178,9 @@ func createSyscallPacketBatchWriter(writer any) (N.PacketBatchWriter, bool) {
 	if _, isConnected := syscallPacketBatchPeerDestination(rawConn); isConnected {
 		return nil, false
 	}
-	return &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}, true
+	w := &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}
+	w.writeFunc = w.write
+	return w, true
 }
 
 func createSyscallConnectedPacketBatchWriter(writer any) (N.ConnectedPacketBatchWriter, bool) {
@@ -216,7 +191,9 @@ func createSyscallConnectedPacketBatchWriter(writer any) (N.ConnectedPacketBatch
 	if _, isConnected := syscallPacketBatchPeerDestination(rawConn); !isConnected {
 		return nil, false
 	}
-	return &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}, true
+	w := &syscallPacketBatchWriter{upstream: writer, rawConn: rawConn}
+	w.writeFunc = w.write
+	return w, true
 }
 
 func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
@@ -246,6 +223,7 @@ func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, desti
 		w.names = names[:0]
 		w.iovecs = iovecs[:0]
 		w.msgvec = msgvec[:0]
+		w.pending = nil
 	}()
 	for i, buffer := range buffers {
 		names[i] = unix.RawSockaddrAny{}
@@ -259,40 +237,12 @@ func (w *syscallPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, desti
 			msgvec[i].msgHdr.SetIovlen(1)
 		}
 	}
-	writeMsgvec := msgvec
-	var innerErr syscall.Errno
-	var messageTooLong bool
-	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		for len(writeMsgvec) > 0 {
-			n, errno := w.offload.send(int(fd), writeMsgvec, 0)
-			switch errno {
-			case 0:
-			case syscall.EINTR:
-				continue
-			case syscall.EAGAIN:
-				return false
-			case syscall.EMSGSIZE:
-				messageTooLong = true
-				writeMsgvec = writeMsgvec[1:]
-				continue
-			default:
-				if errno == syscall.EWOULDBLOCK {
-					return false
-				}
-				innerErr = errno
-				return true
-			}
-			if n == 0 {
-				innerErr = syscall.EIO
-				return true
-			}
-			writeMsgvec = writeMsgvec[n:]
-		}
-		return true
-	})
-	if innerErr != 0 {
-		err = os.NewSyscallError("sendmmsg", innerErr)
-	} else if err == nil && messageTooLong {
+	w.pending = msgvec
+	w.writeErr, w.messageTooLong = 0, false
+	err := w.rawConn.Write(w.writeFunc)
+	if w.writeErr != 0 {
+		err = os.NewSyscallError("sendmmsg", w.writeErr)
+	} else if err == nil && w.messageTooLong {
 		err = os.NewSyscallError("sendmmsg", syscall.EMSGSIZE)
 	}
 	return err
@@ -310,6 +260,7 @@ func (w *syscallPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buff
 		clear(msgvec)
 		w.iovecs = iovecs[:0]
 		w.msgvec = msgvec[:0]
+		w.pending = nil
 	}()
 	for i, buffer := range buffers {
 		iovecs[i] = unix.Iovec{}
@@ -320,43 +271,44 @@ func (w *syscallPacketBatchWriter) WriteConnectedPacketBatch(buffers []*buf.Buff
 			msgvec[i].msgHdr.SetIovlen(1)
 		}
 	}
-	writeMsgvec := msgvec
-	var innerErr syscall.Errno
-	var messageTooLong bool
-	err := w.rawConn.Write(func(fd uintptr) (done bool) {
-		for len(writeMsgvec) > 0 {
-			n, errno := w.offload.send(int(fd), writeMsgvec, 0)
-			switch errno {
-			case 0:
-			case syscall.EINTR:
-				continue
-			case syscall.EAGAIN:
-				return false
-			case syscall.EMSGSIZE:
-				messageTooLong = true
-				writeMsgvec = writeMsgvec[1:]
-				continue
-			default:
-				if errno == syscall.EWOULDBLOCK {
-					return false
-				}
-				innerErr = errno
-				return true
-			}
-			if n == 0 {
-				innerErr = syscall.EIO
-				return true
-			}
-			writeMsgvec = writeMsgvec[n:]
-		}
-		return true
-	})
-	if innerErr != 0 {
-		err = os.NewSyscallError("sendmmsg", innerErr)
-	} else if err == nil && messageTooLong {
+	w.pending = msgvec
+	w.writeErr, w.messageTooLong = 0, false
+	err := w.rawConn.Write(w.writeFunc)
+	if w.writeErr != 0 {
+		err = os.NewSyscallError("sendmmsg", w.writeErr)
+	} else if err == nil && w.messageTooLong {
 		err = os.NewSyscallError("sendmmsg", syscall.EMSGSIZE)
 	}
 	return err
+}
+
+func (w *syscallPacketBatchWriter) write(fd uintptr) (done bool) {
+	for len(w.pending) > 0 {
+		n, errno := w.offload.send(int(fd), w.pending, 0)
+		switch errno {
+		case 0:
+		case syscall.EINTR:
+			continue
+		case syscall.EAGAIN:
+			return false
+		case syscall.EMSGSIZE:
+			w.messageTooLong = true
+			w.pending = w.pending[1:]
+			continue
+		default:
+			if errno == syscall.EWOULDBLOCK {
+				return false
+			}
+			w.writeErr = errno
+			return true
+		}
+		if n == 0 {
+			w.writeErr = syscall.EIO
+			return true
+		}
+		w.pending = w.pending[n:]
+	}
+	return true
 }
 
 func (w *syscallPacketBatchWriter) Upstream() any {
