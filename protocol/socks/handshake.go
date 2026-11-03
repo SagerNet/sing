@@ -185,6 +185,7 @@ func HandleConnectionEx(
 			if err != nil {
 				return err
 			}
+			return E.New("socks5: no acceptable auth methods")
 		}
 		if authenticator != nil {
 			authMethod = socks5.AuthTypeUsernamePassword
