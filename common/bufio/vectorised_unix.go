@@ -15,6 +15,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const iovMax = 1024
+
 type syscallVectorisedWriterFields struct {
 	access    sync.Mutex
 	iovecList []unix.Iovec
@@ -43,7 +45,7 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		for {
 			var r0 uintptr
 			//nolint:staticcheck
-			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&writeIovecList[0])), uintptr(len(writeIovecList)))
+			r0, _, innerErr = unix.RawSyscall(unix.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&writeIovecList[0])), uintptr(min(len(writeIovecList), iovMax)))
 			writeN := int(r0)
 			for writeN > 0 && len(writeIovecList) > 0 {
 				if int(writeIovecList[0].Len) > writeN {
