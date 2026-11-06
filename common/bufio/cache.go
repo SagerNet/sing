@@ -3,6 +3,7 @@ package bufio
 import (
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 
 	"github.com/sagernet/sing/common/buf"
@@ -12,7 +13,7 @@ import (
 
 type CachedConn struct {
 	net.Conn
-	taken  atomic.Bool
+	access sync.Mutex
 	buffer *buf.Buffer
 }
 
@@ -25,9 +26,8 @@ func NewCachedConn(conn net.Conn, buffer *buf.Buffer) *CachedConn {
 }
 
 func (c *CachedConn) ReadCached() *buf.Buffer {
-	if !c.taken.CompareAndSwap(false, true) {
-		return nil
-	}
+	c.access.Lock()
+	defer c.access.Unlock()
 	buffer := c.buffer
 	c.buffer = nil
 	if buffer != nil {
@@ -37,27 +37,30 @@ func (c *CachedConn) ReadCached() *buf.Buffer {
 }
 
 func (c *CachedConn) Read(p []byte) (n int, err error) {
+	c.access.Lock()
 	if c.buffer != nil {
 		n, err = c.buffer.Read(p)
-		if err == nil {
-			return
-		}
-		c.buffer.DecRef()
-		c.buffer.Release()
-		c.buffer = nil
-	}
-	return c.Conn.Read(p)
-}
-
-func (c *CachedConn) WriteTo(w io.Writer) (n int64, err error) {
-	if c.buffer != nil {
-		wn, wErr := w.Write(c.buffer.Bytes())
-		if wErr != nil {
+		if c.buffer.IsEmpty() {
 			c.buffer.DecRef()
 			c.buffer.Release()
 			c.buffer = nil
 		}
-		n += int64(wn)
+		if err == nil {
+			c.access.Unlock()
+			return
+		}
+	}
+	c.access.Unlock()
+	return c.Conn.Read(p)
+}
+
+func (c *CachedConn) WriteTo(w io.Writer) (n int64, err error) {
+	if buffer := c.ReadCached(); buffer != nil {
+		n, err = buffer.WriteTo(w)
+		buffer.Release()
+		if err != nil {
+			return
+		}
 	}
 	cn, err := Copy(w, c.Conn)
 	n += cn
@@ -73,6 +76,8 @@ func (c *CachedConn) Upstream() any {
 }
 
 func (c *CachedConn) ReaderReplaceable() bool {
+	c.access.Lock()
+	defer c.access.Unlock()
 	return c.buffer == nil
 }
 
@@ -81,19 +86,13 @@ func (c *CachedConn) WriterReplaceable() bool {
 }
 
 func (c *CachedConn) Close() error {
-	if c.taken.CompareAndSwap(false, true) {
-		if buffer := c.buffer; buffer != nil {
-			c.buffer = nil
-			buffer.DecRef()
-			buffer.Release()
-		}
-	}
+	c.ReadCached().Release()
 	return c.Conn.Close()
 }
 
 type CachedReader struct {
 	upstream io.Reader
-	taken    atomic.Bool
+	access   sync.Mutex
 	buffer   *buf.Buffer
 }
 
@@ -106,9 +105,8 @@ func NewCachedReader(upstream io.Reader, buffer *buf.Buffer) *CachedReader {
 }
 
 func (r *CachedReader) ReadCached() *buf.Buffer {
-	if !r.taken.CompareAndSwap(false, true) {
-		return nil
-	}
+	r.access.Lock()
+	defer r.access.Unlock()
 	buffer := r.buffer
 	r.buffer = nil
 	if buffer != nil {
@@ -118,25 +116,30 @@ func (r *CachedReader) ReadCached() *buf.Buffer {
 }
 
 func (r *CachedReader) Read(p []byte) (n int, err error) {
+	r.access.Lock()
 	if r.buffer != nil {
 		n, err = r.buffer.Read(p)
+		if r.buffer.IsEmpty() {
+			r.buffer.DecRef()
+			r.buffer.Release()
+			r.buffer = nil
+		}
 		if err == nil {
+			r.access.Unlock()
 			return
 		}
-		r.buffer.DecRef()
-		r.buffer.Release()
-		r.buffer = nil
 	}
+	r.access.Unlock()
 	return r.upstream.Read(p)
 }
 
 func (r *CachedReader) WriteTo(w io.Writer) (n int64, err error) {
-	if r.buffer != nil {
-		wn, wErr := w.Write(r.buffer.Bytes())
-		if wErr != nil {
-			return 0, wErr
+	if buffer := r.ReadCached(); buffer != nil {
+		n, err = buffer.WriteTo(w)
+		buffer.Release()
+		if err != nil {
+			return
 		}
-		n += int64(wn)
 	}
 	cn, err := Copy(w, r.upstream)
 	n += cn
@@ -148,17 +151,13 @@ func (r *CachedReader) Upstream() any {
 }
 
 func (r *CachedReader) ReaderReplaceable() bool {
+	r.access.Lock()
+	defer r.access.Unlock()
 	return r.buffer == nil
 }
 
 func (r *CachedReader) Close() error {
-	if r.taken.CompareAndSwap(false, true) {
-		if buffer := r.buffer; buffer != nil {
-			r.buffer = nil
-			buffer.DecRef()
-			buffer.Release()
-		}
-	}
+	r.ReadCached().Release()
 	return nil
 }
 
@@ -179,15 +178,12 @@ func NewCachedPacketConn(conn N.PacketConn, buffer *buf.Buffer, destination M.So
 }
 
 func (c *CachedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	if c.buffer != nil {
-		_, err = buffer.ReadOnceFrom(c.buffer)
-		if err != nil {
-			return M.Socksaddr{}, err
-		}
-		c.buffer.DecRef()
-		c.buffer.Release()
-		c.buffer = nil
-		return c.destination, nil
+	packet := c.ReadCachedPacket()
+	if packet != nil {
+		defer packet.Buffer.Release()
+		defer N.PutPacketBuffer(packet)
+		_, err = buffer.Write(packet.Buffer.Bytes())
+		return packet.Destination, err
 	}
 	return c.PacketConn.ReadPacket(buffer)
 }
@@ -198,9 +194,10 @@ func (c *CachedPacketConn) ReadCachedPacket() *N.PacketBuffer {
 	}
 	buffer := c.buffer
 	c.buffer = nil
-	if buffer != nil {
-		buffer.DecRef()
+	if buffer == nil {
+		return nil
 	}
+	buffer.DecRef()
 	packet := N.NewPacketBuffer()
 	*packet = N.PacketBuffer{
 		Buffer:      buffer,
@@ -214,7 +211,7 @@ func (c *CachedPacketConn) Upstream() any {
 }
 
 func (c *CachedPacketConn) ReaderReplaceable() bool {
-	return c.buffer == nil
+	return c.taken.Load()
 }
 
 func (c *CachedPacketConn) WriterReplaceable() bool {
