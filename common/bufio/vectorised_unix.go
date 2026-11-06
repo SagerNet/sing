@@ -64,7 +64,7 @@ func (w *SyscallVectorisedWriter) WriteVectorised(buffers []*buf.Buffer) error {
 		}
 	})
 	clear(iovecList)
-	if innerErr != 0 {
+	if err == nil && innerErr != 0 {
 		err = os.NewSyscallError("SYS_WRITEV", innerErr)
 	}
 	return err
@@ -117,7 +117,7 @@ func (w *SyscallVectorisedPacketWriter) WriteVectorisedPacket(buffers []*buf.Buf
 		}
 	})
 	clear(iovecList)
-	if innerErr != 0 {
+	if err == nil && innerErr != 0 {
 		err = os.NewSyscallError("SYS_SENDMSG", innerErr)
 	}
 	return err
