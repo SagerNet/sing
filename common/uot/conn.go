@@ -29,13 +29,12 @@ type Conn struct {
 }
 
 func NewConn(conn net.Conn, request Request) *Conn {
-	uConn := &Conn{
+	return &Conn{
 		Conn:        conn,
 		isConnect:   request.IsConnect,
 		destination: request.Destination,
+		writer:      bufio.NewVectorisedWriter(conn),
 	}
-	uConn.writer, _ = bufio.CreateVectorisedWriter(N.UnwrapWriter(conn))
-	return uConn
 }
 
 func (c *Conn) Read(p []byte) (n int, err error) {
@@ -74,36 +73,11 @@ func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *Conn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	c.writeAccess.Lock()
-	defer c.writeAccess.Unlock()
-
-	destination := M.SocksaddrFromNet(addr)
-	var bufferLen int
-	if !c.isConnect {
-		bufferLen += AddrParser.AddrPortLen(destination)
+	err = c.WritePacket(buf.As(p), M.SocksaddrFromNet(addr))
+	if err != nil {
+		return
 	}
-	bufferLen += 2
-	if c.writer == nil {
-		bufferLen += len(p)
-	}
-	buffer := buf.NewSize(bufferLen)
-	defer buffer.Release()
-	if !c.isConnect {
-		err = AddrParser.WriteAddrPort(buffer, destination)
-		if err != nil {
-			return
-		}
-	}
-	common.Must(binary.Write(buffer, binary.BigEndian, uint16(len(p))))
-	if c.writer == nil {
-		common.Must1(buffer.Write(p))
-		return c.Conn.Write(buffer.Bytes())
-	}
-	err = c.writer.WriteVectorised([]*buf.Buffer{buffer, buf.As(p)})
-	if err == nil {
-		n = len(p)
-	}
-	return
+	return len(p), nil
 }
 
 func (c *Conn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
@@ -131,27 +105,20 @@ func (c *Conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	c.writeAccess.Lock()
 	defer c.writeAccess.Unlock()
 
-	var headerLen int
+	headerLen := 2
 	if !c.isConnect {
 		headerLen += AddrParser.AddrPortLen(destination)
 	}
-	headerLen += 2
-	if c.writer == nil {
-		headerLen += buffer.Len()
-	}
 	header := buf.NewSize(headerLen)
-	defer header.Release()
 	if !c.isConnect {
 		err := AddrParser.WriteAddrPort(header, destination)
 		if err != nil {
+			header.Release()
+			buffer.Release()
 			return err
 		}
 	}
 	common.Must(binary.Write(header, binary.BigEndian, uint16(buffer.Len())))
-	if c.writer == nil {
-		common.Must1(header.Write(buffer.Bytes()))
-		return common.Error(c.Conn.Write(header.Bytes()))
-	}
 	return c.writer.WriteVectorised([]*buf.Buffer{header, buffer})
 }
 
