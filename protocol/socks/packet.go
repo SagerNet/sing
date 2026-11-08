@@ -68,11 +68,8 @@ func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Sock
 }
 
 func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	headerLen := 3 + M.SocksaddrSerializer.AddrPortLen(destination)
-	buffer = N.ReadWaitOptions{FrontHeadroom: headerLen}.Copy(buffer)
-	header := buf.With(buffer.ExtendHeader(headerLen))
-	common.Must(header.WriteZeroN(3))
-	err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
+	buffer = N.ReadWaitOptions{FrontHeadroom: 3 + M.SocksaddrSerializer.AddrPortLen(destination)}.Copy(buffer)
+	err := associatePacketOffload{}.EncodePacket(buffer, destination)
 	if err != nil {
 		buffer.Release()
 		return err

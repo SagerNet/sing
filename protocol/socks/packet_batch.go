@@ -1,7 +1,6 @@
 package socks
 
 import (
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
@@ -88,18 +87,9 @@ func (r *lazyAssociatePacketBatchReadWaiter) Upstream() any { return r.reader }
 func (w *associatePacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
 	for index, buffer := range buffers {
 		destination := destinations[index]
-		headerLen := 3 + M.SocksaddrSerializer.AddrPortLen(destination)
-		if buffer.Start() < headerLen {
-			newBuffer := buf.NewSize(headerLen + buffer.Len())
-			newBuffer.Resize(headerLen, 0)
-			common.Must1(newBuffer.Write(buffer.Bytes()))
-			buffer.Release()
-			buffer = newBuffer
-			buffers[index] = buffer
-		}
-		header := buf.With(buffer.ExtendHeader(headerLen))
-		common.Must(header.WriteZeroN(3))
-		err := M.SocksaddrSerializer.WriteAddrPort(header, destination)
+		buffer = N.ReadWaitOptions{FrontHeadroom: 3 + M.SocksaddrSerializer.AddrPortLen(destination)}.Copy(buffer)
+		buffers[index] = buffer
+		err := associatePacketOffload{}.EncodePacket(buffer, destination)
 		if err != nil {
 			buf.ReleaseMulti(buffers)
 			return err
