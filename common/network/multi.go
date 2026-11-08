@@ -47,8 +47,8 @@ func ListenSerial(ctx context.Context, dialer Dialer, destination M.Socksaddr, d
 }
 
 func DialParallel(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr, preferIPv6 bool, fallbackDelay time.Duration) (net.Conn, error) {
-	if len(destinationAddresses) < 2 {
-		return DialSerial(ctx, dialer, network, destination, destinationAddresses)
+	if len(destinationAddresses) == 1 {
+		return dialer.DialContext(ctx, network, M.SocksaddrFrom(destinationAddresses[0], destination.Port))
 	}
 	if fallbackDelay == 0 {
 		fallbackDelay = DefaultFallbackDelay
