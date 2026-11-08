@@ -176,6 +176,7 @@ func (c *LazyAssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.
 	if !c.responseWritten {
 		err := c.HandshakeSuccess()
 		if err != nil {
+			buffer.Release()
 			return err
 		}
 	}
