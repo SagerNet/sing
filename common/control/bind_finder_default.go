@@ -3,6 +3,7 @@ package control
 import (
 	"net"
 	"net/netip"
+	"strconv"
 	"sync"
 
 	E "github.com/sagernet/sing/common/exceptions"
@@ -111,6 +112,13 @@ func (f *DefaultInterfaceFinder) ByIndex(index int) (*Interface, error) {
 }
 
 func (f *DefaultInterfaceFinder) ByAddr(addr netip.Addr) (*Interface, error) {
+	if addr.Zone() != "" {
+		index, err := strconv.Atoi(addr.Zone())
+		if err == nil {
+			return f.ByIndex(index)
+		}
+		return f.ByName(addr.Zone())
+	}
 	f.access.RLock()
 	defer f.access.RUnlock()
 	for _, netInterface := range f.interfaces {
@@ -128,6 +136,9 @@ func (f *DefaultInterfaceFinder) ByAddr(addr netip.Addr) (*Interface, error) {
 			continue
 		}
 		for _, prefix := range netInterface.Addresses {
+			if prefix.Addr().Is6() && prefix.Addr().IsLinkLocalUnicast() {
+				continue
+			}
 			if prefix.Contains(addr) {
 				return &netInterface, nil
 			}
