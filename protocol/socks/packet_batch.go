@@ -24,11 +24,10 @@ func (c *AssociatePacketConn) CreatePacketBatchReadWaiter() (N.PacketBatchReadWa
 	if !created {
 		return nil, false
 	}
-	return &associatePacketBatchReadWaiter{conn: c, reader: reader}, true
+	return &associatePacketBatchReadWaiter{reader: reader}, true
 }
 
 type associatePacketBatchReadWaiter struct {
-	conn   *AssociatePacketConn
 	reader N.ConnectedPacketBatchReadWaiter
 }
 
@@ -49,7 +48,6 @@ func (r *associatePacketBatchReadWaiter) WaitReadPackets() ([]*buf.Buffer, []M.S
 			return nil, nil, err
 		}
 	}
-	r.conn.remoteAddr = destinations[len(destinations)-1]
 	return buffers, destinations, nil
 }
 
