@@ -91,7 +91,9 @@ type ExtendedPacketConn struct {
 func (w *ExtendedPacketConn) ReadFrom(b []byte) (n int, addr net.Addr, err error) {
 	n, addr, err = w.PacketConn.ReadFrom(b)
 	if err == nil {
-		addr = M.SocksaddrFromNet(addr).Unwrap().UDPAddr()
+		if source := M.SocksaddrFromNet(addr); !source.IsDomain() {
+			addr = source.Unwrap().UDPAddr()
+		}
 	}
 	return
 }
@@ -106,6 +108,9 @@ func (w *ExtendedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error)
 
 func (w *ExtendedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
+	if destination.IsDomain() {
+		return common.Error(w.WriteTo(buffer.Bytes(), destination))
+	}
 	return common.Error(w.WriteTo(buffer.Bytes(), destination.UDPAddr()))
 }
 
