@@ -59,12 +59,7 @@ func (c *AssociatePacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Sock
 		return M.Socksaddr{}, ErrInvalidPacket
 	}
 	buffer.Advance(3)
-	destination, err = M.SocksaddrSerializer.ReadAddrPort(buffer)
-	if err != nil {
-		return
-	}
-	c.remoteAddr = destination
-	return destination, nil
+	return M.SocksaddrSerializer.ReadAddrPort(buffer)
 }
 
 func (c *AssociatePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
@@ -90,7 +85,7 @@ func (c *AssociatePacketConn) Write(b []byte) (n int, err error) {
 }
 
 func (c *AssociatePacketConn) RemoteAddr() net.Addr {
-	return c.remoteAddr.UDPAddr()
+	return c.remoteAddr
 }
 
 func (c *AssociatePacketConn) Upstream() any {

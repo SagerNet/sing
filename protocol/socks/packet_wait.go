@@ -14,13 +14,12 @@ func (c *AssociatePacketConn) CreateReadWaiter() (N.PacketReadWaiter, bool) {
 	if !isReadWaiter {
 		return nil, false
 	}
-	return &AssociatePacketReadWaiter{c, readWaiter}, true
+	return &AssociatePacketReadWaiter{readWaiter}, true
 }
 
 var _ N.PacketReadWaiter = (*AssociatePacketReadWaiter)(nil)
 
 type AssociatePacketReadWaiter struct {
-	conn       *AssociatePacketConn
 	readWaiter N.ReadWaiter
 }
 
@@ -41,8 +40,6 @@ func (w *AssociatePacketReadWaiter) WaitReadPacket() (buffer *buf.Buffer, destin
 	destination, err = M.SocksaddrSerializer.ReadAddrPort(buffer)
 	if err != nil {
 		buffer.Release()
-		return
 	}
-	w.conn.remoteAddr = destination
 	return
 }
