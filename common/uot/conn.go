@@ -46,6 +46,10 @@ func (c *Conn) Write(p []byte) (n int, err error) {
 	return c.WriteTo(p, c.destination)
 }
 
+func (c *Conn) RemoteAddr() net.Addr {
+	return c.destination
+}
+
 func (c *Conn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var destination M.Socksaddr
 	if c.isConnect {
