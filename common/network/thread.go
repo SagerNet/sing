@@ -61,8 +61,6 @@ func IsSafePacketReader(reader any) ThreadSafePacketReader {
 	return nil
 }
 
-const DefaultHeadroom = 1024
-
 type FrontHeadroom interface {
 	FrontHeadroom() int
 }
@@ -71,16 +69,9 @@ type RearHeadroom interface {
 	RearHeadroom() int
 }
 
-type LazyHeadroom interface {
-	LazyHeadroom() bool
-}
-
 func CalculateFrontHeadroom(writer any) int {
 	var headroom int
 	for writer != nil {
-		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
-			return DefaultHeadroom
-		}
 		if headroomWriter, needHeadroom := writer.(FrontHeadroom); needHeadroom {
 			headroom += headroomWriter.FrontHeadroom()
 		}
@@ -98,9 +89,6 @@ func CalculateFrontHeadroom(writer any) int {
 func CalculateRearHeadroom(writer any) int {
 	var headroom int
 	for writer != nil {
-		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
-			return DefaultHeadroom
-		}
 		if headroomWriter, needHeadroom := writer.(RearHeadroom); needHeadroom {
 			headroom += headroomWriter.RearHeadroom()
 		}
@@ -122,9 +110,6 @@ type ReaderOverhead interface {
 func CalculateReaderOverhead(reader any) int {
 	var overhead int
 	for reader != nil {
-		if lazyRoom, isLazy := reader.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
-			return DefaultHeadroom
-		}
 		if overheadReader, hasOverhead := reader.(ReaderOverhead); hasOverhead {
 			overhead += overheadReader.ReaderOverhead()
 		}
@@ -160,9 +145,6 @@ func CalculateMTU(reader any, writer any) int {
 func calculateReaderMTU(reader any) int {
 	var mtu int
 	for reader != nil {
-		if lazyRoom, isLazy := reader.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
-			return 0
-		}
 		if withMTU, haveMTU := reader.(ReaderWithMTU); haveMTU {
 			upstreamMTU := withMTU.ReaderMTU()
 			if upstreamMTU > mtu {
@@ -183,9 +165,6 @@ func calculateReaderMTU(reader any) int {
 func calculateWriterMTU(writer any) int {
 	var mtu int
 	for writer != nil {
-		if lazyRoom, isLazy := writer.(LazyHeadroom); isLazy && lazyRoom.LazyHeadroom() {
-			return 0
-		}
 		if withMTU, haveMTU := writer.(WriterWithMTU); haveMTU {
 			upstreamMTU := withMTU.WriterMTU()
 			if mtu == 0 || upstreamMTU > 0 && upstreamMTU < mtu {
