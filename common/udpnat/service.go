@@ -107,6 +107,9 @@ func (s *Service[T]) NewContextPacketEx(ctx context.Context, key T, buffer *buf.
 			localAddr:    source,
 			remoteAddr:   destination,
 			readDeadline: pipe.MakeDeadline(),
+			refresh: func() {
+				s.nat.Load(key)
+			},
 		}
 		c.ctx, c.cancel = context.WithCancelCause(ctx)
 		return c
@@ -161,6 +164,7 @@ type conn struct {
 	source          N.PacketWriter
 	readDeadline    pipe.Deadline
 	readWaitOptions N.ReadWaitOptions
+	refresh         func()
 }
 
 func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
@@ -177,7 +181,11 @@ func (c *conn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 }
 
 func (c *conn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	return c.source.WritePacket(buffer, destination)
+	err := c.source.WritePacket(buffer, destination)
+	if err == nil {
+		c.refresh()
+	}
+	return err
 }
 
 func (c *conn) Close() error {

@@ -1,12 +1,16 @@
 package udpnat
 
 import (
+	"net/netip"
 	"testing"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
+	"github.com/sagernet/sing/contrab/freelru"
+	"github.com/sagernet/sing/contrab/maphash"
 )
 
 func TestNatConnPacketBatchReadWaiter(t *testing.T) {
@@ -47,7 +51,8 @@ func TestNatConnPacketBatchWriterCreator(t *testing.T) {
 	t.Parallel()
 
 	writer := &testPacketBatchWriter{}
-	conn := &natConn{writer: writer}
+	cache := common.Must1(freelru.New[netip.AddrPort, *natConn](1, maphash.NewHasher[netip.AddrPort]().Hash32, false))
+	conn := &natConn{cache: cache, writer: writer}
 	batchWriter, created := conn.CreatePacketBatchWriter()
 	if !created {
 		t.Fatal("CreatePacketBatchWriter returned false")

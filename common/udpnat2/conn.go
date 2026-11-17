@@ -10,6 +10,7 @@ import (
 
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/canceler"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -27,6 +28,7 @@ var _ Conn = (*natConn)(nil)
 var (
 	_ N.PacketBatchReadWaitCreator = (*natConn)(nil)
 	_ N.PacketBatchWriteCreator    = (*natConn)(nil)
+	_ N.PacketBatchWriter          = (*natPacketBatchWriter)(nil)
 )
 
 type natConn struct {
@@ -58,17 +60,36 @@ func (c *natConn) ReadPacket(buffer *buf.Buffer) (addr M.Socksaddr, err error) {
 }
 
 func (c *natConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
-	return c.writer.WritePacket(buffer, destination)
+	err := c.writer.WritePacket(buffer, destination)
+	if err == nil {
+		c.cache.GetAndRefresh(c.localAddr.AddrPort())
+	}
+	return err
 }
 
 func (c *natConn) CreatePacketBatchWriter() (N.PacketBatchWriter, bool) {
-	if writer, isWriter := c.writer.(N.PacketBatchWriter); isWriter {
-		return writer, true
+	writer, created := bufio.CreatePacketBatchWriter(c.writer)
+	if !created {
+		return nil, false
 	}
-	if creator, isCreator := c.writer.(N.PacketBatchWriteCreator); isCreator {
-		return creator.CreatePacketBatchWriter()
+	return &natPacketBatchWriter{conn: c, writer: writer}, true
+}
+
+type natPacketBatchWriter struct {
+	conn   *natConn
+	writer N.PacketBatchWriter
+}
+
+func (w *natPacketBatchWriter) WritePacketBatch(buffers []*buf.Buffer, destinations []M.Socksaddr) error {
+	err := w.writer.WritePacketBatch(buffers, destinations)
+	if err == nil {
+		w.conn.cache.GetAndRefresh(w.conn.localAddr.AddrPort())
 	}
-	return nil, false
+	return err
+}
+
+func (w *natPacketBatchWriter) Upstream() any {
+	return w.conn
 }
 
 func (c *natConn) InitializeReadWaiter(options N.ReadWaitOptions) (needCopy bool) {
