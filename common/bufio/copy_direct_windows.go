@@ -14,8 +14,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const errMessageTooLong = windows.WSAEMSGSIZE
-
 var _ N.ReadWaiter = (*syscallReadWaiter)(nil)
 
 type syscallReadWaiter struct {

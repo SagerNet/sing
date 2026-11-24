@@ -1,6 +1,7 @@
 package network
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/sagernet/sing/common/buf"
@@ -32,4 +33,8 @@ func ReleaseMultiPacketBuffer(packetBuffers []*PacketBuffer) {
 		packet.Buffer.Release()
 		PutPacketBuffer(packet)
 	}
+}
+
+func IsPacketTooBig(err error) bool {
+	return errors.Is(err, ErrPacketTooBig)
 }

@@ -466,7 +466,7 @@ func copyPacketWithPool(session *packetCopySession, destination N.PacketWriter, 
 		destinationAddress, err = source.ReadPacket(buffer)
 		if err != nil {
 			buffer.Release()
-			if errors.Is(err, errMessageTooLong) {
+			if N.IsPacketTooBig(err) {
 				continue
 			}
 			return
@@ -476,7 +476,7 @@ func copyPacketWithPool(session *packetCopySession, destination N.PacketWriter, 
 		err = destination.WritePacket(buffer, destinationAddress)
 		if err != nil {
 			buffer.Leak()
-			if errors.Is(err, errMessageTooLong) {
+			if N.IsPacketTooBig(err) {
 				continue
 			}
 			if !notFirstTime {
@@ -508,7 +508,7 @@ func writePacketWithPool(originSource N.PacketReader, destination N.PacketWriter
 		N.PutPacketBuffer(packetBuffer)
 		if err != nil {
 			buffer.Leak()
-			if errors.Is(err, errMessageTooLong) {
+			if N.IsPacketTooBig(err) {
 				err = nil
 				continue
 			}
