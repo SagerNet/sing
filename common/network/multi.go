@@ -14,6 +14,9 @@ import (
 const DefaultFallbackDelay = 300 * time.Millisecond
 
 func DialSerial(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.Conn, error) {
+	if len(destinationAddresses) == 0 {
+		return nil, E.New("network: no destination addresses")
+	}
 	if parallelDialer, isParallel := dialer.(ParallelDialer); isParallel {
 		return parallelDialer.DialParallel(ctx, network, destination, destinationAddresses)
 	}
@@ -32,6 +35,9 @@ func DialSerial(ctx context.Context, dialer Dialer, network string, destination 
 }
 
 func ListenSerial(ctx context.Context, dialer Dialer, destination M.Socksaddr, destinationAddresses []netip.Addr) (net.PacketConn, netip.Addr, error) {
+	if len(destinationAddresses) == 0 {
+		return nil, netip.Addr{}, E.New("network: no destination addresses")
+	}
 	var conn net.PacketConn
 	var err error
 	var connErrors []error
@@ -47,7 +53,10 @@ func ListenSerial(ctx context.Context, dialer Dialer, destination M.Socksaddr, d
 }
 
 func DialParallel(ctx context.Context, dialer Dialer, network string, destination M.Socksaddr, destinationAddresses []netip.Addr, preferIPv6 bool, fallbackDelay time.Duration) (net.Conn, error) {
-	if len(destinationAddresses) == 1 {
+	switch len(destinationAddresses) {
+	case 0:
+		return nil, E.New("network: no destination addresses")
+	case 1:
 		return dialer.DialContext(ctx, network, M.SocksaddrFrom(destinationAddresses[0], destination.Port))
 	}
 	if fallbackDelay == 0 {
