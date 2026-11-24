@@ -248,7 +248,7 @@ func HandleConnectionEx(
 			if err != nil {
 				return E.Cause(err, "socks5: write response")
 			}
-			serverConn := bufio.NewServerPacketConn(udpConn, M.SocksaddrFromNet(conn.RemoteAddr()).Unwrap().Addr)
+			serverConn := bufio.NewServerPacketConn(udpConn)
 			associateConn := NewAssociatePacketConn(serverConn, M.Socksaddr{}, conn)
 			go func() {
 				var buffer [1]byte

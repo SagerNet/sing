@@ -2,7 +2,6 @@ package bufio
 
 import (
 	"net"
-	"net/netip"
 	"sync"
 
 	"github.com/sagernet/sing/common/buf"
@@ -131,55 +130,34 @@ func (c *UnbindPacketConn) Upstream() any {
 	return c.ExtendedConn
 }
 
-func NewServerPacketConn(conn net.PacketConn, peer netip.Addr) N.ExtendedConn {
+func NewServerPacketConn(conn net.PacketConn) N.ExtendedConn {
 	return &serverPacketConn{
 		NetPacketConn: NewPacketConn(conn),
-		peer:          peer,
 	}
 }
 
 type serverPacketConn struct {
 	N.NetPacketConn
-	peer         netip.Addr
 	remoteAccess sync.RWMutex
 	remoteAddr   M.Socksaddr
 }
 
-func (c *serverPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	for {
-		n, addr, err = c.NetPacketConn.ReadFrom(p)
-		if err != nil || c.acceptSource(M.SocksaddrFromNet(addr).Unwrap()) {
-			return
-		}
-	}
-}
-
-func (c *serverPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	for {
-		destination, err = c.NetPacketConn.ReadPacket(buffer)
-		if err != nil || c.acceptSource(destination) {
-			return
-		}
-		buffer.Truncate(0)
-	}
-}
-
-func (c *serverPacketConn) acceptSource(source M.Socksaddr) bool {
-	if source.Addr.WithZone("") != c.peer {
-		return false
-	}
-	c.updateRemoteAddr(source)
-	return true
-}
-
 func (c *serverPacketConn) Read(p []byte) (n int, err error) {
-	n, _, err = c.ReadFrom(p)
+	n, addr, err := c.NetPacketConn.ReadFrom(p)
+	if err != nil {
+		return
+	}
+	c.updateRemoteAddr(M.SocksaddrFromNet(addr).Unwrap())
 	return
 }
 
 func (c *serverPacketConn) ReadBuffer(buffer *buf.Buffer) error {
-	_, err := c.ReadPacket(buffer)
-	return err
+	destination, err := c.NetPacketConn.ReadPacket(buffer)
+	if err != nil {
+		return err
+	}
+	c.updateRemoteAddr(destination)
+	return nil
 }
 
 func (c *serverPacketConn) Write(p []byte) (n int, err error) {

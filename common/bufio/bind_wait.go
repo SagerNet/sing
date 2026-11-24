@@ -53,14 +53,12 @@ func (w *serverPacketReadWaiter) InitializeReadWaiter(options N.ReadWaitOptions)
 }
 
 func (w *serverPacketReadWaiter) WaitReadBuffer() (buffer *buf.Buffer, err error) {
-	for {
-		var destination M.Socksaddr
-		buffer, destination, err = w.readWaiter.WaitReadPacket()
-		if err != nil || w.acceptSource(destination) {
-			return
-		}
-		buffer.Release()
+	buffer, destination, err := w.readWaiter.WaitReadPacket()
+	if err != nil {
+		return
 	}
+	w.updateRemoteAddr(destination)
+	return
 }
 
 var _ N.PacketBatchReadWaiter = (*serverPacketBatchReadWaiter)(nil)
@@ -75,25 +73,12 @@ func (w *serverPacketBatchReadWaiter) InitializeReadWaiter(options N.ReadWaitOpt
 }
 
 func (w *serverPacketBatchReadWaiter) WaitReadPackets() ([]*buf.Buffer, []M.Socksaddr, error) {
-	for {
-		buffers, destinations, err := w.readWaiter.WaitReadPackets()
-		if err != nil {
-			return nil, nil, err
-		}
-		var accepted int
-		for index, buffer := range buffers {
-			if !w.conn.acceptSource(destinations[index]) {
-				buffer.Release()
-				continue
-			}
-			buffers[accepted] = buffer
-			destinations[accepted] = destinations[index]
-			accepted++
-		}
-		if accepted > 0 {
-			return buffers[:accepted], destinations[:accepted], nil
-		}
+	buffers, destinations, err := w.readWaiter.WaitReadPackets()
+	if err != nil {
+		return nil, nil, err
 	}
+	w.conn.updateRemoteAddr(destinations[len(destinations)-1])
+	return buffers, destinations, nil
 }
 
 func (w *serverPacketBatchReadWaiter) Upstream() any {
