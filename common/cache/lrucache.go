@@ -38,12 +38,6 @@ func WithSize[K comparable, V any](maxSize int) Option[K, V] {
 	}
 }
 
-func WithStale[K comparable, V any](stale bool) Option[K, V] {
-	return func(l *LruCache[K, V]) {
-		l.staleReturn = stale
-	}
-}
-
 type LruCache[K comparable, V any] struct {
 	maxAge         int64
 	maxSize        int
@@ -51,7 +45,6 @@ type LruCache[K comparable, V any] struct {
 	cache          map[K]*list.Element[*entry[K, V]]
 	lru            list.List[*entry[K, V]] // Front is least-recent
 	updateAgeOnGet bool
-	staleReturn    bool
 	onEvict        EvictCallback[K, V]
 }
 
@@ -68,96 +61,27 @@ func New[K comparable, V any](options ...Option[K, V]) *LruCache[K, V] {
 }
 
 func (c *LruCache[K, V]) Load(key K) (V, bool) {
-	entry := c.get(key)
-	if entry == nil {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	le := c.loadLocked(key)
+	if le == nil {
 		return common.DefaultValue[V](), false
 	}
-	value := entry.value
-
-	return value, true
+	return le.Value.value, true
 }
 
 func (c *LruCache[K, V]) LoadOrStore(key K, constructor func() V) (V, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	le, ok := c.cache[key]
-	if ok {
-		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
-			c.deleteElement(le)
-			goto create
-		}
-
-		c.lru.MoveToBack(le)
-		entry := le.Value
-		if c.maxAge > 0 && c.updateAgeOnGet {
-			entry.expires = time.Now().Unix() + c.maxAge
-		}
-		return entry.value, true
+	if le := c.loadLocked(key); le != nil {
+		return le.Value.value, true
 	}
-
-create:
 	value := constructor()
-	if le, ok := c.cache[key]; ok {
-		c.lru.MoveToBack(le)
-		e := le.Value
-		e.value = value
-		e.expires = time.Now().Unix() + c.maxAge
-	} else {
-		e := &entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge}
-		c.cache[key] = c.lru.PushBack(e)
-	}
-
+	c.cache[key] = c.lru.PushBack(&entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge})
 	c.maybeDeleteOldest()
 	return value, false
-}
-
-func (c *LruCache[K, V]) LoadOrStoreWithAge(key K, maxAge int64, constructor func() V) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if maxAge == 0 {
-		maxAge = c.maxAge
-	}
-
-	le, ok := c.cache[key]
-	if ok {
-		if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
-			c.deleteElement(le)
-			goto create
-		}
-
-		c.lru.MoveToBack(le)
-		entry := le.Value
-		if c.maxAge > 0 && c.updateAgeOnGet {
-			entry.expires = time.Now().Unix() + maxAge
-		}
-		return entry.value, true
-	}
-
-create:
-	value := constructor()
-	if le, ok := c.cache[key]; ok {
-		c.lru.MoveToBack(le)
-		e := le.Value
-		e.value = value
-		e.expires = time.Now().Unix() + maxAge
-	} else {
-		e := &entry[K, V]{key: key, value: value, expires: time.Now().Unix() + c.maxAge}
-		c.cache[key] = c.lru.PushBack(e)
-	}
-
-	c.maybeDeleteOldest()
-	return value, false
-}
-
-func (c *LruCache[K, V]) LoadWithExpire(key K) (V, time.Time, bool) {
-	entry := c.get(key)
-	if entry == nil {
-		return common.DefaultValue[V](), time.Time{}, false
-	}
-
-	return entry.value, time.Unix(entry.expires, 0), true
 }
 
 func (c *LruCache[K, V]) Exist(key K) bool {
@@ -169,24 +93,17 @@ func (c *LruCache[K, V]) Exist(key K) bool {
 }
 
 func (c *LruCache[K, V]) Store(key K, value V) {
-	expires := int64(0)
-	if c.maxAge > 0 {
-		expires = time.Now().Unix() + c.maxAge
-	}
-	c.StoreWithExpire(key, value, time.Unix(expires, 0))
-}
-
-func (c *LruCache[K, V]) StoreWithExpire(key K, value V, expires time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	expires := time.Now().Unix() + c.maxAge
 	if le, ok := c.cache[key]; ok {
 		c.lru.MoveToBack(le)
 		e := le.Value
 		e.value = value
-		e.expires = expires.Unix()
+		e.expires = expires
 	} else {
-		e := &entry[K, V]{key: key, value: value, expires: expires.Unix()}
+		e := &entry[K, V]{key: key, value: value, expires: expires}
 		c.cache[key] = c.lru.PushBack(e)
 	}
 
@@ -217,28 +134,21 @@ func (c *LruCache[K, V]) Range(block func(key K, value V)) {
 	}
 }
 
-func (c *LruCache[K, V]) get(key K) *entry[K, V] {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
+func (c *LruCache[K, V]) loadLocked(key K) *list.Element[*entry[K, V]] {
 	le, ok := c.cache[key]
 	if !ok {
 		return nil
 	}
-
-	if !c.staleReturn && c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
+	if c.maxAge > 0 && le.Value.expires <= time.Now().Unix() {
 		c.deleteElement(le)
 		c.maybeDeleteOldest()
-
 		return nil
 	}
-
 	c.lru.MoveToBack(le)
-	entry := le.Value
 	if c.maxAge > 0 && c.updateAgeOnGet {
-		entry.expires = time.Now().Unix() + c.maxAge
+		le.Value.expires = time.Now().Unix() + c.maxAge
 	}
-	return entry
+	return le
 }
 
 // Delete removes the value associated with a key.
@@ -255,13 +165,13 @@ func (c *LruCache[K, V]) Delete(key K) {
 func (c *LruCache[K, V]) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for element := c.lru.Front(); element != nil; element = element.Next() {
-		c.deleteElement(element)
+	for le := c.lru.Front(); le != nil; le = c.lru.Front() {
+		c.deleteElement(le)
 	}
 }
 
 func (c *LruCache[K, V]) maybeDeleteOldest() {
-	if !c.staleReturn && c.maxAge > 0 {
+	if c.maxAge > 0 {
 		now := time.Now().Unix()
 		for le := c.lru.Front(); le != nil && le.Value.expires <= now; le = c.lru.Front() {
 			c.deleteElement(le)
