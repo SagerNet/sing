@@ -292,19 +292,21 @@ func removeExtraHTTPHostPort(req *http.Request) {
 }
 
 func responseWith(request *http.Request, statusCode int, headers ...string) *http.Response {
-	var header http.Header
-	if len(headers) > 0 {
-		header = make(http.Header)
-		for i := 0; i < len(headers); i += 2 {
-			header.Add(headers[i], headers[i+1])
-		}
+	header := make(http.Header)
+	for i := 0; i < len(headers); i += 2 {
+		header.Add(headers[i], headers[i+1])
 	}
+	header.Set("Content-Type", "text/plain; charset=utf-8")
+	body := http.StatusText(statusCode) + "\n"
 	return &http.Response{
-		StatusCode: statusCode,
-		Status:     http.StatusText(statusCode),
-		Proto:      request.Proto,
-		ProtoMajor: request.ProtoMajor,
-		ProtoMinor: request.ProtoMinor,
-		Header:     header,
+		StatusCode:    statusCode,
+		Status:        http.StatusText(statusCode),
+		Proto:         request.Proto,
+		ProtoMajor:    request.ProtoMajor,
+		ProtoMinor:    request.ProtoMinor,
+		Header:        header,
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
+		Request:       request,
 	}
 }
