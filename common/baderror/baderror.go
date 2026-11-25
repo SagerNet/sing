@@ -5,16 +5,15 @@ import (
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"strings"
 )
 
 func Contains(err error, msgList ...string) bool {
-	for _, msg := range msgList {
-		if strings.Contains(err.Error(), msg) {
-			return true
-		}
-	}
-	return false
+	message := err.Error()
+	return slices.ContainsFunc(msgList, func(msg string) bool {
+		return strings.Contains(message, msg)
+	})
 }
 
 // x/net http2 (clientConnReadLoop.run, serverConn.processFrameFromReader) and grpc-go
@@ -36,7 +35,7 @@ func WrapH2(err error) error {
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return io.EOF
 	}
-	if Contains(err, "client disconnected", "body closed by handler", "response body closed", "; CANCEL") {
+	if Contains(err, "client disconnected", "body closed by handler", "response body closed", "http2: stream closed", "; CANCEL") {
 		return net.ErrClosed
 	}
 	if Contains(err, "stream error:", "connection error:", "http2: server sent GOAWAY") {
