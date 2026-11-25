@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -19,32 +21,35 @@ import (
 var _ N.Dialer = (*Client)(nil)
 
 type Client struct {
-	dialer     N.Dialer
-	serverAddr M.Socksaddr
-	username   string
-	password   string
-	host       string
-	path       string
-	headers    http.Header
+	dialer           N.Dialer
+	serverAddr       M.Socksaddr
+	username         string
+	password         string
+	host             string
+	path             string
+	headers          http.Header
+	handshakeTimeout time.Duration
 }
 
 type Options struct {
-	Dialer   N.Dialer
-	Server   M.Socksaddr
-	Username string
-	Password string
-	Path     string
-	Headers  http.Header
+	Dialer           N.Dialer
+	Server           M.Socksaddr
+	Username         string
+	Password         string
+	Path             string
+	Headers          http.Header
+	HandshakeTimeout time.Duration
 }
 
 func NewClient(options Options) *Client {
 	client := &Client{
-		dialer:     options.Dialer,
-		serverAddr: options.Server,
-		username:   options.Username,
-		password:   options.Password,
-		path:       options.Path,
-		headers:    options.Headers,
+		dialer:           options.Dialer,
+		serverAddr:       options.Server,
+		username:         options.Username,
+		password:         options.Password,
+		path:             options.Path,
+		headers:          options.Headers,
+		handshakeTimeout: options.HandshakeTimeout,
 	}
 	if options.Dialer == nil {
 		client.dialer = N.SystemDialer
@@ -71,6 +76,11 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 	if err != nil {
 		return nil, err
 	}
+	if c.handshakeTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.handshakeTimeout)
+		defer cancel()
+	}
 	if ctx.Done() != nil {
 		handshakeConn := conn
 		stopContext := context.AfterFunc(ctx, func() {
@@ -78,6 +88,7 @@ func (c *Client) DialContext(ctx context.Context, network string, destination M.
 		})
 		defer func() {
 			if !stopContext() {
+				common.Close(result)
 				result = nil
 				err = ctx.Err()
 			}
