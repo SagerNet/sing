@@ -140,7 +140,7 @@ func handleHTTPConnection(
 	conn net.Conn,
 	request *http.Request, source M.Socksaddr,
 ) error {
-	keepAlive := !(request.ProtoMajor == 1 && request.ProtoMinor == 0) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+	keepAlive := request.ProtoAtLeast(1, 1) && strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
 	request.RequestURI = ""
 
 	removeHopByHopHeaders(request.Header)
@@ -168,10 +168,7 @@ func handleHTTPConnection(
 			DisableCompression: true,
 			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
 				input, output := pipe.Pipe()
-				go handler.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address).Unwrap(), func(it error) {
-					innerErr.Store(it)
-					common.Close(input, output)
-				})
+				go handler.NewConnectionEx(ctx, output, source, M.ParseSocksaddr(address).Unwrap(), innerErr.Store)
 				return input, nil
 			},
 		},
@@ -189,6 +186,13 @@ func handleHTTPConnection(
 	}
 
 	removeHopByHopHeaders(response.Header)
+
+	response.Proto, response.ProtoMajor, response.ProtoMinor = "HTTP/1.1", 1, 1
+	if response.ContentLength < 0 && request.ProtoAtLeast(1, 1) {
+		response.TransferEncoding = []string{"chunked"}
+	} else {
+		response.TransferEncoding = nil
+	}
 
 	if keepAlive {
 		response.Header.Set("Proxy-Connection", "keep-alive")
