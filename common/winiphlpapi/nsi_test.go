@@ -32,6 +32,7 @@ func dialLoopback(t *testing.T, network string, address string) (netip.AddrPort,
 }
 
 func TestNSITCPConnectionMatchesTable(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, LoadExtendedTable())
 	require.NoError(t, procNsiGetParameter.Find())
 	dialLoopback(t, "tcp4", "127.0.0.1:0")
