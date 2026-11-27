@@ -110,7 +110,7 @@ func TestKeepAliveAfterEarlyResponse(t *testing.T) {
 				return
 			}
 			go func() {
-				HandleConnectionEx(context.Background(), proxyConn, std_bufio.NewReader(proxyConn), nil, &dialHandler{release: release}, M.SocksaddrFromNet(proxyConn.RemoteAddr()), nil)
+				HandleConnectionEx(context.Background(), proxyConn, NewReader(proxyConn), nil, &dialHandler{release: release}, M.SocksaddrFromNet(proxyConn.RemoteAddr()), nil)
 				proxyConn.Close()
 			}()
 		}

@@ -1,8 +1,8 @@
 package http
 
 import (
-	std_bufio "bufio"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -23,15 +23,19 @@ import (
 func HandleConnectionEx(
 	ctx context.Context,
 	conn net.Conn,
-	reader *std_bufio.Reader,
+	reader *Reader,
 	authenticator *auth.Authenticator,
 	handler N.TCPConnectionHandlerEx,
 	source M.Socksaddr,
 	onClose N.CloseHandlerFunc,
 ) error {
 	for {
-		request, err := ReadRequest(reader)
+		request, err := reader.ReadRequest()
 		if err != nil {
+			if errors.Is(err, errHeaderTooLarge) {
+				_, writeErr := io.WriteString(conn, "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n431 Request Header Fields Too Large")
+				return E.Errors(err, writeErr)
+			}
 			return E.Cause(err, "read http request")
 		}
 		if authenticator != nil {
